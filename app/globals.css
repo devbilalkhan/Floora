@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* ── Light mode ─────────────────────────────────────────── */
+  :root {
+    --background: 0 0% 97%;
+    --foreground: 240 10% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 8%;
+
+    --primary: 258 80% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 187 70% 38%;
+    --secondary-foreground: 0 0% 100%;
+    --tertiary: 330 75% 58%;
+    --tertiary-foreground: 0 0% 100%;
+    --accent: 258 80% 58%;
+    --accent-foreground: 0 0% 100%;
+
+    --muted: 240 5% 92%;
+    --muted-foreground: 240 4% 46%;
+    --border: 0 0% 50% / 0.20;
+    --input: 240 5% 94%;
+    --ring: 258 80% 58%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 158 55% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning: 43 90% 44%;
+    --warning-foreground: 0 0% 100%;
+    --info: 187 70% 38%;
+    --info-foreground: 0 0% 100%;
+
+    --glass-bg: 0 0% 100% / 0.75;
+    --glass-border: 0 0% 50% / 0.16;
+
+    --radius: 0.625rem;
+  }
+
+  /* ── Dark mode ──────────────────────────────────────────── */
+  .dark {
+    --background: 240 22% 5%;
+    --foreground: 0 0% 98%;
+    --card: 240 20% 10%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 20% 10%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 258 85% 78%;
+    --primary-foreground: 240 22% 8%;
+    --secondary: 187 85% 60%;
+    --secondary-foreground: 240 22% 5%;
+    --tertiary: 330 84% 78%;
+    --tertiary-foreground: 240 22% 5%;
+    --accent: 258 85% 78%;
+    --accent-foreground: 240 22% 8%;
+
+    --muted: 240 10% 14%;
+    --muted-foreground: 240 5% 65%;
+    --border: 0 0% 70% / 0.15;
+    --input: 240 15% 12%;
+    --ring: 258 85% 78%;
+
+    --destructive: 0 91% 71%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 158 64% 52%;
+    --success-foreground: 240 22% 5%;
+    --warning: 43 96% 56%;
+    --warning-foreground: 240 22% 5%;
+    --info: 187 85% 53%;
+    --info-foreground: 240 22% 5%;
+
+    --glass-bg: 240 20% 10% / 0.65;
+    --glass-border: 0 0% 70% / 0.12;
+
+    --radius: 0.625rem;
+  }
+
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+}
+
+/* ── Manufacturer badge — hue set via inline style, colours adapt to mode ── */
+.brand-badge {
+  background: hsl(var(--brand-hue) 70% 50% / 0.12);
+  color: hsl(var(--brand-hue) 65% 38%);
+  border-color: hsl(var(--brand-hue) 65% 45% / 0.35);
+}
+.dark .brand-badge {
+  background: hsl(var(--brand-hue) 70% 55% / 0.18);
+  color: hsl(var(--brand-hue) 90% 75%);
+  border-color: hsl(var(--brand-hue) 75% 65% / 0.45);
+}
