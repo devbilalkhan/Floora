@@ -36,6 +36,7 @@ export function NewEstimateDialog({
     try {
       const { id } = await createEstimate(projectId, orgSlug, new FormData(e.currentTarget));
       setOpen(false);
+      toast.success("Estimate created.");
       router.push(`/orgs/${orgSlug}/projects/${projectId}/estimates/${id}/costing`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create estimate.");

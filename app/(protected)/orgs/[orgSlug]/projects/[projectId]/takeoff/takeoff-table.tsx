@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 import { Plus, Trash2, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CATEGORIES, LEVELS } from "./constants";
@@ -12,12 +13,12 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/comp
 export type { TakeoffRow };
 
 const cell =
-  "h-full w-full px-2 py-1 text-xs bg-transparent border-0 outline-none " +
+  "h-full w-full px-2 py-1 text-[11px] bg-transparent border-0 outline-none " +
   "focus:ring-1 focus:ring-inset focus:ring-primary/40 " +
   "placeholder:text-muted-foreground/25 text-foreground/70";
 
 const selectCell =
-  "h-full w-full px-2 py-1 text-xs border-0 outline-none cursor-pointer " +
+  "h-full w-full px-2 py-1 text-[11px] border-0 outline-none cursor-pointer " +
   "appearance-none bg-card focus:ring-1 focus:ring-inset focus:ring-primary/40 " +
   "text-foreground/70";
 
@@ -35,6 +36,7 @@ function TakeoffRowComp({
   onUpdate,
   onDelete,
   onAddSibling,
+  canWrite,
 }: {
   row: TakeoffRow;
   index: number;
@@ -42,6 +44,7 @@ function TakeoffRowComp({
   onUpdate: (id: string, patch: Partial<TakeoffRow>) => void;
   onDelete: (id: string) => void;
   onAddSibling: () => void;
+  canWrite: boolean;
 }) {
   const [local, setLocal] = useState(row);
   const pending = useRef<Partial<TakeoffRow>>({});
@@ -139,6 +142,7 @@ function TakeoffRowComp({
               onChange={(e) => handleChange("finish_code", e.target.value)}
               onBlur={(e) => handleCodeBlur(e.target.value)}
               onKeyDown={onEnter}
+              readOnly={!canWrite}
               className={cn(cell, "font-mono uppercase tracking-wide")}
               placeholder="A-01"
             />
@@ -155,6 +159,7 @@ function TakeoffRowComp({
               onChange={(e) => handleChange("manufacturer", e.target.value)}
               onBlur={(e) => handleBlur("manufacturer", e.target.value)}
               onKeyDown={onEnter}
+              readOnly={!canWrite}
               className={cell}
               placeholder="Manufacturer / range"
             />
@@ -171,6 +176,7 @@ function TakeoffRowComp({
               onChange={(e) => handleChange("description", e.target.value)}
               onBlur={(e) => handleBlur("description", e.target.value)}
               onKeyDown={onEnter}
+              readOnly={!canWrite}
               className={cell}
               placeholder="Product name"
             />
@@ -187,6 +193,7 @@ function TakeoffRowComp({
               onChange={(e) => handleChange("colour", e.target.value)}
               onBlur={(e) => handleBlur("colour", e.target.value)}
               onKeyDown={onEnter}
+              readOnly={!canWrite}
               className={cell}
               placeholder="Colour / code"
             />
@@ -201,6 +208,7 @@ function TakeoffRowComp({
           onChange={(e) => handleChange("location", e.target.value)}
           onBlur={(e) => handleBlur("location", e.target.value)}
           onKeyDown={onEnter}
+          readOnly={!canWrite}
           className={cell}
           placeholder="Room / area"
         />
@@ -210,6 +218,7 @@ function TakeoffRowComp({
         <select
           value={local.level ?? ""}
           onChange={(e) => handleSelectChange("level", e.target.value || null)}
+          disabled={!canWrite}
           className={selectCell}
         >
           <option value="">—</option>
@@ -224,6 +233,7 @@ function TakeoffRowComp({
           value={local.qty}
           onCommit={(v) => { set("qty", v); flush({ qty: v }); }}
           onKeyDown={onEnter}
+          readOnly={!canWrite}
           className={cn(cell, "text-right tabular-nums")}
           placeholder="0.00"
         />
@@ -233,6 +243,7 @@ function TakeoffRowComp({
         <select
           value={local.unit}
           onChange={(e) => handleSelectChange("unit", e.target.value)}
+          disabled={!canWrite}
           className={selectCell}
         >
           <option value="m2">m²</option>
@@ -250,6 +261,7 @@ function TakeoffRowComp({
           onChange={(e) => handleChange("waste_pct", parseFloat(e.target.value) || 0)}
           onBlur={(e) => handleWastePctBlur(e.target.value)}
           onKeyDown={onEnter}
+          readOnly={!canWrite}
           className={cn(cell, "text-right tabular-nums")}
           placeholder="10"
           min={0}
@@ -278,11 +290,12 @@ function TakeoffRowComp({
             onChange={(e) => handleChange("parent_finish_code", e.target.value || null)}
             onBlur={(e) => flush({ parent_finish_code: e.target.value.trim() || null })}
             onKeyDown={onEnter}
+            readOnly={!canWrite}
             className={cn(cell, "font-mono uppercase tracking-wide")}
             placeholder="RF-01"
           />
         ) : (
-          <span className="block h-full w-full px-2 py-1 text-xs text-muted-foreground/20 select-none">—</span>
+          <span className="block h-full w-full px-2 py-1 text-[11px] text-muted-foreground/20 select-none">—</span>
         )}
       </td>
 
@@ -296,6 +309,7 @@ function TakeoffRowComp({
               set("cove_height_mm", v);
               flush({ cove_height_mm: v });
             }}
+            disabled={!canWrite}
             className={selectCell}
           >
             <option value="">—</option>
@@ -304,7 +318,7 @@ function TakeoffRowComp({
             <option value="200">200</option>
           </select>
         ) : (
-          <span className="block h-full w-full px-2 py-1 text-xs text-muted-foreground/20 select-none">—</span>
+          <span className="block h-full w-full px-2 py-1 text-[11px] text-muted-foreground/20 select-none">—</span>
         )}
       </td>
 
@@ -316,6 +330,7 @@ function TakeoffRowComp({
               onChange={(e) => handleChange("notes", e.target.value)}
               onBlur={(e) => handleBlur("notes", e.target.value)}
               onKeyDown={onEnter}
+              readOnly={!canWrite}
               className={cell}
               placeholder="Notes / DWG ref…"
             />
@@ -325,13 +340,15 @@ function TakeoffRowComp({
       </td>
 
       <td className="w-8 text-center p-0">
-        <button
-          onClick={() => onDelete(row.id)}
-          className="opacity-0 group-hover:opacity-100 p-1 rounded-sm text-muted-foreground hover:text-destructive transition-all"
-          title="Delete row"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
+        {canWrite && (
+          <button
+            onClick={() => onDelete(row.id)}
+            className="opacity-0 group-hover:opacity-100 p-1 rounded-sm text-muted-foreground hover:text-destructive transition-all"
+            title="Delete row"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        )}
       </td>
     </tr>
   );
@@ -342,9 +359,11 @@ function TakeoffRowComp({
 export function TakeoffTable({
   takeoffId,
   initialRows,
+  canWrite,
 }: {
   takeoffId: string;
   initialRows: TakeoffRow[];
+  canWrite: boolean;
 }) {
   const supabase = createClient();
   const [rows, setRows] = useState<TakeoffRow[]>(initialRows);
@@ -446,6 +465,7 @@ export function TakeoffTable({
       const tempId = `temp-${Date.now()}`;
       const optimistic: TakeoffRow = {
         id: tempId,
+        takeoff_id: takeoffId,
         scope_category: category,
         finish_code: null,
         description: null,
@@ -478,6 +498,7 @@ export function TakeoffTable({
 
       if (error) {
         setRows((prev) => prev.filter((r) => r.id !== tempId));
+        toast.error("Failed to add row.");
         return;
       }
       setRows((prev) =>
@@ -684,20 +705,23 @@ export function TakeoffTable({
                         onUpdate={updateRow}
                         onDelete={deleteRow}
                         onAddSibling={() => addRow(cat.key)}
+                        canWrite={canWrite}
                       />
                     ))}
 
-                    <tr>
-                      <td colSpan={15} className="px-3 py-0.5 border-b border-border">
-                        <button
-                          onClick={() => addRow(cat.key)}
-                          className="flex items-center gap-1 text-[11px] text-primary/60 dark:text-primary hover:text-primary transition-colors py-0.5"
-                        >
-                          <Plus className="h-2.5 w-2.5" />
-                          Add row
-                        </button>
-                      </td>
-                    </tr>
+                    {canWrite && (
+                      <tr>
+                        <td colSpan={15} className="px-3 py-0.5 border-b border-border">
+                          <button
+                            onClick={() => addRow(cat.key)}
+                            className="flex items-center gap-1 text-[11px] text-primary/60 dark:text-primary hover:text-primary transition-colors py-0.5"
+                          >
+                            <Plus className="h-2.5 w-2.5" />
+                            Add row
+                          </button>
+                        </td>
+                      </tr>
+                    )}
                   </React.Fragment>
                 );
               })}
@@ -718,10 +742,10 @@ export function TakeoffTable({
             </span>
             {Object.entries(grandTotal).map(([unit, actual]) => (
               <div key={unit} className="flex items-baseline gap-1.5 whitespace-nowrap">
-                <span className="text-xs font-medium text-muted-foreground">{uLabel(unit)}</span>
-                <span className="text-sm tabular-nums text-foreground/70">{fmt(actual)}</span>
-                <span className="text-muted-foreground/50 text-xs">→</span>
-                <span className="text-sm font-semibold tabular-nums text-primary">{fmt(grandSupply[unit] ?? actual)}</span>
+                <span className="text-[11px] font-medium text-muted-foreground">{uLabel(unit)}</span>
+                <span className="text-[11px] tabular-nums text-foreground/70">{fmt(actual)}</span>
+                <span className="text-muted-foreground/50 text-[11px]">→</span>
+                <span className="text-[11px] font-semibold tabular-nums text-primary">{fmt(grandSupply[unit] ?? actual)}</span>
               </div>
             ))}
           </div>
@@ -808,43 +832,43 @@ export function TakeoffTable({
                     CATEGORIES.find((c) => c.key === entry.scope_category)?.label ?? entry.scope_category;
                   return (
                     <tr key={entry.finish_code} className="border-b border-border hover:bg-muted/10">
-                      <td className="px-2 py-1 text-xs font-mono font-medium text-foreground/70 border-r border-border">
+                      <td className="px-2 py-1 text-[11px] font-mono font-medium text-foreground/70 border-r border-border">
                         {entry.finish_code}
                       </td>
                       <td className="px-2 py-1 text-[11px] text-muted-foreground border-r border-border">
                         {catLabel}
                       </td>
-                      <td className="px-2 py-1 text-xs text-foreground/70 border-r border-border">
+                      <td className="px-2 py-1 text-[11px] text-foreground/70 border-r border-border">
                         {entry.description ?? <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-xs text-foreground/70 border-r border-border truncate max-w-0">
+                      <td className="px-2 py-1 text-[11px] text-foreground/70 border-r border-border truncate max-w-0">
                         {entry.manufacturer ?? <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-xs text-foreground/70 border-r border-border">
+                      <td className="px-2 py-1 text-[11px] text-foreground/70 border-r border-border">
                         {entry.colour ?? <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-xs text-right tabular-nums text-foreground/70 border-r border-border">
+                      <td className="px-2 py-1 text-[11px] text-right tabular-nums text-foreground/70 border-r border-border">
                         {entry.totals["m2"] ? fmt(entry.totals["m2"]) : <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-xs text-right tabular-nums font-medium text-primary border-r border-border">
+                      <td className="px-2 py-1 text-[11px] text-right tabular-nums font-medium text-primary border-r border-border">
                         {entry.supply["m2"] ? fmt(entry.supply["m2"]) : <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-xs text-right tabular-nums text-foreground/70 border-r border-border">
+                      <td className="px-2 py-1 text-[11px] text-right tabular-nums text-foreground/70 border-r border-border">
                         {entry.totals["lm"] ? fmt(entry.totals["lm"]) : <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-xs text-right tabular-nums font-medium text-primary border-r border-border">
+                      <td className="px-2 py-1 text-[11px] text-right tabular-nums font-medium text-primary border-r border-border">
                         {entry.supply["lm"] ? fmt(entry.supply["lm"]) : <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-xs text-right tabular-nums text-foreground/70 border-r border-border">
+                      <td className="px-2 py-1 text-[11px] text-right tabular-nums text-foreground/70 border-r border-border">
                         {entry.totals["blm"] ? fmt(entry.totals["blm"]) : <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-xs text-right tabular-nums font-medium text-primary border-r border-border">
+                      <td className="px-2 py-1 text-[11px] text-right tabular-nums font-medium text-primary border-r border-border">
                         {entry.supply["blm"] ? fmt(entry.supply["blm"]) : <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-xs text-right tabular-nums text-foreground/70 border-r border-border">
+                      <td className="px-2 py-1 text-[11px] text-right tabular-nums text-foreground/70 border-r border-border">
                         {entry.totals["ea"] ? entry.totals["ea"] : <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-xs text-right tabular-nums text-foreground/70">
+                      <td className="px-2 py-1 text-[11px] text-right tabular-nums text-foreground/70">
                         {entry.locations.length}
                       </td>
                     </tr>

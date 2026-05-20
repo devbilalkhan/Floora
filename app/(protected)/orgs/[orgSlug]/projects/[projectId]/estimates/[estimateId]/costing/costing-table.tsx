@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import { Trash2, Plus, RefreshCw } from "lucide-react";
+import { Trash2, Plus, ChevronDown, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { CATEGORIES } from "@/lib/takeoff-types";
@@ -17,6 +17,13 @@ import {
   computeSummary,
 } from "@/lib/estimate-types";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   updateEstimateItem,
   deleteEstimateItem,
   addEstimateItem,
@@ -24,6 +31,7 @@ import {
   importTakeoff,
   syncAutoConsumables,
   addCovingToItem,
+  removeCovingFromItem,
   restoreAutoConsumables,
 } from "./actions";
 
@@ -58,16 +66,16 @@ function brandHue(name: string): number {
 const cell =
   "h-full w-full px-2 py-1 text-[11px] bg-transparent border-0 outline-none " +
   "focus:ring-1 focus:ring-inset focus:ring-primary/40 " +
-  "placeholder:text-muted-foreground/25 text-foreground/70";
+  "placeholder:text-muted-foreground/55 text-foreground/70";
 
 const cellRight = cell + " text-right tabular-nums";
 const cellMono = cell + " font-mono uppercase tracking-wide";
 
 const readonlyCell =
-  "h-full w-full px-2 py-1 text-[11px] tabular-nums text-right text-foreground/80 select-none cursor-default";
+  "h-full w-full px-2 py-1 text-[11px] tabular-nums text-right text-foreground/70 select-none cursor-default";
 
 const dimCell =
-  "h-full w-full px-2 py-1 text-[11px] text-foreground/35 select-none";
+  "h-full w-full px-2 py-1 text-[11px] text-muted-foreground/45 select-none";
 
 const selectCell =
   "h-full w-full px-2 py-1 text-xs border-0 outline-none cursor-pointer " +
@@ -95,6 +103,7 @@ function PrimaryRow({
   onUpdate,
   onDelete,
   onCovingAdded,
+  onCovingRemoved,
   hasWeldRod,
   onConsumableAdded,
 }: {
@@ -103,7 +112,8 @@ function PrimaryRow({
   estimateId: string;
   onUpdate: (id: string, patch: Partial<EstimateItem>) => void;
   onDelete: (id: string) => void;
-  onCovingAdded: (primaryId: string, children: EstimateItem[]) => void;
+  onCovingAdded: (primaryId: string, children: EstimateItem[], covLm: number, covArea: number, covHeightMm: number) => void;
+  onCovingRemoved: (primaryId: string) => void;
   hasWeldRod: boolean;
   onConsumableAdded: (items: EstimateItem[]) => void;
 }) {
@@ -162,7 +172,7 @@ function PrimaryRow({
 
   const openCovingForm = () => {
     setCovFormLm(local.cov_lm ?? 0);
-    setCovFormHeight(local.cov_height_mm ?? 100);
+    setCovFormHeight(local.cov_height_mm ?? 150);
     setCovingOpen(true);
   };
 
@@ -180,36 +190,65 @@ function PrimaryRow({
     );
     const covArea = covFormLm * (covFormHeight / 1000);
     setLocal(prev => ({ ...prev, cov_lm: covFormLm, cov_area: covArea, cov_height_mm: covFormHeight }));
-    onCovingAdded(item.id, children);
+    onCovingAdded(item.id, children, covFormLm, covArea, covFormHeight);
     setCovingOpen(false);
+  };
+
+  const handleRemoveCoving = async () => {
+    setLocal(prev => ({ ...prev, cov_lm: null, cov_area: null, cov_height_mm: null }));
+    onCovingRemoved(item.id);
+    await removeCovingFromItem(item.id);
   };
 
   const hue = local.manufacturer ? brandHue(local.manufacturer) : null;
 
+  const liveArea = covFormLm * (covFormHeight / 1000);
+
   return (
     <tr className="border-b border-border hover:bg-muted/20 group">
-      {/* Coving modal */}
-      {covingOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setCovingOpen(false)}>
-          <div className="bg-card border border-border rounded-xl p-5 w-72 shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
-            <p className="text-sm font-semibold text-foreground">Add / Edit Coving</p>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">Coving LM</span>
+      {/* Coving dialog */}
+      <Dialog open={covingOpen} onOpenChange={setCovingOpen}>
+        <DialogContent className="sm:max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="text-sm">
+              {hasCov ? "Edit Coving" : "Add Coving"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-1">
+            {/* Live m² tag */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Coving area</span>
+              <span className={cn(
+                "tabular-nums font-semibold text-sm px-2.5 py-0.5 rounded-md border transition-colors",
+                liveArea > 0
+                  ? "bg-secondary/10 text-secondary border-secondary/30"
+                  : "bg-muted/40 text-muted-foreground border-border"
+              )}>
+                {liveArea > 0 ? `${liveArea.toFixed(2)} m²` : "— m²"}
+              </span>
+            </div>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground">Linear metres (lm)</span>
               <input
-                type="number" min={0} step={0.1}
+                type="number"
+                min={0}
+                step={0.1}
                 value={covFormLm || ""}
                 onChange={e => setCovFormLm(parseFloat(e.target.value) || 0)}
-                className="w-full text-sm tabular-nums bg-input border border-border rounded px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                className="w-full text-sm tabular-nums bg-input border border-border rounded px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 transition-colors"
                 placeholder="0.00"
                 autoFocus
               />
             </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">Height (mm)</span>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground">Height</span>
               <select
                 value={covFormHeight}
                 onChange={e => setCovFormHeight(Number(e.target.value))}
-                className="w-full text-sm bg-input border border-border rounded px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                className="w-full text-sm bg-input border border-border rounded px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 transition-colors"
               >
                 <option value={100}>100 mm</option>
                 <option value={150}>150 mm</option>
@@ -217,19 +256,27 @@ function PrimaryRow({
                 <option value={250}>250 mm</option>
               </select>
             </label>
-            <div className="flex gap-2 pt-1">
-              <button onClick={() => setCovingOpen(false)} className="flex-1 text-xs border border-border rounded px-3 py-1.5 text-muted-foreground hover:text-foreground transition-colors">
-                Cancel
-              </button>
-              <button onClick={handleApplyCoving} className="flex-1 text-xs bg-primary text-primary-foreground rounded px-3 py-1.5 font-medium hover:opacity-90 transition-opacity">
-                Apply
-              </button>
-            </div>
           </div>
-        </div>
-      )}
 
-      <td className="text-center text-[10px] text-muted-foreground/40 select-none px-1 py-0">
+          <DialogFooter className="gap-2 sm:gap-2">
+            <button
+              onClick={() => setCovingOpen(false)}
+              className="flex-1 text-xs border border-border rounded px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleApplyCoving}
+              disabled={!covFormLm}
+              className="flex-1 text-xs bg-primary text-primary-foreground rounded px-3 py-2 font-medium hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Apply
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <td className="text-center text-[10px] text-muted-foreground/60 select-none px-1 py-0">
         {index}
       </td>
 
@@ -270,7 +317,7 @@ function PrimaryRow({
                   {local.manufacturer}
                 </span>
               ) : (
-                <span className="text-[10px] text-muted-foreground/25 hover:text-muted-foreground/50 transition-colors px-0.5">Mfr</span>
+                <span className="text-[10px] text-tertiary/45 hover:text-tertiary/70 transition-colors px-0.5">Mfr</span>
               )}
             </button>
           )}
@@ -279,18 +326,30 @@ function PrimaryRow({
             value={local.description ?? ""}
             onChange={(e) => { set("description", e.target.value); schedule({ description: e.target.value || null }); }}
             onBlur={(e) => flush({ description: e.target.value.trim() || null })}
-            className="flex-1 min-w-0 text-xs bg-transparent border-0 outline-none focus:ring-0 placeholder:text-muted-foreground/25 text-foreground/70"
+            className="flex-1 min-w-0 text-xs bg-transparent border-0 outline-none focus:ring-0 placeholder:text-muted-foreground/55 text-foreground/70"
             placeholder="Product name"
           />
 
           {/* Coving button / annotation */}
           {isVinyl && (
             hasCov ? (
-              <button onClick={openCovingForm} className="shrink-0 text-[10px] text-secondary/70 bg-secondary/10 hover:bg-secondary/20 px-1.5 py-0.5 rounded-sm font-mono transition-colors">
-                +{(local.cov_area ?? 0).toFixed(1)}m² cov
-              </button>
+              <span className="shrink-0 flex items-center gap-0 rounded-sm overflow-hidden font-mono text-[10px] bg-secondary/10">
+                <button
+                  onClick={openCovingForm}
+                  className="text-secondary/70 hover:bg-secondary/20 px-1.5 py-0.5 transition-colors"
+                >
+                  +{(local.cov_area ?? 0).toFixed(1)}m² cov
+                </button>
+                <button
+                  onClick={handleRemoveCoving}
+                  title="Remove coving"
+                  className="text-secondary/50 hover:text-destructive hover:bg-destructive/10 px-1 py-0.5 transition-colors"
+                >
+                  ×
+                </button>
+              </span>
             ) : (
-              <button onClick={openCovingForm} className="shrink-0 text-[10px] text-muted-foreground/30 hover:text-primary/60 px-1 py-0.5 transition-colors">
+              <button onClick={openCovingForm} className="shrink-0 text-[10px] text-secondary/45 hover:text-secondary/70 px-1 py-0.5 transition-colors">
                 +cov
               </button>
             )
@@ -298,7 +357,7 @@ function PrimaryRow({
 
           {/* Weld rod restore — only shown when missing */}
           {isVinyl && !hasWeldRod && (
-            <button onClick={handleAddWeldRod} className="shrink-0 text-[10px] text-muted-foreground/30 hover:text-primary/60 px-1 py-0.5 transition-colors">
+            <button onClick={handleAddWeldRod} className="shrink-0 text-[10px] text-muted-foreground/45 hover:text-primary/60 px-1 py-0.5 transition-colors">
               +weld rod
             </button>
           )}
@@ -382,7 +441,7 @@ function PrimaryRow({
       </td>
 
       <td className="border-r border-border p-0">
-        <div className={cn(readonlyCell, "font-semibold text-foreground/90")}>
+        <div className={cn(readonlyCell, "font-semibold text-foreground/75")}>
           {total > 0 ? `$${fmt(total)}` : "—"}
         </div>
       </td>
@@ -458,7 +517,7 @@ function ConsumableRow({
   return (
     <tr className="border-b border-border hover:bg-muted/10 group">
       {/* # */}
-      <td className="text-center text-[10px] text-foreground/30 select-none px-1 py-0">
+      <td className="text-center text-[10px] text-muted-foreground/60 select-none px-1 py-0">
         ↳
       </td>
 
@@ -483,7 +542,7 @@ function ConsumableRow({
         <CalcInput
           value={local.qty}
           onCommit={(v) => { set("qty", v); flush({ qty: v }); }}
-          className={cn(cellRight, "text-foreground/60")}
+          className={cn(cellRight, "text-foreground/55")}
           placeholder="0"
         />
       </td>
@@ -493,7 +552,7 @@ function ConsumableRow({
         <select
           value={local.unit}
           onChange={(e) => { set("unit", e.target.value); flush({ unit: e.target.value }); }}
-          className={cn(selectCell, "text-muted-foreground/70")}
+          className={cn(selectCell, "text-foreground/55")}
         >
           <option value="m2">m²</option>
           <option value="lm">lm</option>
@@ -511,10 +570,10 @@ function ConsumableRow({
 
       {/* Eff. Qty — same as qty for consumables */}
       <td className="border-r border-border p-0 bg-primary/5 overflow-hidden">
-        <div className={cn(readonlyCell, "text-foreground/55 whitespace-nowrap")}>
+        <div className={cn(readonlyCell, "text-secondary/60 whitespace-nowrap")}>
           {local.qty > 0 ? `${local.qty} ${uLabel(local.unit)}` : "—"}
           {local.coverage_m2 && (
-            <span className="ml-1 text-[9px] text-foreground/30">/{local.coverage_m2}m²</span>
+            <span className="ml-1 text-[9px] text-muted-foreground/45">/{local.coverage_m2}m²</span>
           )}
         </div>
       </td>
@@ -526,7 +585,7 @@ function ConsumableRow({
           value={local.mat_rate === 0 ? "" : r2(local.mat_rate)}
           onChange={(e) => { const v = parseFloat(e.target.value) || 0; set("mat_rate", v); schedule({ mat_rate: v }); }}
           onBlur={(e) => { const v = parseFloat(e.target.value) || 0; set("mat_rate", v); flush({ mat_rate: v }); }}
-          className={cn(cellRight, "text-foreground/60")}
+          className={cn(cellRight, "text-foreground/55")}
           placeholder="0.00"
           min={0}
           step={0.01}
@@ -540,7 +599,7 @@ function ConsumableRow({
           value={local.lab_rate === 0 ? "" : r2(local.lab_rate)}
           onChange={(e) => { const v = parseFloat(e.target.value) || 0; set("lab_rate", v); schedule({ lab_rate: v }); }}
           onBlur={(e) => { const v = parseFloat(e.target.value) || 0; set("lab_rate", v); flush({ lab_rate: v }); }}
-          className={cn(cellRight, "text-foreground/60")}
+          className={cn(cellRight, "text-foreground/55")}
           placeholder="0.00"
           min={0}
           step={0.01}
@@ -559,7 +618,7 @@ function ConsumableRow({
 
       {/* Total */}
       <td className="border-r border-border p-0">
-        <div className={cn(readonlyCell, "text-foreground/70")}>{total > 0 ? `$${fmt(total)}` : "—"}</div>
+        <div className={cn(readonlyCell, "text-foreground/55")}>{total > 0 ? `$${fmt(total)}` : "—"}</div>
       </td>
 
       {/* Delete */}
@@ -570,6 +629,56 @@ function ConsumableRow({
         >
           <Trash2 className="h-3 w-3" />
         </button>
+      </td>
+    </tr>
+  );
+}
+
+// ── Add section row ───────────────────────────────────────────────────────────
+function AddSectionRow({
+  usedCategories,
+  onAdd,
+}: {
+  usedCategories: Set<string>;
+  onAdd: (key: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const available = CATEGORIES.filter((c) => !usedCategories.has(c.key));
+
+  if (available.length === 0) return null;
+
+  return (
+    <tr className="border-t border-border">
+      <td colSpan={13} className="px-3 py-2">
+        {open ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] text-muted-foreground mr-1">Add section:</span>
+            {available.map((cat) => (
+              <button
+                key={cat.key}
+                onClick={() => { onAdd(cat.key); setOpen(false); }}
+                className="text-[11px] px-2.5 py-1 rounded border border-white/[0.12] text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-colors"
+              >
+                {cat.label}
+              </button>
+            ))}
+            <button
+              onClick={() => setOpen(false)}
+              className="text-[11px] text-muted-foreground/45 hover:text-muted-foreground transition-colors ml-1"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setOpen(true)}
+            className="flex items-center gap-1 text-[11px] text-muted-foreground/45 hover:text-primary transition-colors py-0.5"
+          >
+            <Plus className="h-2.5 w-2.5" />
+            Add section
+            <ChevronDown className="h-2.5 w-2.5" />
+          </button>
+        )}
       </td>
     </tr>
   );
@@ -702,13 +811,23 @@ export function CostingTable({
     deleteEstimateItem(id).catch(() => toast.error("Delete failed."));
   }, []);
 
-  const handleCovingAdded = useCallback((primaryId: string, newChildren: EstimateItem[]) => {
+  const handleCovingAdded = useCallback((primaryId: string, newChildren: EstimateItem[], covLm: number, covArea: number, covHeightMm: number) => {
     setItems((prev) => {
       const withoutOldCoving = prev.filter(
         (i) => !(i.parent_item_id === primaryId && COVING_DESCS.has(i.description ?? ""))
       );
-      return [...withoutOldCoving, ...newChildren];
+      return withoutOldCoving.map((i) =>
+        i.id === primaryId ? { ...i, cov_lm: covLm, cov_area: covArea, cov_height_mm: covHeightMm } : i
+      ).concat(newChildren);
     });
+  }, []);
+
+  const handleCovingRemoved = useCallback((primaryId: string) => {
+    setItems((prev) =>
+      prev
+        .filter((i) => !(i.parent_item_id === primaryId && COVING_DESCS.has(i.description ?? "")))
+        .map((i) => i.id === primaryId ? { ...i, cov_lm: null, cov_area: null, cov_height_mm: null } : i)
+    );
   }, []);
 
   const addRow = useCallback(
@@ -821,7 +940,7 @@ export function CostingTable({
               max={100}
               step={0.5}
             />
-            <span className="text-muted-foreground/60">%</span>
+            <span className="text-muted-foreground">%</span>
           </label>
         ))}
 
@@ -841,7 +960,7 @@ export function CostingTable({
             max={100}
             step={0.5}
           />
-          <span className="text-muted-foreground/60">%</span>
+          <span className="text-muted-foreground">%</span>
           <span className={cn(
             "px-2 py-0.5 rounded text-[10px] font-bold tabular-nums border",
             markupWarning
@@ -864,29 +983,17 @@ export function CostingTable({
 
           {/* Import / re-import from takeoff */}
           {takeoffs.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <select
-                id="import-takeoff"
-                defaultValue={estimate.source_takeoff_id ?? ""}
-                className="text-xs bg-input border border-border rounded px-1.5 py-0.5 text-foreground/70 focus:outline-none focus:ring-1 focus:ring-primary/40"
-                onChange={() => {}}
-              >
-                {takeoffs.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-              <button
-                disabled={importing}
-                onClick={() => {
-                  const sel = document.getElementById("import-takeoff") as HTMLSelectElement;
-                  if (sel?.value) handleImport(sel.value);
-                }}
-                className="flex items-center gap-1 text-xs text-primary/80 hover:text-primary border border-primary/30 rounded px-2 py-0.5 transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={cn("h-2.5 w-2.5", importing && "animate-spin")} />
-                {items.length === 0 ? "Import" : "Re-import"}
-              </button>
-            </div>
+            <button
+              disabled={importing}
+              onClick={() => {
+                const takeoffId = estimate.source_takeoff_id ?? takeoffs[0]?.id;
+                if (takeoffId) handleImport(takeoffId);
+              }}
+              className="flex items-center gap-1 text-xs text-primary/80 hover:text-primary border border-primary/30 rounded px-2 py-0.5 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={cn("h-2.5 w-2.5", importing && "animate-spin")} />
+              {items.length === 0 ? "Import" : "Re-import"}
+            </button>
           )}
         </div>
       </div>
@@ -963,7 +1070,7 @@ export function CostingTable({
                             </span>
                           </div>
                           {catTotal > 0 && (
-                            <span className="text-[11px] tabular-nums text-foreground/60 font-medium">
+                            <span className="text-[11px] tabular-nums text-foreground/55 font-medium">
                               ${fmt(catTotal)}
                             </span>
                           )}
@@ -986,6 +1093,7 @@ export function CostingTable({
                             onUpdate={updateItem}
                             onDelete={deleteItem}
                             onCovingAdded={handleCovingAdded}
+                            onCovingRemoved={handleCovingRemoved}
                             hasWeldRod={hasWeldRod}
                             onConsumableAdded={(newItems) => setItems((prev) => [...prev, ...newItems])}
                           />
@@ -1019,15 +1127,12 @@ export function CostingTable({
                 );
               })}
 
-              {grouped.primaries.length === 0 && (
-                <tr>
-                  <td colSpan={13} className="text-center py-10 text-sm text-muted-foreground">
-                    {takeoffs.length > 0
-                      ? "Import a takeoff above to populate this estimate."
-                      : "No takeoffs found for this project."}
-                  </td>
-                </tr>
-              )}
+              {/* Add section — shows unused categories */}
+              <AddSectionRow
+                usedCategories={new Set(grouped.primaries.map((i) => i.scope_category))}
+                onAdd={addRow}
+              />
+
 
               {items.length > 0 && (
                 <tr className="bg-muted/25 border-t-2 border-border">
@@ -1042,7 +1147,7 @@ export function CostingTable({
                   <td className="border-r border-border px-2 py-2.5 text-right text-[11px] tabular-nums font-semibold text-foreground/75">
                     ${fmt(tableTotals.lab)}
                   </td>
-                  <td className="border-r border-border px-2 py-2.5 text-right text-[11px] tabular-nums font-bold text-foreground">
+                  <td className="border-r border-border px-2 py-2.5 text-right text-[11px] tabular-nums font-bold text-foreground/75">
                     ${fmt(tableTotals.total)}
                   </td>
                   <td />
@@ -1068,7 +1173,7 @@ export function CostingTable({
         ).map(([label, key]) => (
           <label key={key} className="flex items-center gap-1.5 text-xs">
             <span className="text-muted-foreground">{label}</span>
-            <span className="text-muted-foreground/50">$</span>
+            <span className="text-muted-foreground">$</span>
             <input
               type="number"
               value={Number(settings[key]) === 0 ? "" : r2(Number(settings[key]))}
@@ -1121,30 +1226,30 @@ export function CostingTable({
             <SummaryRow label="Materials & Labour" value={summary.base} />
             {summary.wetAreasCount > 0 && (
               <tr className="bg-muted/10 border-b border-border">
-                <td className="pl-9 pr-4 py-1.5 text-xs text-foreground/40">
+                <td className="pl-9 pr-4 py-1.5 text-xs text-muted-foreground/45">
                   Wet Areas ({summary.wetAreasCount} type{summary.wetAreasCount !== 1 ? "s" : ""})
                 </td>
                 <td className={cn(
                   "px-4 py-1.5 text-xs text-right tabular-nums",
-                  summary.wetAreasProfit >= 0 ? "text-foreground/40" : "text-destructive/70"
+                  summary.wetAreasProfit >= 0 ? "text-muted-foreground/45" : "text-destructive/70"
                 )}>
                   {summary.wetAreasProfit >= 0 ? "+" : ""}${fmt(summary.wetAreasProfit)}
                 </td>
               </tr>
             )}
             <tr className="bg-muted/10 border-b border-border">
-              <td className="pl-9 pr-4 py-1.5 text-xs text-foreground/40">
+              <td className="pl-9 pr-4 py-1.5 text-xs text-muted-foreground/45">
                 Accounting ({fmtPct(settings.accounting_rate)}%)
               </td>
-              <td className="px-4 py-1.5 text-xs text-right tabular-nums text-foreground/40">
+              <td className="px-4 py-1.5 text-xs text-right tabular-nums text-muted-foreground/45">
                 ${fmt(summary.accountingCost)}
               </td>
             </tr>
             <tr className="bg-muted/10 border-b border-border">
-              <td className="pl-9 pr-4 py-1.5 text-xs text-foreground/40">
+              <td className="pl-9 pr-4 py-1.5 text-xs text-muted-foreground/45">
                 Admin ({fmtPct(settings.admin_rate)}%)
               </td>
-              <td className="px-4 py-1.5 text-xs text-right tabular-nums text-foreground/40">
+              <td className="px-4 py-1.5 text-xs text-right tabular-nums text-muted-foreground/45">
                 ${fmt(summary.adminCost)}
               </td>
             </tr>
@@ -1157,7 +1262,7 @@ export function CostingTable({
                 {/* Label row */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className={cn("text-xs", markupWarning ? "text-warning" : "text-foreground/65")}>
+                    <span className={cn("text-xs", markupWarning ? "text-warning" : "text-muted-foreground")}>
                       Mark-up
                     </span>
                     <span className={cn(
@@ -1180,7 +1285,7 @@ export function CostingTable({
                 <input
                   type="range"
                   min={0}
-                  max={60}
+                  max={100}
                   step={0.5}
                   value={r2(Number(settings.net_markup_pct) * 100)}
                   onChange={(e) => updateSettings({ net_markup_pct: parseFloat(e.target.value) / 100 })}
@@ -1196,14 +1301,14 @@ export function CostingTable({
                   )}
                 />
                 <div className="flex justify-between mt-1">
-                  <span className="text-[9px] text-muted-foreground/30">0%</span>
-                  <span className="text-[9px] text-muted-foreground/30">60%</span>
+                  <span className={cn("text-[9px]", markupWarning ? "text-warning/55" : "text-secondary/55")}>0%</span>
+                  <span className={cn("text-[9px]", markupWarning ? "text-warning/55" : "text-secondary/55")}>100%</span>
                 </div>
               </td>
             </tr>
             {summary.floorPrepBags > 0 && (
               <tr className="bg-muted/10 border-b border-border">
-                <td className="pl-9 pr-4 py-1.5 text-xs text-foreground/40">
+                <td className="pl-9 pr-4 py-1.5 text-xs text-muted-foreground/45">
                   Floor Prep profit ({summary.floorPrepBags} bags)
                 </td>
                 <td className="px-4 py-1.5 text-xs text-right tabular-nums text-success/80">
@@ -1227,9 +1332,9 @@ export function CostingTable({
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
               Grand Total
             </p>
-            <p className="text-xs text-muted-foreground/60 mt-0.5">Including GST</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Including GST</p>
           </div>
-          <p className="text-2xl font-bold tabular-nums text-foreground">
+          <p className="text-2xl font-bold tabular-nums text-foreground/90">
             ${fmt(summary.grandTotal)}
           </p>
         </div>
@@ -1262,7 +1367,7 @@ function SubtotalRow({ label, matCost, labCost, total }: {
       <td className="px-1" />
       <td className="border-r border-border" />
       <td colSpan={7} className="border-r border-border px-2 py-1.5 text-right">
-        <span className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wide">
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
           {label} subtotal
         </span>
       </td>
@@ -1303,10 +1408,10 @@ function SummaryRow({
       <td
         className={cn(
           "px-4 py-2 text-xs",
-          bold ? "font-semibold text-foreground/85"
-          : subtotal ? "font-medium text-foreground/65"
-          : muted ? "text-foreground/40"
-          : "text-foreground/65",
+          bold ? "font-semibold text-muted-foreground"
+          : subtotal ? "font-medium text-muted-foreground"
+          : muted ? "text-muted-foreground/45"
+          : "text-muted-foreground",
           highlight === "warning" && "text-warning"
         )}
       >
@@ -1315,10 +1420,10 @@ function SummaryRow({
       <td
         className={cn(
           "px-4 py-2 text-right tabular-nums",
-          bold ? "text-sm font-semibold text-foreground/85"
-          : subtotal ? "text-xs font-semibold text-foreground/65"
-          : muted ? "text-xs text-foreground/40"
-          : "text-xs text-foreground/65",
+          bold ? "text-sm font-semibold text-foreground/75"
+          : subtotal ? "text-xs font-semibold text-foreground/70"
+          : muted ? "text-xs text-muted-foreground/45"
+          : "text-xs text-foreground/55",
           highlight === "warning" && "text-warning"
         )}
       >

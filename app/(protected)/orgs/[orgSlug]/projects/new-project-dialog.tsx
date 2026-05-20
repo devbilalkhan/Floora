@@ -45,6 +45,7 @@ export function NewProjectDialog({
         new FormData(e.currentTarget)
       );
       setOpen(false);
+      toast.success("Project created.");
       router.push(`/orgs/${orgSlug}/projects/${result.projectId}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create project.");

@@ -4,9 +4,10 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { FileSpreadsheet, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NewTakeoffDialog } from "./takeoff/new-takeoff-dialog";
+import { ImportExcelDialog } from "./takeoff/import-excel-dialog";
 
 type TakeoffItem = {
   id: string;
@@ -27,15 +28,18 @@ export function TakeoffListTable({
   takeoffs,
   projectId,
   orgSlug,
+  canWrite,
 }: {
   takeoffs: TakeoffItem[];
   projectId: string;
   orgSlug: string;
+  canWrite: boolean;
 }) {
   const router = useRouter();
   const supabase = createClient();
   const [items, setItems] = useState(takeoffs);
   const [newOpen, setNewOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -79,10 +83,18 @@ export function TakeoffListTable({
     <>
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold">Takeoffs</h2>
-        <Button size="sm" variant="outline" onClick={() => setNewOpen(true)}>
-          <Plus className="h-3.5 w-3.5" />
-          New takeoff
-        </Button>
+        {canWrite && (
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              Import BoQ
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setNewOpen(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              New takeoff
+            </Button>
+          </div>
+        )}
       </div>
 
       {items.length === 0 ? (
@@ -90,10 +102,12 @@ export function TakeoffListTable({
           <div className="text-center space-y-1.5">
             <p className="text-sm font-medium">No takeoffs yet</p>
             <p className="text-xs text-muted-foreground">Create a takeoff to start measuring quantities.</p>
-            <Button size="sm" variant="outline" onClick={() => setNewOpen(true)}>
-              <Plus className="h-3.5 w-3.5" />
-              New takeoff
-            </Button>
+            {canWrite && (
+              <Button size="sm" variant="outline" onClick={() => setNewOpen(true)}>
+                <Plus className="h-3.5 w-3.5" />
+                New takeoff
+              </Button>
+            )}
           </div>
         </div>
       ) : (
@@ -167,13 +181,15 @@ export function TakeoffListTable({
                           >
                             {t.name}
                           </Link>
-                          <button
-                            onClick={() => startEdit(t.id, t.name)}
-                            className="opacity-0 group-hover:opacity-100 p-0.5 rounded-sm text-muted-foreground hover:text-foreground transition-all shrink-0"
-                            title="Rename"
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </button>
+                          {canWrite && (
+                            <button
+                              onClick={() => startEdit(t.id, t.name)}
+                              className="opacity-0 group-hover:opacity-100 p-0.5 rounded-sm text-muted-foreground hover:text-foreground transition-all shrink-0"
+                              title="Rename"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>
@@ -184,15 +200,17 @@ export function TakeoffListTable({
                       {formatDate(t.created_at)}
                     </td>
                     <td className="px-4 py-2.5">
-                      <div className="flex justify-end">
-                        <button
-                          onClick={() => { setEditingId(null); setConfirmDeleteId(t.id); }}
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded-sm text-muted-foreground hover:text-destructive transition-all"
-                          title="Delete takeoff"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
+                      {canWrite && (
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => { setEditingId(null); setConfirmDeleteId(t.id); }}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-sm text-muted-foreground hover:text-destructive transition-all"
+                            title="Delete takeoff"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -208,6 +226,14 @@ export function TakeoffListTable({
         projectId={projectId}
         orgSlug={orgSlug}
         nextSortOrder={items.length}
+      />
+
+      <ImportExcelDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        projectId={projectId}
+        orgSlug={orgSlug}
+        existingTakeoffCount={items.length}
       />
     </>
   );

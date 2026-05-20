@@ -17,12 +17,14 @@ export function CalcInput({
   className,
   placeholder,
   onKeyDown,
+  readOnly,
 }: {
   value: number;
   onCommit: (v: number) => void;
   className?: string;
   placeholder?: string;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  readOnly?: boolean;
 }) {
   const [display, setDisplay] = useState(value === 0 ? "" : String(value));
   const focused = useRef(false);
@@ -48,6 +50,7 @@ export function CalcInput({
       inputMode="decimal"
       value={display}
       placeholder={placeholder ?? "0"}
+      readOnly={readOnly}
       className={className}
       onChange={(e) => setDisplay(e.target.value)}
       onFocus={(e) => {

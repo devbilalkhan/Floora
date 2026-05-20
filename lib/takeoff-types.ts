@@ -9,6 +9,7 @@ export type Takeoff = {
 
 export type TakeoffRow = {
   id: string;
+  takeoff_id: string;
   scope_category: string;
   finish_code: string | null;
   description: string | null;

@@ -550,6 +550,20 @@ export async function addCovingToItem(
   return (data ?? []) as EstimateItem[];
 }
 
+// ── Remove coving from a vinyl primary row ────────────────────────────────────
+export async function removeCovingFromItem(primaryId: string): Promise<void> {
+  const { supabase } = await createAuthedClient();
+
+  await supabase.from("estimate_items")
+    .update({ cov_lm: null, cov_area: null, cov_height_mm: null })
+    .eq("id", primaryId);
+
+  await supabase.from("estimate_items")
+    .delete()
+    .eq("parent_item_id", primaryId)
+    .in("description", Array.from(COVING_DESCS));
+}
+
 // ── Restore any missing auto-consumable children on a primary row ─────────────
 export async function restoreAutoConsumables(
   primaryId: string,
@@ -610,6 +624,13 @@ export async function updateWetArea(
 export async function deleteWetArea(id: string) {
   const { supabase } = await createAuthedClient();
   const { error } = await supabase.from("estimate_wet_areas").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+// ── Update estimate status ────────────────────────────────────────────────────
+export async function updateEstimateStatus(estimateId: string, status: string) {
+  const { supabase } = await createAuthedClient();
+  const { error } = await supabase.from("estimates").update({ status }).eq("id", estimateId);
   if (error) throw new Error(error.message);
 }
 

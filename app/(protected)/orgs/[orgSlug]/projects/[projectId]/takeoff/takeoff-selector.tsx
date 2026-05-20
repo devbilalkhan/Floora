@@ -16,11 +16,13 @@ export function TakeoffSelector({
   selectedId,
   projectId,
   orgSlug,
+  canWrite,
 }: {
   takeoffs: Takeoff[];
   selectedId: string;
   projectId: string;
   orgSlug: string;
+  canWrite: boolean;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -113,12 +115,14 @@ export function TakeoffSelector({
                         )}
                       >
                         <span className="flex-1 truncate">{t.name}</span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setConfirmingId(t.id); }}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded-sm text-muted-foreground hover:text-destructive transition-all shrink-0"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+                        {canWrite && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setConfirmingId(t.id); }}
+                            className="opacity-0 group-hover:opacity-100 p-0.5 rounded-sm text-muted-foreground hover:text-destructive transition-all shrink-0"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
                       </button>
                     )}
                   </div>
@@ -132,25 +136,29 @@ export function TakeoffSelector({
         </div>
 
         {/* New takeoff */}
-        <button
-          onClick={() => setNewOpen(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-border rounded-sm hover:bg-muted/40 transition-colors text-muted-foreground hover:text-foreground"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          New
-        </button>
+        {canWrite && (
+          <button
+            onClick={() => setNewOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-border rounded-sm hover:bg-muted/40 transition-colors text-muted-foreground hover:text-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New
+          </button>
+        )}
 
         {/* Import */}
-        <button
-          onClick={() => setImportOpen(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-border rounded-sm hover:bg-muted/40 transition-colors text-muted-foreground hover:text-foreground"
-        >
-          <FileSpreadsheet className="h-3.5 w-3.5" />
-          Import
-        </button>
+        {canWrite && (
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-border rounded-sm hover:bg-muted/40 transition-colors text-muted-foreground hover:text-foreground"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            Import
+          </button>
+        )}
 
         {/* Delete current takeoff */}
-        {selected && (
+        {canWrite && selected && (
           <button
             onClick={() => setDeleteModalOpen(true)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-border rounded-sm hover:bg-destructive/10 hover:border-destructive/40 transition-colors text-muted-foreground hover:text-destructive"

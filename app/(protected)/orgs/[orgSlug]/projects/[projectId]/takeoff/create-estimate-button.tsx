@@ -27,6 +27,7 @@ export function CreateEstimateButton({
       fd.set("name", takeoffName);
       fd.set("source_takeoff_id", takeoffId);
       const { id } = await createEstimate(projectId, orgSlug, fd);
+      toast.success("Estimate created.");
       router.push(`/orgs/${orgSlug}/projects/${projectId}/estimates/${id}/costing`);
     } catch {
       toast.error("Failed to create estimate.");

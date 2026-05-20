@@ -2,16 +2,19 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Pencil } from "lucide-react";
+import { toast } from "sonner";
 import { renameProject } from "./actions";
 
 export function ProjectNameHeader({
   projectId,
   orgSlug,
   initialName,
+  canWrite,
 }: {
   projectId: string;
   orgSlug: string;
   initialName: string;
+  canWrite: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(initialName);
@@ -24,6 +27,10 @@ export function ProjectNameHeader({
     }
   }, [editing]);
 
+  if (!canWrite) {
+    return <h1 className="text-xl font-semibold">{name}</h1>;
+  }
+
   const commit = async () => {
     const trimmed = name.trim();
     setEditing(false);
@@ -31,7 +38,13 @@ export function ProjectNameHeader({
       setName(initialName);
       return;
     }
-    await renameProject(projectId, orgSlug, trimmed);
+    try {
+      await renameProject(projectId, orgSlug, trimmed);
+      toast.success("Project renamed.");
+    } catch {
+      setName(initialName);
+      toast.error("Failed to rename project.");
+    }
   };
 
   if (editing) {

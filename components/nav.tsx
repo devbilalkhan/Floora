@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { UserMenu } from "./user-menu";
 import { ThemeToggle } from "./theme-toggle";
+import { TaskButton } from "./tasks/task-button";
 
 export async function Nav() {
   const supabase = createClient();
@@ -15,6 +16,7 @@ export async function Nav() {
         Flooring Estimator
       </Link>
       <div className="flex-1" />
+      {user && <TaskButton />}
       <ThemeToggle />
       {user && <UserMenu email={user.email ?? ""} />}
     </header>

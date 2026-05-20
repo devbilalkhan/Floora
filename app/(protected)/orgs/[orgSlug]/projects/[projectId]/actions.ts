@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createAuthedClient } from "@/lib/supabase/server";
+import { createClient, createAuthedClient } from "@/lib/supabase/server";
 
 function friendlyError(msg: string): string {
   if (msg.includes("JWT") || msg.includes("auth"))
@@ -9,11 +9,20 @@ function friendlyError(msg: string): string {
   return msg;
 }
 
+async function requireProjectManagerRole(projectId: string) {
+  const userDb = createClient();
+  const { data: role } = await userDb.rpc("user_project_role", { proj_id: projectId });
+  if (!["admin", "project_manager"].includes(role ?? "")) {
+    throw new Error("You don't have permission to do this.");
+  }
+}
+
 export async function createEstimate(
   projectId: string,
   orgSlug: string,
   formData: FormData
 ): Promise<{ id: string }> {
+  await requireProjectManagerRole(projectId);
   const { supabase, user } = await createAuthedClient();
 
   const sourceId = (formData.get("source_takeoff_id") as string) || null;
@@ -41,6 +50,7 @@ export async function renameProject(
   orgSlug: string,
   name: string
 ) {
+  await requireProjectManagerRole(projectId);
   const { supabase } = await createAuthedClient();
 
   const { error } = await supabase
@@ -58,6 +68,7 @@ export async function deleteEstimate(
   projectId: string,
   orgSlug: string
 ) {
+  await requireProjectManagerRole(projectId);
   const { supabase } = await createAuthedClient();
 
   const { error } = await supabase

@@ -1,13 +1,14 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ChevronRight, FileText, Image } from "lucide-react";
+import { ChevronRight, FileText, Image, Mail } from "lucide-react";
 import { NewEstimateDialog } from "./new-estimate-dialog";
 import { EstimateTableRow } from "./estimate-table-row";
 import { TakeoffListTable } from "./takeoff-list-table";
 import { ProjectNameHeader } from "./project-name-header";
+import { DeleteProjectZone } from "./delete-project-zone";
 import { computeSummary } from "@/lib/estimate-types";
 import type { EstimateItem, EstimateSettings } from "@/lib/estimate-types";
 
@@ -33,7 +34,7 @@ export default async function ProjectDetailPage({
 }) {
   const supabase = createClient();
 
-  const [{ data: project }, { data: rawEstimates }, { data: drawings }, { data: rawTakeoffs }] =
+  const [{ data: project }, { data: rawEstimates }, { data: drawings }, { data: rawTakeoffs }, { data: rawPriceRequests }, { data: userRole }] =
     await Promise.all([
       supabase
         .from("projects")
@@ -56,7 +57,16 @@ export default async function ProjectDetailPage({
         .eq("project_id", params.projectId)
         .order("sort_order")
         .order("created_at"),
+      supabase
+        .from("price_requests")
+        .select("id, status")
+        .eq("project_id", params.projectId),
+      supabase.rpc("user_project_role", { proj_id: params.projectId }),
     ]);
+
+  const isViewer = userRole === "viewer";
+  const canManageEstimates = ["admin", "project_manager"].includes(userRole ?? "");
+  const canWrite = userRole !== null && !isViewer;
 
   const estimates = rawEstimates ?? [];
 
@@ -96,6 +106,9 @@ export default async function ProjectDetailPage({
     })
   );
 
+  const priceRequests = rawPriceRequests ?? [];
+  const pendingReplies = priceRequests.filter((r) => r.status === "sent").length;
+
   const takeoffItems = (rawTakeoffs ?? []).map((t: any) => ({
     id: t.id as string,
     name: t.name as string,
@@ -103,6 +116,7 @@ export default async function ProjectDetailPage({
     row_count: Number(t.project_takeoff?.[0]?.count ?? 0),
   }));
 
+  if (!userRole) redirect("/orgs");
   if (!project) notFound();
 
   return (
@@ -128,6 +142,7 @@ export default async function ProjectDetailPage({
                 projectId={params.projectId}
                 orgSlug={params.orgSlug}
                 initialName={project.name}
+                canWrite={canWrite}
               />
               <Badge
                 className={
@@ -164,61 +179,119 @@ export default async function ProjectDetailPage({
         )}
       </div>
 
-      {/* Takeoffs */}
+      {/* Takeoffs — read-only for viewers */}
       <div className="space-y-3">
         <TakeoffListTable
           takeoffs={takeoffItems}
           projectId={params.projectId}
           orgSlug={params.orgSlug}
+          canWrite={canWrite}
         />
       </div>
 
-      {/* Estimates */}
-      <div className="space-y-3">
+      {/* Price Requests — hidden for viewers */}
+      {!isViewer && <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold">Price Requests</h2>
+            {priceRequests.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                {priceRequests.length} total
+                {pendingReplies > 0 && (
+                  <span className="ml-1.5 text-amber-600 dark:text-amber-400 font-medium">
+                    · {pendingReplies} awaiting reply
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
+          {canManageEstimates && (
+            <Link
+              href={`/orgs/${params.orgSlug}/projects/${params.projectId}/price-requests/new`}
+              className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors font-medium"
+            >
+              <Mail className="h-3.5 w-3.5" />
+              New Request
+            </Link>
+          )}
+        </div>
+
+        <Link
+          href={`/orgs/${params.orgSlug}/projects/${params.projectId}/price-requests`}
+          className="group flex items-center justify-between px-4 py-3 bg-card/65 backdrop-blur-xl border border-border rounded-xl hover:border-primary/40 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <Mail className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+            <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+              {priceRequests.length === 0
+                ? "No price requests yet"
+                : `${priceRequests.length} price ${priceRequests.length === 1 ? "request" : "requests"}`}
+            </span>
+          </div>
+          {pendingReplies > 0 && (
+            <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px]">
+              {pendingReplies} pending
+            </Badge>
+          )}
+        </Link>
+      </div>}
+
+      {/* Estimates — hidden for viewers */}
+      {!isViewer && <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold">Estimates</h2>
-          <NewEstimateDialog
-            projectId={params.projectId}
-            orgSlug={params.orgSlug}
-            takeoffs={takeoffItems.map((t) => ({ id: t.id, name: t.name }))}
-          />
+          {canManageEstimates && (
+            <NewEstimateDialog
+              projectId={params.projectId}
+              orgSlug={params.orgSlug}
+              takeoffs={takeoffItems.map((t) => ({ id: t.id, name: t.name }))}
+            />
+          )}
         </div>
 
         {estimates.length === 0 ? (
           <div className="border-2 border-dashed border-border rounded-xl flex items-center justify-center h-40">
             <div className="text-center space-y-2">
               <p className="text-sm font-medium">No estimates yet</p>
-              <p className="text-xs text-muted-foreground">
-                Create an estimate to begin pricing this project.
-              </p>
-              <NewEstimateDialog
-                projectId={params.projectId}
-                orgSlug={params.orgSlug}
-                takeoffs={takeoffItems.map((t) => ({ id: t.id, name: t.name }))}
-              />
+              {canManageEstimates ? (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Create an estimate to begin pricing this project.
+                  </p>
+                  <NewEstimateDialog
+                    projectId={params.projectId}
+                    orgSlug={params.orgSlug}
+                    takeoffs={takeoffItems.map((t) => ({ id: t.id, name: t.name }))}
+                  />
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Estimates will appear here once a PM creates one.
+                </p>
+              )}
             </div>
           </div>
         ) : (
-          <div className="border border-border rounded-xl overflow-hidden">
-            <table className="w-full text-xs">
+          <div className="border border-black/10 dark:border-white/10 rounded-sm overflow-hidden">
+            <table className="w-full">
               <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <th className="text-left px-3 py-1.5 font-semibold text-muted-foreground uppercase tracking-wide">
+                <tr className="border-b border-black/10 dark:border-white/10 bg-muted/40">
+                  <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                     Name
                   </th>
-                  <th className="text-left px-3 py-1.5 font-semibold text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                     Status
                   </th>
-                  <th className="text-left px-3 py-1.5 font-semibold text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                     Updated
                   </th>
-                  <th className="text-right px-3 py-1.5 font-semibold text-muted-foreground uppercase tracking-wide">
+                  <th className="text-right px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                     Value ex-GST
                   </th>
-                  <th className="text-center px-3 py-1.5 font-semibold text-muted-foreground uppercase tracking-wide">
+                  <th className="text-center px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                     GP
                   </th>
-                  <th className="text-right px-3 py-1.5 font-semibold text-muted-foreground uppercase tracking-wide">
+                  <th className="text-right px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                     Margin
                   </th>
                   <th className="w-8 px-2" />
@@ -232,13 +305,23 @@ export default async function ProjectDetailPage({
                     orgSlug={params.orgSlug}
                     projectId={params.projectId}
                     summary={estimateSummaries.get(e.id)!}
+                    canManageEstimates={canManageEstimates}
                   />
                 ))}
               </tbody>
             </table>
           </div>
         )}
-      </div>
+      </div>}
+
+      {/* Danger zone — admins only */}
+      {userRole === "admin" && (
+        <DeleteProjectZone
+          projectId={params.projectId}
+          projectName={project.name}
+          orgSlug={params.orgSlug}
+        />
+      )}
 
       {/* Drawings */}
       {drawings && drawings.length > 0 && (

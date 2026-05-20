@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -121,6 +121,11 @@ export default async function MaterialsPage({
   params: { orgSlug: string; projectId: string; estimateId: string };
 }) {
   const supabase = createClient();
+
+  const { data: userRole } = await supabase.rpc("user_project_role", { proj_id: params.projectId });
+  if (userRole === "viewer" || !userRole) {
+    redirect(`/orgs/${params.orgSlug}/projects/${params.projectId}`);
+  }
 
   const [{ data: estimate }, { data: rawItems }, { data: project }] = await Promise.all([
     supabase.from("estimates").select("name, description").eq("id", params.estimateId).single(),

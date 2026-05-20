@@ -25,7 +25,7 @@ export default async function TakeoffPage({
   const [{ data: project }, { data: takeoffs }, { data: fromEstimate }] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, name, brand, location, head_client")
+      .select("id, name, brand, location, head_client, organization_id")
       .eq("id", params.projectId)
       .single(),
     supabase
@@ -55,15 +55,26 @@ export default async function TakeoffPage({
 
   const selectedTakeoff = allTakeoffs.find((t) => t.id === selectedId) ?? null;
 
-  // Fetch rows for the selected takeoff
-  const { data: rows } = selectedId
-    ? await supabase
-        .from("project_takeoff")
-        .select("*")
-        .eq("takeoff_id", selectedId)
-        .order("scope_category")
-        .order("sort_order")
-    : { data: [] };
+  // Fetch rows and member role in parallel
+  const [{ data: rows }, { data: memberRow }] = await Promise.all([
+    selectedId
+      ? supabase
+          .from("project_takeoff")
+          .select("*")
+          .eq("takeoff_id", selectedId)
+          .order("scope_category")
+          .order("sort_order")
+      : Promise.resolve({ data: [] }),
+    supabase
+      .from("organization_members")
+      .select("role")
+      .eq("organization_id", project.organization_id)
+      .eq("user_id", user.id)
+      .single(),
+  ]);
+
+  const canWrite = memberRow?.role !== "viewer";
+  const canManageEstimates = ["admin", "project_manager"].includes(memberRow?.role ?? "");
 
   return (
     <div className="max-w-[1440px] mx-auto py-6 px-4 space-y-5">
@@ -123,7 +134,7 @@ export default async function TakeoffPage({
             <Printer className="h-3.5 w-3.5" />
             Print Report
           </Link>
-          {selectedTakeoff && (
+          {selectedTakeoff && canManageEstimates && (
             <CreateEstimateButton
               projectId={params.projectId}
               orgSlug={params.orgSlug}
@@ -140,6 +151,7 @@ export default async function TakeoffPage({
         selectedId={selectedId ?? ""}
         projectId={params.projectId}
         orgSlug={params.orgSlug}
+        canWrite={canWrite}
       />
 
       {/* Empty state — no takeoffs yet */}
@@ -158,6 +170,7 @@ export default async function TakeoffPage({
           key={selectedId}
           takeoffId={selectedId}
           initialRows={(rows ?? []) as TakeoffRow[]}
+          canWrite={canWrite}
         />
       )}
 

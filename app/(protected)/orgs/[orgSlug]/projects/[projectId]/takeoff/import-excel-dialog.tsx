@@ -37,6 +37,9 @@ export function ImportExcelDialog({
   const [error, setError] = useState<string | null>(null);
   const [takeoffName, setTakeoffName] = useState("");
   const [projectMeta, setProjectMeta] = useState<{ name?: string; address?: string; specifier?: string }>({});
+  const [currentProject, setCurrentProject] = useState<{ location: string | null; head_client: string | null } | null>(null);
+  const [applyLocation, setApplyLocation] = useState(false);
+  const [applySpecifier, setApplySpecifier] = useState(false);
   const [rows, setRows] = useState<ExtractedRow[]>([]);
   const [dragOver, setDragOver] = useState(false);
 
@@ -45,6 +48,9 @@ export function ImportExcelDialog({
     setError(null);
     setTakeoffName("");
     setProjectMeta({});
+    setCurrentProject(null);
+    setApplyLocation(false);
+    setApplySpecifier(false);
     setRows([]);
     if (fileRef.current) fileRef.current.value = "";
   };
@@ -68,11 +74,15 @@ export function ImportExcelDialog({
         csv: XLSX.utils.sheet_to_csv(wb.Sheets[name]),
       }));
 
-      const res = await fetch("/api/extract-takeoff", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sheets, fileName: file.name }),
-      });
+      // Fetch current project details in parallel with AI extraction
+      const [res, { data: proj }] = await Promise.all([
+        fetch("/api/extract-takeoff", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sheets, fileName: file.name }),
+        }),
+        supabase.from("projects").select("location, head_client").eq("id", projectId).single(),
+      ]);
 
       if (!res.ok) {
         const { error: msg } = await res.json();
@@ -90,6 +100,10 @@ export function ImportExcelDialog({
           sort_order: i,
         }))
       );
+      setCurrentProject(proj ?? null);
+      // Pre-tick if the project field is currently empty
+      setApplyLocation(!proj?.location && !!project_address);
+      setApplySpecifier(!proj?.head_client && !!specifier_name);
       setStep("preview");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to process file");
@@ -157,6 +171,14 @@ export function ImportExcelDialog({
       setError(rErr.message);
       setStep("preview");
       return;
+    }
+
+    // Apply selected project detail updates
+    const updates: Record<string, string> = {};
+    if (applyLocation && projectMeta.address) updates.location = projectMeta.address;
+    if (applySpecifier && projectMeta.specifier) updates.head_client = projectMeta.specifier;
+    if (Object.keys(updates).length > 0) {
+      await supabase.from("projects").update(updates).eq("id", projectId);
     }
 
     setStep("done");
@@ -228,17 +250,49 @@ export function ImportExcelDialog({
         {/* ── Step: preview ── */}
         {step === "preview" && (
           <div className="space-y-4 pt-1">
-            {/* Extracted project metadata */}
-            {(projectMeta.name || projectMeta.address || projectMeta.specifier) && (
-              <div className="rounded-sm border border-border bg-muted/20 px-3 py-2 space-y-0.5">
-                {projectMeta.name && (
-                  <p className="text-xs"><span className="text-muted-foreground">Project: </span><span className="text-foreground/70">{projectMeta.name}</span></p>
-                )}
+            {/* Project details — optional apply */}
+            {(projectMeta.address || projectMeta.specifier) && (
+              <div className="rounded-sm border border-border bg-muted/20 px-3 py-2.5 space-y-2.5">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                  Update project details?
+                </p>
                 {projectMeta.address && (
-                  <p className="text-xs"><span className="text-muted-foreground">Address: </span><span className="text-foreground/70">{projectMeta.address}</span></p>
+                  <label className="flex items-start gap-2.5 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={applyLocation}
+                      onChange={(e) => setApplyLocation(e.target.checked)}
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
+                    />
+                    <div className="space-y-0.5 min-w-0">
+                      <p className="text-xs font-medium text-foreground/70">Location</p>
+                      <p className="text-xs text-foreground/60 truncate">{projectMeta.address}</p>
+                      {currentProject?.location && (
+                        <p className="text-[10px] text-muted-foreground">
+                          Current: {currentProject.location}
+                        </p>
+                      )}
+                    </div>
+                  </label>
                 )}
                 {projectMeta.specifier && (
-                  <p className="text-xs"><span className="text-muted-foreground">Specifier: </span><span className="text-foreground/70">{projectMeta.specifier}</span></p>
+                  <label className="flex items-start gap-2.5 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={applySpecifier}
+                      onChange={(e) => setApplySpecifier(e.target.checked)}
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
+                    />
+                    <div className="space-y-0.5 min-w-0">
+                      <p className="text-xs font-medium text-foreground/70">Client / Specifier</p>
+                      <p className="text-xs text-foreground/60 truncate">{projectMeta.specifier}</p>
+                      {currentProject?.head_client && (
+                        <p className="text-[10px] text-muted-foreground">
+                          Current: {currentProject.head_client}
+                        </p>
+                      )}
+                    </div>
+                  </label>
                 )}
               </div>
             )}

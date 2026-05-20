@@ -15,10 +15,12 @@ import { setProjectStatus } from "./actions";
 
 export function ProjectRowActions({
   projectId,
+  projectName,
   orgSlug,
   currentStatus,
 }: {
   projectId: string;
+  projectName: string;
   orgSlug: string;
   currentStatus: "active" | "archived";
 }) {
@@ -28,11 +30,9 @@ export function ProjectRowActions({
   async function toggleStatus() {
     setPending(true);
     try {
-      await setProjectStatus(
-        projectId,
-        orgSlug,
-        currentStatus === "active" ? "archived" : "active"
-      );
+      const next = currentStatus === "active" ? "archived" : "active";
+      await setProjectStatus(projectId, orgSlug, next);
+      toast.success(next === "archived" ? "Project archived." : "Project restored.");
       router.refresh();
     } catch {
       toast.error("Failed to update project status.");
@@ -57,19 +57,12 @@ export function ProjectRowActions({
       <DropdownMenuContent align="end" className="w-40">
         <DropdownMenuItem
           className="gap-2 text-sm cursor-pointer"
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleStatus();
-          }}
+          onClick={(e) => { e.stopPropagation(); toggleStatus(); }}
         >
           {currentStatus === "active" ? (
-            <>
-              <Archive className="h-3.5 w-3.5" /> Archive
-            </>
+            <><Archive className="h-3.5 w-3.5" /> Archive</>
           ) : (
-            <>
-              <ArchiveRestore className="h-3.5 w-3.5" /> Restore
-            </>
+            <><ArchiveRestore className="h-3.5 w-3.5" /> Restore</>
           )}
         </DropdownMenuItem>
       </DropdownMenuContent>

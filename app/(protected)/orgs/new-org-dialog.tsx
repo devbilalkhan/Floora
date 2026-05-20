@@ -27,6 +27,7 @@ export function NewOrgDialog() {
     try {
       const result = await createOrganization(new FormData(e.currentTarget));
       setOpen(false);
+      toast.success("Organization created.");
       router.push(`/orgs/${result.slug}/projects`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create organization.");

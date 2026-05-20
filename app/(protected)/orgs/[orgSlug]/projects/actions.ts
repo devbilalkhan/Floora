@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createAuthedClient } from "@/lib/supabase/server";
+import { createClient, createAuthedClient } from "@/lib/supabase/server";
 
 function friendlyError(msg: string): string {
   if (msg.includes("23505") || msg.includes("unique"))
@@ -11,11 +11,31 @@ function friendlyError(msg: string): string {
   return "Something went wrong. Please try again.";
 }
 
+async function requireOrgWriteRole(orgId: string) {
+  const userDb = createClient();
+  const { data: role } = await userDb.rpc("user_org_role", { org_id: orgId });
+  if (!["admin", "project_manager"].includes(role ?? "")) {
+    throw new Error("You don't have permission to do this.");
+  }
+}
+
+async function requireProjectWriteRole(projectId: string) {
+  const userDb = createClient();
+  const { data: project } = await userDb
+    .from("projects")
+    .select("organization_id")
+    .eq("id", projectId)
+    .single();
+  if (!project) throw new Error("Project not found.");
+  await requireOrgWriteRole(project.organization_id);
+}
+
 export async function createProject(
   orgId: string,
   orgSlug: string,
   formData: FormData
 ) {
+  await requireOrgWriteRole(orgId);
   const { supabase, user } = await createAuthedClient();
 
   const { data, error } = await supabase
@@ -39,11 +59,25 @@ export async function createProject(
   return { projectId: data.id };
 }
 
+export async function deleteProject(projectId: string, orgSlug: string) {
+  await requireProjectWriteRole(projectId);
+  const { supabase } = await createAuthedClient();
+
+  const { error } = await supabase
+    .from("projects")
+    .delete()
+    .eq("id", projectId);
+
+  if (error) throw new Error(friendlyError(error.message));
+  revalidatePath(`/orgs/${orgSlug}/projects`);
+}
+
 export async function setProjectStatus(
   projectId: string,
   orgSlug: string,
   status: "active" | "archived"
 ) {
+  await requireProjectWriteRole(projectId);
   const { supabase } = await createAuthedClient();
 
   const { error } = await supabase
