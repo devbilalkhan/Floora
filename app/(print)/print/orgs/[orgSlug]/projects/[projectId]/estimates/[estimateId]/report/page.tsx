@@ -3,13 +3,14 @@ import { createClient } from "@/lib/supabase/server";
 import type { EstimateItem, WetArea, Estimate } from "@/lib/estimate-types";
 import { ReportDocument } from "@/components/report/report-document";
 import { PrintToolbar } from "@/components/report/print-toolbar";
+import { LEVELS } from "@/lib/takeoff-types";
 
 export default async function PrintReportPage({
   params,
   searchParams,
 }: {
   params: { orgSlug: string; projectId: string; estimateId: string };
-  searchParams: { mode?: string };
+  searchParams: { mode?: string; level?: string };
 }) {
   const supabase = createClient();
 
@@ -32,14 +33,27 @@ export default async function PrintReportPage({
       .select("*")
       .eq("estimate_id", params.estimateId)
       .order("sort_order"),
-    supabase.from("organizations").select("name").eq("slug", params.orgSlug).single(),
+    supabase.from("organizations").select("name, logo_url").eq("slug", params.orgSlug).single(),
   ]);
 
   if (!estimate || !project) notFound();
 
-  const items = (rawItems ?? []) as EstimateItem[];
+  const allItems = (rawItems ?? []) as EstimateItem[];
   const wetAreas = (rawWetAreas ?? []) as WetArea[];
   const mode = searchParams.mode === "detailed" ? "detailed" : "summary";
+
+  const levelSet = new Set(allItems.filter(i => !i.parent_item_id && i.level).map(i => i.level as string));
+  const levels = LEVELS.filter(l => levelSet.has(l));
+  const level = levels.length > 1 && searchParams.level && searchParams.level !== "all"
+    ? searchParams.level
+    : "all";
+
+  const items: EstimateItem[] = level === "all"
+    ? allItems
+    : (() => {
+        const visibleIds = new Set(allItems.filter(i => !i.parent_item_id && i.level === level).map(i => i.id));
+        return allItems.filter(i => i.parent_item_id ? visibleIds.has(i.parent_item_id) : i.level === level);
+      })();
 
   const today = new Date().toLocaleDateString("en-AU", {
     day: "numeric",
@@ -63,11 +77,13 @@ export default async function PrintReportPage({
         <div className="max-w-[67rem] mx-auto py-6 px-4 print:py-0 print:px-0 print:max-w-none">
           <ReportDocument
             orgName={org?.name ?? params.orgSlug}
+            orgLogoUrl={org?.logo_url ?? null}
             projectName={project.name}
             estimate={estimate as Estimate}
             items={items}
             wetAreas={wetAreas}
             mode={mode}
+            level={level}
             today={today}
           />
         </div>

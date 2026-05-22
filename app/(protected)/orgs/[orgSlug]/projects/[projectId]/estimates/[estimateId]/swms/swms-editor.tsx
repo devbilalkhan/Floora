@@ -266,6 +266,7 @@ export function SwmsEditor({
     address: string | null;
     phone: string | null;
     org_email: string | null;
+    logo_url: string | null;
   };
   params: { orgSlug: string; projectId: string; estimateId: string };
 }) {

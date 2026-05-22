@@ -42,6 +42,24 @@ export async function saveEmailSettings(
   revalidatePath(`/orgs/${orgSlug}/settings`);
 }
 
+export async function saveOrgLogo(
+  orgSlug: string,
+  orgId: string,
+  logoUrl: string | null
+) {
+  await requireOrgAdmin(orgId);
+  const { supabase } = await createAuthedClient();
+
+  const { error } = await supabase
+    .from("organizations")
+    .update({ logo_url: logoUrl })
+    .eq("id", orgId);
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/orgs/${orgSlug}/settings`);
+}
+
 export async function saveOrgDetails(
   orgSlug: string,
   orgId: string,
@@ -51,6 +69,8 @@ export async function saveOrgDetails(
     address: string;
     phone: string;
     org_email: string;
+    quote_terms?: string;
+    quote_notes?: string;
   }
 ) {
   await requireOrgAdmin(orgId);
@@ -64,6 +84,8 @@ export async function saveOrgDetails(
       address: details.address || null,
       phone: details.phone || null,
       org_email: details.org_email || null,
+      quote_terms: details.quote_terms ?? null,
+      quote_notes: details.quote_notes ?? null,
     })
     .eq("id", orgId);
 

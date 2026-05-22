@@ -156,11 +156,13 @@ function WfDivider() {
 // ── Props ─────────────────────────────────────────────────────────────────────
 export type ReportDocumentProps = {
   orgName: string;
+  orgLogoUrl?: string | null;
   projectName: string;
   estimate: Estimate;
   items: EstimateItem[];
   wetAreas: WetArea[];
   mode: "summary" | "detailed";
+  level?: string;
   today: string;
   /** Slot rendered in the controls bar (mode toggle + print button). Print-hidden by the component itself. */
   controls?: React.ReactNode;
@@ -169,11 +171,13 @@ export type ReportDocumentProps = {
 // ── ReportDocument ────────────────────────────────────────────────────────────
 export function ReportDocument({
   orgName,
+  orgLogoUrl,
   projectName,
   estimate,
   items,
   wetAreas,
   mode,
+  level,
   today,
   controls,
 }: ReportDocumentProps) {
@@ -245,9 +249,18 @@ export function ReportDocument({
         <div className="h-0.5 bg-gradient-to-r from-primary/80 via-primary/40 to-transparent print:bg-gray-800 print:h-[2px]" />
         <div className="px-6 pt-5 pb-4 flex items-start justify-between gap-6">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-primary/70 print:text-gray-400 mb-1.5">
-              {orgName}
-            </p>
+            {orgLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={orgLogoUrl}
+                alt={orgName}
+                className="h-10 max-w-[160px] object-contain mb-2 print:h-9"
+              />
+            ) : (
+              <p className="text-[10px] font-bold uppercase tracking-widest text-primary/70 print:text-gray-400 mb-1.5">
+                {orgName}
+              </p>
+            )}
             <h1 className="text-2xl font-bold tracking-tight text-foreground print:text-gray-900 leading-none mb-1">
               {estimate.name}
             </h1>
@@ -277,6 +290,11 @@ export function ReportDocument({
             <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground print:text-gray-500">
               {mode === "detailed" ? "Detailed" : "Summary"}
             </span>
+            {level && level !== "all" && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary/15 text-primary border border-primary/30 print:bg-gray-100 print:text-gray-700 print:border-gray-300">
+                {level}
+              </span>
+            )}
             <span className="text-[10px] text-muted-foreground/50 print:text-gray-400">
               All amounts exclusive of GST unless stated
             </span>
@@ -748,7 +766,7 @@ export function ReportDocument({
       {/* Footer (print only) */}
       <div className="hidden print:flex items-center justify-between border-t border-gray-200 pt-3 mt-4">
         <p className="text-[9px] text-gray-400">
-          {orgName} · {projectName} · {estimate.name}
+          {orgName} · {projectName} · {estimate.name}{level && level !== "all" ? ` · ${level}` : ""}
         </p>
         <p className="text-[9px] text-gray-400">
           All amounts exclusive of GST unless stated · Generated {today}

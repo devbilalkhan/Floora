@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ChevronRight, FileText, Image, Mail } from "lucide-react";
+import { ChevronRight, FileText, Image, Mail, ClipboardList } from "lucide-react";
 import { NewEstimateDialog } from "./new-estimate-dialog";
 import { EstimateTableRow } from "./estimate-table-row";
 import { TakeoffListTable } from "./takeoff-list-table";
@@ -38,12 +38,12 @@ export default async function ProjectDetailPage({
     await Promise.all([
       supabase
         .from("projects")
-        .select("*")
+        .select("name, brand, status, location, head_client, notes")
         .eq("id", params.projectId)
         .single(),
       supabase
         .from("estimates")
-        .select("*")
+        .select("id, name, status, updated_at, accounting_rate, admin_rate, net_markup_pct, freight, accommodation, travel_allowance, bailing_fee, floor_prep_area, floor_prep_depth_mm, floor_prep_charge_per_bag, floor_prep_mat_per_bag, floor_prep_lab_per_bag")
         .eq("project_id", params.projectId)
         .order("created_at", { ascending: false }),
       supabase
@@ -215,6 +215,16 @@ export default async function ProjectDetailPage({
             </Link>
           )}
         </div>
+
+        <Link
+          href={`/orgs/${params.orgSlug}/projects/${params.projectId}/quotes`}
+          className="group flex items-center gap-3 px-4 py-3 bg-card/65 backdrop-blur-xl border border-border rounded-xl hover:border-primary/40 transition-colors"
+        >
+          <ClipboardList className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+          <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+            Quotes
+          </span>
+        </Link>
 
         <Link
           href={`/orgs/${params.orgSlug}/projects/${params.projectId}/price-requests`}

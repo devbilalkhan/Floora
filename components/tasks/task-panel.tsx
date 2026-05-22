@@ -9,13 +9,19 @@ import {
   createTask,
   updateTask,
   deleteTask,
+  addChecklistItem,
+  toggleChecklistItem,
+  deleteChecklistItem,
+  pinTask,
+  unpinTask,
 } from "@/app/actions/tasks";
-import type { Task, TaskPriority, TaskStatus, MentionSuggestion } from "@/lib/task-types";
+import type { Task, TaskPriority, TaskStatus, MentionSuggestion, ChecklistItem } from "@/lib/task-types";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   X,
   Plus,
   CheckSquare2,
+  Square,
   Circle,
   CheckCircle2,
   Clock,
@@ -23,9 +29,14 @@ import {
   Trash2,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   HelpCircle,
+  Lock,
+  Globe,
+  Pin,
 } from "lucide-react";
 import { toast } from "sonner";
+import { DatePickerPopover } from "@/components/ui/date-picker-popover";
 
 // ── Shortcuts reference ───────────────────────────────────────────────────────
 
@@ -54,6 +65,21 @@ const PRIORITY_ORDER: Record<TaskPriority, number> = {
   urgent: 4, high: 3, medium: 2, low: 1,
 };
 
+const PRIORITY_CYCLE: TaskPriority[] = ["low", "medium", "high", "urgent"];
+
+type DateFilter = "all" | "today" | "tomorrow" | "this_week" | "overdue";
+
+function getTodayStr() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+}
+
+function getTomorrowStr() {
+  const t = new Date();
+  t.setDate(t.getDate() + 1);
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+}
+
 function formatDue(dateStr: string): { label: string; overdue: boolean } {
   const date = new Date(dateStr + "T00:00:00");
   const today = new Date();
@@ -78,15 +104,7 @@ function extractOrgSlug(pathname: string) {
 }
 
 function renderTitle(title: string) {
-  return title.split(/(@[\w-]+)/g).map((part, i) =>
-    part.startsWith("@") ? (
-      <span key={i} className="text-primary font-medium">
-        {part}
-      </span>
-    ) : (
-      <span key={i}>{part}</span>
-    )
-  );
+  return title.replace(/@[\w-]+/g, "").replace(/\s+/g, " ").trim() || title;
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -99,25 +117,62 @@ function PriorityDot({ p }: { p: TaskPriority }) {
   );
 }
 
+function TaskSkeleton() {
+  return (
+    <div className="mx-3 my-0.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 animate-pulse">
+      <div className="flex items-start gap-2.5">
+        <div className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 rounded-full bg-muted/40" />
+        <div className="flex-1 space-y-2 min-w-0">
+          <div className="h-3 w-3/5 rounded bg-muted/40" />
+          <div className="flex gap-1.5">
+            <div className="h-2.5 w-10 rounded bg-muted/30" />
+            <div className="h-2.5 w-14 rounded bg-muted/30" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TaskCard({
   task,
+  isOwner,
   onToggle,
   onDelete,
   onPriorityChange,
   onTitleChange,
+  onPrivacyToggle,
+  onDateChange,
+  onPinToggle,
+  onChecklistAdd,
+  onChecklistToggle,
+  onChecklistDelete,
 }: {
   task: Task;
+  isOwner: boolean;
   onToggle: () => void;
   onDelete: () => void;
   onPriorityChange: (p: TaskPriority) => void;
   onTitleChange: (title: string) => void;
+  onPrivacyToggle: () => void;
+  onDateChange: (date: string | null) => void;
+  onPinToggle: () => void;
+  onChecklistAdd: (text: string) => void;
+  onChecklistToggle: (itemId: string, done: boolean) => void;
+  onChecklistDelete: (itemId: string) => void;
 }) {
-  const [showPriority, setShowPriority] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editVal, setEditVal] = useState(task.title);
   const editRef = useRef<HTMLTextAreaElement>(null);
+  const [addingChecklist, setAddingChecklist] = useState(false);
+  const [newItemVal, setNewItemVal] = useState("");
+  const newItemRef = useRef<HTMLInputElement>(null);
   const due = task.due_date ? formatDue(task.due_date) : null;
   const done = task.status === "done";
+
+  useEffect(() => {
+    if (addingChecklist) newItemRef.current?.focus();
+  }, [addingChecklist]);
 
   function startEdit() {
     setEditVal(task.title);
@@ -133,8 +188,19 @@ function TaskCard({
   }
 
   function handleEditKey(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commitEdit(); }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      commitEdit();
+      setAddingChecklist(true);
+    }
     if (e.key === "Escape") { setEditing(false); setEditVal(task.title); }
+  }
+
+  function commitNewItem() {
+    const t = newItemVal.trim();
+    setNewItemVal("");
+    if (t) onChecklistAdd(t);
+    else setAddingChecklist(false);
   }
 
   return (
@@ -184,58 +250,110 @@ function TaskCard({
           </p>
         )}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Priority (click to change) */}
-          <div className="relative">
-            <button
-              onClick={() => setShowPriority((v) => !v)}
-              className={cn(
-                "flex items-center gap-1 text-[10px] font-medium transition-colors",
-                PRIORITY_CONFIG[task.priority].text,
-                "hover:opacity-80"
-              )}
-            >
-              <PriorityDot p={task.priority} />
-              {PRIORITY_CONFIG[task.priority].label}
-            </button>
-            {showPriority && (
-              <div
-                className="absolute left-0 top-full z-10 mt-1 rounded-lg border border-white/[0.08] bg-card/95 backdrop-blur-xl shadow-xl py-1 min-w-[90px]"
-                onBlur={() => setShowPriority(false)}
-              >
-                {(["low", "medium", "high", "urgent"] as TaskPriority[]).map((p) => (
-                  <button
-                    key={p}
-                    className={cn(
-                      "flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors",
-                      PRIORITY_CONFIG[p].text
-                    )}
-                    onClick={() => {
-                      onPriorityChange(p);
-                      setShowPriority(false);
-                    }}
-                  >
-                    <PriorityDot p={p} />
-                    {PRIORITY_CONFIG[p].label}
-                  </button>
-                ))}
-              </div>
+          {/* Priority (click to cycle) */}
+          <button
+            onClick={() => {
+              const idx = PRIORITY_CYCLE.indexOf(task.priority);
+              onPriorityChange(PRIORITY_CYCLE[(idx + 1) % PRIORITY_CYCLE.length]);
+            }}
+            title="Click to change priority"
+            className={cn(
+              "flex items-center gap-1 text-[10px] font-medium transition-opacity hover:opacity-70",
+              PRIORITY_CONFIG[task.priority].text
             )}
-          </div>
+          >
+            <PriorityDot p={task.priority} />
+            {PRIORITY_CONFIG[task.priority].label}
+          </button>
 
-          {/* Due date */}
-          {due && (
-            <span
-              className={cn(
-                "text-[10px]",
-                due.overdue ? "text-red-400 font-medium" : "text-muted-foreground"
+          {/* Due date — click to edit */}
+          <DatePickerPopover value={task.due_date} onChange={onDateChange} />
+
+          {/* Tags */}
+          {task.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {task.tags.map((tag) => (
+                <span key={tag} className="text-[9px] font-medium text-primary/90">@{tag}</span>
+              ))}
+            </div>
+          )}
+
+          {/* Checklist */}
+          {(task.checklist_items.length > 0 || addingChecklist) && (
+            <div className="space-y-1 pt-0.5">
+              {task.checklist_items
+                .slice()
+                .sort((a, b) => a.position - b.position)
+                .map((item) => (
+                  <div key={item.id} className="group/item flex items-center gap-1.5">
+                    <button
+                      onClick={() => onChecklistToggle(item.id, !item.done)}
+                      className="flex-shrink-0 text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      {item.done
+                        ? <CheckSquare2 className="h-3.5 w-3.5 text-success" />
+                        : <Square className="h-3.5 w-3.5" />}
+                    </button>
+                    <span className={cn("flex-1 text-[11px] leading-snug", item.done && "line-through text-muted-foreground/50")}>
+                      {item.text}
+                    </span>
+                    <button
+                      onClick={() => onChecklistDelete(item.id)}
+                      className="opacity-0 group-hover/item:opacity-100 flex-shrink-0 text-muted-foreground/40 hover:text-destructive transition-all"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              {addingChecklist && (
+                <input
+                  ref={newItemRef}
+                  value={newItemVal}
+                  onChange={(e) => setNewItemVal(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); commitNewItem(); }
+                    if (e.key === "Escape") { setNewItemVal(""); setAddingChecklist(false); }
+                  }}
+                  onBlur={() => { if (!newItemVal.trim()) setAddingChecklist(false); }}
+                  placeholder="Add item…"
+                  className="w-full rounded px-2 py-1 text-[11px] bg-muted/40 border border-primary/50 focus:outline-none focus:border-primary placeholder:text-muted-foreground/40"
+                />
               )}
+            </div>
+          )}
+
+          {/* Privacy indicator — clickable only for the owner */}
+          {isOwner ? (
+            <button
+              onClick={onPrivacyToggle}
+              title={task.is_private ? "Private — click to share with org" : "Shared with org — click to make private"}
+              className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
             >
-              <Calendar className="inline h-2.5 w-2.5 mr-0.5 -mt-px" />
-              {due.label}
+              {task.is_private
+                ? <Lock className="h-2.5 w-2.5" />
+                : <Globe className="h-2.5 w-2.5 text-primary/60" />}
+            </button>
+          ) : (
+            <span className="ml-auto text-muted-foreground/40" title="Shared task">
+              <Globe className="h-2.5 w-2.5" />
             </span>
           )}
         </div>
       </div>
+
+      {/* Pin button */}
+      <button
+        onClick={onPinToggle}
+        title={task.is_pinned ? "Unpin" : "Pin to top"}
+        className={cn(
+          "flex-shrink-0 transition-all mt-0.5",
+          task.is_pinned
+            ? "text-primary opacity-80"
+            : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
+        )}
+      >
+        <Pin className={cn("h-3 w-3 rotate-45", task.is_pinned && "fill-current")} />
+      </button>
 
       {/* Delete (hover only) */}
       <button
@@ -300,11 +418,19 @@ export function TaskPanel() {
   const [title, setTitle] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("medium");
   const [dueDate, setDueDate] = useState("");
+  const [isPrivate, setIsPrivate] = useState(false);
   const [adding, setAdding] = useState(false);
+
+  // Checklist mode in quick-add
+  const [checklistMode, setChecklistMode] = useState(false);
+  const [pendingItems, setPendingItems] = useState<string[]>([]);
+  const [checklistVal, setChecklistVal] = useState("");
+  const checklistInputRef = useRef<HTMLInputElement>(null);
 
   // Filter state
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
 
   // @mention autocomplete
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -320,6 +446,12 @@ export function TaskPanel() {
     } finally {
       setLoading(false);
     }
+  }, [orgSlug]);
+
+  // Load on org change for pull-tab count, and refresh when panel opens
+  useEffect(() => {
+    if (orgSlug) load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgSlug]);
 
   useEffect(() => {
@@ -408,7 +540,12 @@ export function TaskPanel() {
     }
     if (e.key === "Enter" && !e.shiftKey && mentionQuery === null) {
       e.preventDefault();
-      handleAdd();
+      if (!checklistMode && title.trim()) {
+        setChecklistMode(true);
+        setTimeout(() => checklistInputRef.current?.focus(), 0);
+      } else if (checklistMode) {
+        handleAdd();
+      }
     }
   }
 
@@ -419,13 +556,29 @@ export function TaskPanel() {
   }
 
   async function handleAdd() {
-    if (!title.trim() || !orgSlug) return;
+    if (!title.trim() || !orgSlug || adding) return;
+
+    // Capture and reset immediately — prevents double-submit during loading
+    const taskTitle = title;
+    const taskPriority = priority;
+    const taskDueDate = dueDate;
+    const taskIsPrivate = isPrivate;
+    const taskItems = [...pendingItems];
+
     setAdding(true);
+    setTitle("");
+    setPriority("medium");
+    setDueDate("");
+    setIsPrivate(false);
+    setChecklistMode(false);
+    setPendingItems([]);
+    setChecklistVal("");
+
     try {
-      await createTask({ orgSlug, title, priority, due_date: dueDate || undefined });
-      setTitle("");
-      setPriority("medium");
-      setDueDate("");
+      const taskId = await createTask({ orgSlug, title: taskTitle, priority: taskPriority, due_date: taskDueDate || undefined, is_private: taskIsPrivate });
+      for (const text of taskItems) {
+        await addChecklistItem(taskId, text, orgSlug);
+      }
       await load();
       notify();
     } catch (err) {
@@ -478,6 +631,75 @@ export function TaskPanel() {
     }
   }
 
+  async function handlePrivacyToggle(task: Task) {
+    if (!orgSlug) return;
+    const next = !task.is_private;
+    setData((d) =>
+      d ? { ...d, tasks: d.tasks.map((t) => t.id === task.id ? { ...t, is_private: next } : t) } : d
+    );
+    try {
+      await updateTask(task.id, { is_private: next }, orgSlug);
+      notify();
+    } catch {
+      await load();
+    }
+  }
+
+  async function handleDateUpdate(task: Task, date: string | null) {
+    if (!orgSlug) return;
+    setData((d) =>
+      d ? { ...d, tasks: d.tasks.map((t) => t.id === task.id ? { ...t, due_date: date } : t) } : d
+    );
+    try {
+      await updateTask(task.id, { due_date: date }, orgSlug);
+      notify();
+    } catch {
+      toast.error("Failed to update date.");
+      await load();
+    }
+  }
+
+  async function handlePinToggle(task: Task) {
+    if (!orgSlug) return;
+    const next = !task.is_pinned;
+    setData((d) =>
+      d ? { ...d, tasks: d.tasks.map((t) => t.id === task.id ? { ...t, is_pinned: next } : t) } : d
+    );
+    try {
+      if (next) await pinTask(task.id, orgSlug);
+      else await unpinTask(task.id, orgSlug);
+    } catch {
+      await load();
+    }
+  }
+
+  async function handleChecklistAdd(task: Task, text: string) {
+    if (!orgSlug) return;
+    const tempId = `temp-${Date.now()}`;
+    const tempItem: ChecklistItem = { id: tempId, task_id: task.id, text, done: false, position: task.checklist_items.length };
+    setData((d) => d ? { ...d, tasks: d.tasks.map((t) => t.id === task.id ? { ...t, checklist_items: [...t.checklist_items, tempItem] } : t) } : d);
+    try {
+      const item = await addChecklistItem(task.id, text, orgSlug);
+      setData((d) => d ? { ...d, tasks: d.tasks.map((t) => t.id === task.id ? { ...t, checklist_items: t.checklist_items.map((i: ChecklistItem) => i.id === tempId ? item : i) } : t) } : d);
+    } catch {
+      setData((d) => d ? { ...d, tasks: d.tasks.map((t) => t.id === task.id ? { ...t, checklist_items: t.checklist_items.filter((i: ChecklistItem) => i.id !== tempId) } : t) } : d);
+    }
+  }
+
+  async function handleChecklistToggle(task: Task, itemId: string, done: boolean) {
+    if (!orgSlug) return;
+    setData((d) => d ? { ...d, tasks: d.tasks.map((t) => t.id === task.id ? { ...t, checklist_items: t.checklist_items.map((i: ChecklistItem) => i.id === itemId ? { ...i, done } : i) } : t) } : d);
+    try { await toggleChecklistItem(itemId, done, orgSlug); }
+    catch { await load(); }
+  }
+
+  async function handleChecklistDelete(task: Task, itemId: string) {
+    if (!orgSlug) return;
+    setData((d) => d ? { ...d, tasks: d.tasks.map((t) => t.id === task.id ? { ...t, checklist_items: t.checklist_items.filter((i: ChecklistItem) => i.id !== itemId) } : t) } : d);
+    try { await deleteChecklistItem(itemId, orgSlug); }
+    catch { await load(); }
+  }
+
   async function handleTitleUpdate(task: Task, newTitle: string) {
     if (!orgSlug) return;
     setData((d) =>
@@ -496,15 +718,27 @@ export function TaskPanel() {
 
   const allTasks = data?.tasks ?? [];
 
+  const todayMs = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
+
   const filtered = allTasks.filter((t) => {
     if (statusFilter !== "all" && t.status !== statusFilter) return false;
     if (tagFilter && !t.tags.includes(tagFilter)) return false;
+    if (dateFilter !== "all") {
+      if (!t.due_date) return false;
+      const diff = Math.round((new Date(t.due_date + "T00:00:00").getTime() - todayMs) / 86_400_000);
+      if (dateFilter === "today"     && diff !== 0)           return false;
+      if (dateFilter === "tomorrow"  && diff !== 1)           return false;
+      if (dateFilter === "this_week" && (diff < 0 || diff > 6)) return false;
+      if (dateFilter === "overdue"   && diff >= 0)            return false;
+    }
     return true;
   });
 
+  const pinnedTasks = allTasks.filter((t) => t.is_pinned);
+
   const byStatus = (s: TaskStatus) =>
     filtered
-      .filter((t) => t.status === s)
+      .filter((t) => t.status === s && !t.is_pinned)
       .sort(
         (a, b) =>
           (PRIORITY_ORDER[b.priority as TaskPriority] ?? 0) -
@@ -514,7 +748,7 @@ export function TaskPanel() {
   const todoTasks       = byStatus("todo");
   const inProgressTasks = byStatus("in_progress");
   const doneTasks       = filtered
-    .filter((t) => t.status === "done")
+    .filter((t) => t.status === "done" && !t.is_pinned)
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
   // All unique tags across tasks for the filter bar
@@ -526,6 +760,33 @@ export function TaskPanel() {
 
   return (
     <>
+      {/* Pull-tab — visible when panel is closed */}
+      <div
+        className={cn(
+          "fixed right-0 top-1/2 -translate-y-1/2 z-[49] transition-all duration-300",
+          open ? "opacity-0 pointer-events-none translate-x-2" : "opacity-100 translate-x-0"
+        )}
+      >
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="Open task panel"
+          className={cn(
+            "flex flex-col items-center justify-center gap-1.5 rounded-l-xl py-4 px-2",
+            "bg-card/90 backdrop-blur-xl border border-white/[0.08] border-r-0",
+            "shadow-[-4px_0_16px_rgba(0,0,0,0.25)]",
+            "text-muted-foreground hover:text-foreground transition-colors"
+          )}
+        >
+          <CheckSquare2 className="h-3.5 w-3.5 text-primary/90" />
+          {incompleteCount > 0 && (
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/15 px-1 text-[10px] font-medium text-primary tabular-nums">
+              {incompleteCount}
+            </span>
+          )}
+          <ChevronLeft className="h-3 w-3 opacity-50" />
+        </button>
+      </div>
+
       {/* Slide-in panel */}
       <div
         className={cn(
@@ -656,6 +917,43 @@ export function TaskPanel() {
                 )}
               </div>
 
+              {/* Checklist quick-add */}
+              {checklistMode && (
+                <div className="rounded-lg border border-white/[0.08] bg-muted/20 px-2.5 py-2 space-y-1.5">
+                  {pendingItems.map((item, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <Square className="h-3 w-3 flex-shrink-0 text-muted-foreground/30" />
+                      <span className="text-[11px] text-muted-foreground/70">{item}</span>
+                    </div>
+                  ))}
+                  <input
+                    ref={checklistInputRef}
+                    value={checklistVal}
+                    onChange={(e) => setChecklistVal(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const t = checklistVal.trim();
+                        setChecklistVal("");
+                        if (t) {
+                          setPendingItems((prev) => [...prev, t]);
+                          setTimeout(() => checklistInputRef.current?.focus(), 0);
+                        } else {
+                          handleAdd();
+                        }
+                      }
+                      if (e.key === "Escape") {
+                        setChecklistMode(false);
+                        setPendingItems([]);
+                        setChecklistVal("");
+                      }
+                    }}
+                    placeholder={pendingItems.length === 0 ? "Add checklist item… (Enter to add, empty Enter to save)" : "Next item… (empty Enter to save)"}
+                    className="w-full text-[11px] bg-transparent focus:outline-none placeholder:text-muted-foreground/40"
+                  />
+                </div>
+              )}
+
               {/* Priority + due date + submit */}
               <div className="flex items-center gap-2">
                 {/* Priority chips */}
@@ -683,7 +981,42 @@ export function TaskPanel() {
                   ))}
                 </div>
 
+                {/* Privacy toggle */}
+                <button
+                  onClick={() => setIsPrivate((v) => !v)}
+                  title={isPrivate ? "Private — click to share with org" : "Shared with org — click to make private"}
+                  className={cn(
+                    "flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-all border",
+                    isPrivate
+                      ? "text-muted-foreground/60 border-transparent hover:text-muted-foreground"
+                      : "text-primary border-primary/30 bg-primary/10"
+                  )}
+                >
+                  {isPrivate ? <Lock className="h-2.5 w-2.5" /> : <Globe className="h-2.5 w-2.5" />}
+                  {isPrivate ? "Private" : "Shared"}
+                </button>
+
                 <div className="flex-1" />
+
+                {/* Quick-date buttons */}
+                {[
+                  { label: "Today",    val: getTodayStr()    },
+                  { label: "Tom.",     val: getTomorrowStr() },
+                ].map(({ label, val }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setDueDate(dueDate === val ? "" : val)}
+                    className={cn(
+                      "rounded px-1.5 py-0.5 text-[10px] font-medium border transition-colors",
+                      dueDate === val
+                        ? "bg-primary/10 text-primary border-primary/30"
+                        : "text-muted-foreground border-white/[0.12] hover:text-foreground hover:bg-muted/30"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
 
                 {/* Due date */}
                 <div className="relative flex items-center">
@@ -719,6 +1052,34 @@ export function TaskPanel() {
 
         {/* ── Filters ────────────────────────────────────────────────────── */}
         <div className="px-3 py-2 border-b border-black/10 dark:border-white/10 flex-shrink-0 space-y-2">
+          {/* Date filter */}
+          <div className="flex gap-1 flex-wrap">
+            {(
+              [
+                { key: "all",       label: "All dates" },
+                { key: "today",     label: "Today"     },
+                { key: "tomorrow",  label: "Tomorrow"  },
+                { key: "this_week", label: "Week"      },
+                { key: "overdue",   label: "Overdue"   },
+              ] as { key: DateFilter; label: string }[]
+            ).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setDateFilter(key)}
+                className={cn(
+                  "rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
+                  dateFilter === key
+                    ? key === "overdue"
+                      ? "bg-red-500/15 text-red-400"
+                      : "bg-primary/15 text-primary"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           {/* Status tabs */}
           <div className="flex gap-1">
             {(
@@ -778,7 +1139,7 @@ export function TaskPanel() {
             <div className="flex items-center justify-center py-12">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             </div>
-          ) : !orgSlug ? null : filtered.length === 0 ? (
+          ) : !orgSlug ? null : filtered.length === 0 && !adding && pinnedTasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center space-y-2 px-6">
               <CheckSquare2 className="h-8 w-8 text-muted-foreground/20" />
               <p className="text-sm font-medium text-muted-foreground">
@@ -792,6 +1153,34 @@ export function TaskPanel() {
             </div>
           ) : (
             <div className="py-2 space-y-1">
+              {adding && <TaskSkeleton />}
+
+              {pinnedTasks.length > 0 && (
+                <Section
+                  title="Pinned"
+                  count={pinnedTasks.length}
+                  icon={<Pin className="h-2.5 w-2.5 text-primary fill-current rotate-45 opacity-80" />}
+                >
+                  {pinnedTasks.map((t) => (
+                    <TaskCard
+                      key={t.id}
+                      task={t}
+                      isOwner={t.created_by === data?.currentUserId}
+                      onToggle={() => handleToggle(t)}
+                      onDelete={() => handleDelete(t.id)}
+                      onPriorityChange={(p) => handlePriority(t, p)}
+                      onTitleChange={(title) => handleTitleUpdate(t, title)}
+                      onPrivacyToggle={() => handlePrivacyToggle(t)}
+                      onDateChange={(date) => handleDateUpdate(t, date)}
+                      onPinToggle={() => handlePinToggle(t)}
+                      onChecklistAdd={(text) => handleChecklistAdd(t, text)}
+                      onChecklistToggle={(itemId, done) => handleChecklistToggle(t, itemId, done)}
+                      onChecklistDelete={(itemId) => handleChecklistDelete(t, itemId)}
+                    />
+                  ))}
+                </Section>
+              )}
+
               {(statusFilter === "all" || statusFilter === "todo") &&
                 todoTasks.length > 0 && (
                   <Section
@@ -803,10 +1192,17 @@ export function TaskPanel() {
                       <TaskCard
                         key={t.id}
                         task={t}
+                        isOwner={t.created_by === data?.currentUserId}
                         onToggle={() => handleToggle(t)}
                         onDelete={() => handleDelete(t.id)}
                         onPriorityChange={(p) => handlePriority(t, p)}
                         onTitleChange={(title) => handleTitleUpdate(t, title)}
+                        onPrivacyToggle={() => handlePrivacyToggle(t)}
+                        onDateChange={(date) => handleDateUpdate(t, date)}
+                        onPinToggle={() => handlePinToggle(t)}
+                        onChecklistAdd={(text) => handleChecklistAdd(t, text)}
+                        onChecklistToggle={(itemId, done) => handleChecklistToggle(t, itemId, done)}
+                        onChecklistDelete={(itemId) => handleChecklistDelete(t, itemId)}
                       />
                     ))}
                   </Section>
@@ -823,10 +1219,17 @@ export function TaskPanel() {
                       <TaskCard
                         key={t.id}
                         task={t}
+                        isOwner={t.created_by === data?.currentUserId}
                         onToggle={() => handleToggle(t)}
                         onDelete={() => handleDelete(t.id)}
                         onPriorityChange={(p) => handlePriority(t, p)}
                         onTitleChange={(title) => handleTitleUpdate(t, title)}
+                        onPrivacyToggle={() => handlePrivacyToggle(t)}
+                        onDateChange={(date) => handleDateUpdate(t, date)}
+                        onPinToggle={() => handlePinToggle(t)}
+                        onChecklistAdd={(text) => handleChecklistAdd(t, text)}
+                        onChecklistToggle={(itemId, done) => handleChecklistToggle(t, itemId, done)}
+                        onChecklistDelete={(itemId) => handleChecklistDelete(t, itemId)}
                       />
                     ))}
                   </Section>
@@ -844,10 +1247,17 @@ export function TaskPanel() {
                       <TaskCard
                         key={t.id}
                         task={t}
+                        isOwner={t.created_by === data?.currentUserId}
                         onToggle={() => handleToggle(t)}
                         onDelete={() => handleDelete(t.id)}
                         onPriorityChange={(p) => handlePriority(t, p)}
                         onTitleChange={(title) => handleTitleUpdate(t, title)}
+                        onPrivacyToggle={() => handlePrivacyToggle(t)}
+                        onDateChange={(date) => handleDateUpdate(t, date)}
+                        onPinToggle={() => handlePinToggle(t)}
+                        onChecklistAdd={(text) => handleChecklistAdd(t, text)}
+                        onChecklistToggle={(itemId, done) => handleChecklistToggle(t, itemId, done)}
+                        onChecklistDelete={(itemId) => handleChecklistDelete(t, itemId)}
                       />
                     ))}
                   </Section>

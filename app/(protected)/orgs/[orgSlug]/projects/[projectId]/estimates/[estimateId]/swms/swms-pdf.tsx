@@ -3,6 +3,7 @@ import {
   Page,
   View,
   Text,
+  Image,
   StyleSheet,
   Font,
 } from "@react-pdf/renderer";
@@ -81,7 +82,11 @@ function PageHeader({ org, docNum }: { org: OrgProps; docNum: string | null }) {
   return (
     <View style={s.headerBar} fixed>
       <View style={s.headerLeft}>
-        <Text style={s.headerOrgName}>{org.name}</Text>
+        {org.logo_url ? (
+          <Image src={org.logo_url} style={{ width: 110, height: 38, objectFit: "contain", marginBottom: 2 }} />
+        ) : (
+          <Text style={s.headerOrgName}>{org.name}</Text>
+        )}
         <Text style={s.headerMeta}>
           {[org.abn ? `ABN: ${org.abn}` : null, org.address, org.phone, org.org_email].filter(Boolean).join("  |  ")}
         </Text>
@@ -103,6 +108,7 @@ interface OrgProps {
   address: string | null;
   phone: string | null;
   org_email: string | null;
+  logo_url: string | null;
 }
 
 // ── PDF Document ──────────────────────────────────────────────────────────────

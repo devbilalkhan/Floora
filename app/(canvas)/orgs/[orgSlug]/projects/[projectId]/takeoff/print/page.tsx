@@ -21,24 +21,23 @@ function today() {
   });
 }
 
-// Brand colour palettes — all hardcoded hex for reliable print rendering
+// Professional monochrome palette — prints cleanly without ink-heavy colour fills
 const BRAND = {
-  spm: {
-    accent:      "#7c3aed", // violet-600 — used sparingly for borders/text only
-    accentDark:  "#4c1d95", // violet-900 — headings, labels
-    accentLight: "#f5f3ff", // violet-50  — very pale tint for backgrounds
-    accentBorder:"#ddd6fe", // violet-200 — borders, stripes
-    accentMuted: "#6d28d9", // violet-700 — subtle text emphasis
-    label:       "SPM Flooring",
-  },
-  dfo: {
-    accent:      "#db2777", // pink-600 — used sparingly
-    accentDark:  "#831843", // pink-900 — headings, labels
-    accentLight: "#fdf4ff", // pink-50
-    accentBorder:"#fbcfe8", // pink-200
-    accentMuted: "#be185d", // pink-700
-    label:       "DFO Flooring",
-  },
+  spm: { label: "SPM Flooring" },
+  dfo: { label: "DFO Flooring" },
+} as const;
+
+const C = {
+  headerBg:    "#0f172a", // slate-900  — table column headers
+  categoryBg:  "#f1f5f9", // slate-100  — category group row
+  categoryText:"#1e293b", // slate-800
+  stripe:      "#f8fafc", // slate-50   — alternating data rows
+  border:      "#e2e8f0", // slate-200  — all grid lines
+  ruleDark:    "#cbd5e1", // slate-300  — section dividers
+  textPrimary: "#0f172a", // slate-900
+  textSecondary:"#475569",// slate-600
+  textMuted:   "#94a3b8", // slate-400
+  supplyText:  "#1e40af", // blue-800   — supply quantities (only accent colour)
 } as const;
 
 export default async function TakeoffPrintPage({
@@ -136,6 +135,7 @@ export default async function TakeoffPrintPage({
   );
 
   const backHref = `/orgs/${params.orgSlug}/projects/${params.projectId}/takeoff`;
+  const pdfHref = `/api/takeoff-pdf?projectId=${params.projectId}&orgSlug=${params.orgSlug}`;
 
   return (
     <>
@@ -158,56 +158,54 @@ export default async function TakeoffPrintPage({
 
         {/* Controls — screen only */}
         <div className="print:hidden max-w-[1050px] mx-auto mb-4">
-          <PrintControls backHref={backHref} />
+          <PrintControls backHref={backHref} pdfHref={pdfHref} />
         </div>
 
         {/* Document */}
         <div className="bg-white mx-auto max-w-[1050px] shadow-xl print:shadow-none print:max-w-none overflow-hidden">
 
-          {/* ── Accent top stripe — thin pastel band ── */}
-          <div style={{ height: 4, background: brand.accentBorder }} />
+          {/* ── Top rule ── */}
+          <div style={{ height: 4, background: C.headerBg }} />
 
           {/* ── Header ── */}
-          <div className="px-8 py-5 flex items-start justify-between gap-6" style={{ borderBottom: `1px solid ${brand.accentBorder}` }}>
+          <div className="px-8 py-5 flex items-start justify-between gap-6" style={{ borderBottom: `1px solid ${C.border}` }}>
             <div>
-              {/* Brand pill */}
-              <span
-                className="inline-block text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full mb-2"
-                style={{ background: brand.accentLight, color: brand.accent }}
+              <div
+                className="text-[9px] font-bold uppercase tracking-[0.15em] mb-2"
+                style={{ color: C.textMuted }}
               >
-                {brand.label}
-              </span>
-              <div className="text-lg font-bold uppercase tracking-wide text-gray-900">
-                Quantity Takeoff
+                {brand.label} · Quantity Takeoff
               </div>
-              <div className="text-base font-semibold mt-0.5 text-gray-800">{project.name}</div>
+              <div className="text-lg font-bold uppercase tracking-wide" style={{ color: C.textPrimary }}>
+                {project.name}
+              </div>
               {project.location && (
-                <div className="text-xs text-gray-500 mt-0.5">{project.location}</div>
+                <div className="text-xs mt-0.5" style={{ color: C.textSecondary }}>{project.location}</div>
               )}
               {project.head_client && (
-                <div className="text-xs text-gray-500">
+                <div className="text-xs" style={{ color: C.textSecondary }}>
                   Client: {project.head_client}
                 </div>
               )}
             </div>
             <div
               className="text-right text-[11px] shrink-0 space-y-0.5 pt-1 pl-6 border-l"
-              style={{ borderColor: brand.accentBorder, color: "#6b7280" }}
+              style={{ borderColor: C.border, color: C.textSecondary }}
             >
               <div>
-                <span className="font-semibold text-gray-700">Date:</span>{" "}
+                <span className="font-semibold" style={{ color: C.textPrimary }}>Date: </span>
                 {today()}
               </div>
               <div>
-                <span className="font-semibold text-gray-700">Prepared by:</span>{" "}
+                <span className="font-semibold" style={{ color: C.textPrimary }}>Prepared by: </span>
                 {profile?.display_name ?? user.email}
               </div>
               <div>
-                <span className="font-semibold text-gray-700">Status:</span>{" "}
-                <span style={{ color: brand.accent }} className="font-medium">Preliminary</span>
+                <span className="font-semibold" style={{ color: C.textPrimary }}>Status: </span>
+                Preliminary
               </div>
-              <div className="mt-2 pt-1.5 border-t border-gray-200">
-                <span className="font-semibold text-gray-700">Total rows:</span>{" "}
+              <div className="mt-2 pt-1.5 border-t" style={{ borderColor: C.border }}>
+                <span className="font-semibold" style={{ color: C.textPrimary }}>Total rows: </span>
                 {rows.length}
               </div>
             </div>
@@ -219,18 +217,18 @@ export default async function TakeoffPrintPage({
               <colgroup>
                 <col style={{ width: 22 }} />
                 <col style={{ width: 56 }} />
-                <col />
-                <col style={{ width: 118 }} />
-                <col style={{ width: 88 }} />
-                <col style={{ width: 110 }} />
+                <col style={{ width: 180 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 90 }} />
                 <col style={{ width: 32 }} />
-                <col style={{ width: 48 }} />
+                <col style={{ width: 52 }} />
                 <col style={{ width: 28 }} />
-                <col style={{ width: 34 }} />
-                <col style={{ width: 96 }} />
+                <col style={{ width: 62 }} />
+                <col style={{ width: 200 }} />
               </colgroup>
               <thead>
-                <tr style={{ borderBottom: `1px solid ${brand.accentBorder}` }}>
+                <tr>
                   {[
                     ["#",            "text-center"],
                     ["Code",         "text-left"],
@@ -241,13 +239,13 @@ export default async function TakeoffPrintPage({
                     ["Lvl",          "text-center"],
                     ["Qty",          "text-right"],
                     ["Unit",         "text-left"],
-                    ["Wastage",       "text-right"],
+                    ["Wastage",      "text-right"],
                     ["Notes / Ref",  "text-left"],
                   ].map(([label, align], i) => (
                     <th
                       key={i}
-                      className={`px-1.5 py-1.5 font-semibold text-gray-600 text-[10px] uppercase tracking-wide border-r border-gray-200 last:border-r-0 ${align}`}
-                      style={{ background: brand.accentLight }}
+                      className={`px-1.5 py-1.5 font-semibold text-[10px] uppercase tracking-wide border-r last:border-r-0 ${align}`}
+                      style={{ background: C.headerBg, color: "#ffffff", borderColor: "#334155" }}
                     >
                       {label}
                     </th>
@@ -272,15 +270,15 @@ export default async function TakeoffPrintPage({
 
                   return (
                     <>
-                      <tr key={`hdr-${cat.key}`}>
+                      <tr key={`hdr-${cat.key}`} style={{ borderTop: `1px solid ${C.ruleDark}`, borderBottom: `1px solid ${C.border}` }}>
                         <td
                           colSpan={11}
-                          className="px-2 py-0.5 font-semibold text-[10px] uppercase tracking-widest"
-                          style={{ background: brand.accentLight, color: brand.accentDark, borderLeft: `3px solid ${brand.accentBorder}` }}
+                          className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest"
+                          style={{ background: C.categoryBg, color: C.categoryText, borderLeft: `3px solid ${C.ruleDark}` }}
                         >
                           <div className="flex items-center justify-between">
                             <span>{cat.label}</span>
-                            <span className="font-normal normal-case tracking-normal text-gray-500">
+                            <span className="font-normal normal-case tracking-normal" style={{ color: C.textSecondary }}>
                               {Object.entries(catTotals)
                                 .map(([u, t]) => `${fmt(t)} ${uLabel(u)}`)
                                 .join(" · ")}
@@ -291,39 +289,39 @@ export default async function TakeoffPrintPage({
                       {catRows.map((row, i) => (
                         <tr
                           key={row.id}
-                          className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                          style={{ background: i % 2 === 0 ? "#ffffff" : C.stripe, borderBottom: `1px solid ${C.border}` }}
                         >
-                          <td className="px-1.5 py-0.5 text-center text-gray-400 border-r border-gray-200">
+                          <td className="px-1.5 py-0.5 text-center tabular-nums border-r" style={{ color: C.textMuted, borderColor: C.border }}>
                             {i + 1}
                           </td>
-                          <td className="px-1.5 py-0.5 font-mono font-semibold text-gray-800 border-r border-gray-200">
+                          <td className="px-1.5 py-0.5 font-mono font-semibold border-r" style={{ color: C.textPrimary, borderColor: C.border }}>
                             {row.finish_code ?? ""}
                           </td>
-                          <td className="px-1.5 py-0.5 border-r border-gray-200 text-gray-800">
+                          <td className="px-1.5 py-0.5 border-r" style={{ color: C.textPrimary, borderColor: C.border }}>
                             {row.description ?? ""}
                           </td>
-                          <td className="px-1.5 py-0.5 text-gray-500 border-r border-gray-200">
+                          <td className="px-1.5 py-0.5 border-r" style={{ color: C.textSecondary, borderColor: C.border }}>
                             {row.manufacturer ?? ""}
                           </td>
-                          <td className="px-1.5 py-0.5 text-gray-500 border-r border-gray-200">
+                          <td className="px-1.5 py-0.5 border-r" style={{ color: C.textSecondary, borderColor: C.border }}>
                             {row.colour ?? ""}
                           </td>
-                          <td className="px-1.5 py-0.5 border-r border-gray-200 text-gray-700">
+                          <td className="px-1.5 py-0.5 border-r" style={{ color: C.textSecondary, borderColor: C.border }}>
                             {row.location ?? ""}
                           </td>
-                          <td className="px-1.5 py-0.5 text-center text-gray-500 border-r border-gray-200">
+                          <td className="px-1.5 py-0.5 text-center border-r" style={{ color: C.textSecondary, borderColor: C.border }}>
                             {row.level ?? ""}
                           </td>
-                          <td className="px-1.5 py-0.5 text-right font-semibold tabular-nums border-r border-gray-200 text-gray-800">
+                          <td className="px-1.5 py-0.5 text-right font-semibold tabular-nums border-r" style={{ color: C.textPrimary, borderColor: C.border }}>
                             {row.qty > 0 ? fmt(row.qty) : ""}
                           </td>
-                          <td className="px-1.5 py-0.5 text-gray-500 border-r border-gray-200">
+                          <td className="px-1.5 py-0.5 border-r" style={{ color: C.textSecondary, borderColor: C.border }}>
                             {uLabel(row.unit)}
                           </td>
-                          <td className="px-1.5 py-0.5 text-right tabular-nums text-gray-400 border-r border-gray-200">
+                          <td className="px-1.5 py-0.5 text-right tabular-nums font-semibold border-r" style={{ color: C.supplyText, borderColor: C.border }}>
                             {row.qty > 0 ? fmt(row.qty * (1 + (row.waste_pct ?? 10) / 100)) : ""}
                           </td>
-                          <td className="px-1.5 py-0.5 text-gray-400">
+                          <td className="px-1.5 py-0.5" style={{ color: C.textMuted }}>
                             {row.notes ?? ""}
                           </td>
                         </tr>
@@ -335,14 +333,14 @@ export default async function TakeoffPrintPage({
             </table>
 
             {/* Grand total */}
-            <div className="mt-2 pt-2 flex items-center gap-8 justify-end" style={{ borderTop: `1px solid ${brand.accentBorder}` }}>
-              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-700">
+            <div className="mt-2 pt-2 flex items-center gap-8 justify-end" style={{ borderTop: `2px solid ${C.ruleDark}` }}>
+              <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: C.textSecondary }}>
                 Grand Total
               </span>
               {Object.entries(grandTotal).map(([unit, total]) => (
                 <div key={unit} className="text-[12px]">
-                  <span className="font-bold tabular-nums text-gray-900">{fmt(total)}</span>{" "}
-                  <span className="text-gray-500">{uLabel(unit)}</span>
+                  <span className="font-bold tabular-nums" style={{ color: C.textPrimary }}>{fmt(total)}</span>{" "}
+                  <span style={{ color: C.textSecondary }}>{uLabel(unit)}</span>
                 </div>
               ))}
             </div>
@@ -351,11 +349,11 @@ export default async function TakeoffPrintPage({
           {/* ── Code Summary ── */}
           {codeSummary.length > 0 && (
             <div className="px-8 pb-6 pt-3">
-              <div className="pt-3 mb-3 flex items-baseline justify-between border-t border-gray-200">
-                <div className="text-[12px] font-bold uppercase tracking-wide text-gray-700">
+              <div className="pt-3 mb-3 flex items-baseline justify-between" style={{ borderTop: `1px solid ${C.ruleDark}` }}>
+                <div className="text-[12px] font-bold uppercase tracking-widest" style={{ color: C.textSecondary }}>
                   Code Summary
                 </div>
-                <div className="text-[10px] text-gray-400">
+                <div className="text-[10px]" style={{ color: C.textMuted }}>
                   Consolidated quantities by finish code — for estimate costing
                 </div>
               </div>
@@ -376,7 +374,7 @@ export default async function TakeoffPrintPage({
                   <col style={{ width: 38 }} />
                 </colgroup>
                 <thead>
-                  <tr style={{ borderBottom: `1px solid ${brand.accentBorder}` }}>
+                  <tr>
                     {[
                       ["Code",        "text-left"],
                       ["Category",    "text-left"],
@@ -394,8 +392,8 @@ export default async function TakeoffPrintPage({
                     ].map(([label, align], i) => (
                       <th
                         key={i}
-                        className={`px-1.5 py-1.5 font-semibold text-gray-600 text-[10px] uppercase tracking-wide border-r border-gray-200 last:border-r-0 ${align}`}
-                        style={{ background: brand.accentLight }}
+                        className={`px-1.5 py-1.5 font-semibold text-[10px] uppercase tracking-wide border-r last:border-r-0 ${align}`}
+                        style={{ background: C.headerBg, color: "#ffffff", borderColor: "#334155" }}
                       >
                         {label}
                       </th>
@@ -410,45 +408,45 @@ export default async function TakeoffPrintPage({
                     return (
                       <tr
                         key={entry.finish_code}
-                        className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                        style={{ background: i % 2 === 0 ? "#ffffff" : C.stripe, borderBottom: `1px solid ${C.border}` }}
                       >
-                        <td className="px-1.5 py-0.5 font-mono font-semibold text-gray-800 border-r border-gray-200">
+                        <td className="px-1.5 py-0.5 font-mono font-semibold border-r" style={{ color: C.textPrimary, borderColor: C.border }}>
                           {entry.finish_code}
                         </td>
-                        <td className="px-1.5 py-0.5 text-gray-500 border-r border-gray-200">
+                        <td className="px-1.5 py-0.5 border-r" style={{ color: C.textSecondary, borderColor: C.border }}>
                           {catLabel}
                         </td>
-                        <td className="px-1.5 py-0.5 text-gray-800 border-r border-gray-200">
+                        <td className="px-1.5 py-0.5 border-r" style={{ color: C.textPrimary, borderColor: C.border }}>
                           {entry.description ?? ""}
                         </td>
-                        <td className="px-1.5 py-0.5 text-gray-500 border-r border-gray-200">
+                        <td className="px-1.5 py-0.5 border-r" style={{ color: C.textSecondary, borderColor: C.border }}>
                           {entry.manufacturer ?? ""}
                         </td>
-                        <td className="px-1.5 py-0.5 text-gray-500 border-r border-gray-200">
+                        <td className="px-1.5 py-0.5 border-r" style={{ color: C.textSecondary, borderColor: C.border }}>
                           {entry.colour ?? ""}
                         </td>
-                        <td className="px-1.5 py-0.5 text-right tabular-nums text-gray-400 border-r border-gray-200">
+                        <td className="px-1.5 py-0.5 text-right tabular-nums border-r" style={{ color: C.textMuted, borderColor: C.border }}>
                           {entry.totals["m2"] ? fmt(entry.totals["m2"]) : ""}
                         </td>
-                        <td className="px-1.5 py-0.5 text-right tabular-nums font-semibold text-gray-800 border-r border-gray-200">
+                        <td className="px-1.5 py-0.5 text-right tabular-nums font-semibold border-r" style={{ color: C.supplyText, borderColor: C.border }}>
                           {entry.supply["m2"] ? fmt(entry.supply["m2"]) : ""}
                         </td>
-                        <td className="px-1.5 py-0.5 text-right tabular-nums text-gray-400 border-r border-gray-200">
+                        <td className="px-1.5 py-0.5 text-right tabular-nums border-r" style={{ color: C.textMuted, borderColor: C.border }}>
                           {entry.totals["lm"] ? fmt(entry.totals["lm"]) : ""}
                         </td>
-                        <td className="px-1.5 py-0.5 text-right tabular-nums font-semibold text-gray-800 border-r border-gray-200">
+                        <td className="px-1.5 py-0.5 text-right tabular-nums font-semibold border-r" style={{ color: C.supplyText, borderColor: C.border }}>
                           {entry.supply["lm"] ? fmt(entry.supply["lm"]) : ""}
                         </td>
-                        <td className="px-1.5 py-0.5 text-right tabular-nums text-gray-400 border-r border-gray-200">
+                        <td className="px-1.5 py-0.5 text-right tabular-nums border-r" style={{ color: C.textMuted, borderColor: C.border }}>
                           {entry.totals["blm"] ? fmt(entry.totals["blm"]) : ""}
                         </td>
-                        <td className="px-1.5 py-0.5 text-right tabular-nums font-semibold text-gray-800 border-r border-gray-200">
+                        <td className="px-1.5 py-0.5 text-right tabular-nums font-semibold border-r" style={{ color: C.supplyText, borderColor: C.border }}>
                           {entry.supply["blm"] ? fmt(entry.supply["blm"]) : ""}
                         </td>
-                        <td className="px-1.5 py-0.5 text-right tabular-nums text-gray-800 border-r border-gray-200">
+                        <td className="px-1.5 py-0.5 text-right tabular-nums border-r" style={{ color: C.textPrimary, borderColor: C.border }}>
                           {entry.totals["ea"] ? String(entry.totals["ea"]) : ""}
                         </td>
-                        <td className="px-1.5 py-0.5 text-right tabular-nums text-gray-500">
+                        <td className="px-1.5 py-0.5 text-right tabular-nums" style={{ color: C.textSecondary }}>
                           {entry.locations.length}
                         </td>
                       </tr>
@@ -461,15 +459,11 @@ export default async function TakeoffPrintPage({
 
           {/* ── Footer ── */}
           <div
-            className="px-8 py-2 flex items-center justify-between text-[9px] text-gray-400"
-            style={{ borderTop: `1px solid ${brand.accentBorder}` }}
+            className="px-8 py-2 flex items-center justify-between text-[9px]"
+            style={{ borderTop: `1px solid ${C.border}`, color: C.textMuted }}
           >
-            <span>
-              {brand.label} · Quantity Takeoff · {project.name}
-            </span>
-            <span>
-              Generated {today()} · Preliminary — not for construction
-            </span>
+            <span>{brand.label} · Quantity Takeoff · {project.name}</span>
+            <span>Generated {today()} · Preliminary — not for construction</span>
           </div>
         </div>
       </div>

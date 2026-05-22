@@ -5,6 +5,10 @@ import { createAuthedClient } from "@/lib/supabase/server";
 import type { EstimateItem, EstimateSettings, WetArea } from "@/lib/estimate-types";
 import { MAT, LAB, COVERAGE_M2 as COVERAGE, FILLET_LM } from "@/lib/default-rates";
 
+// Product type helpers
+const isPlank = (t: string | null | undefined) => t === "plank_glued" || t === "plank_floating";
+const isFloating = (t: string | null | undefined) => t === "plank_floating";
+
 function ceil(n: number) {
   return Math.ceil(n);
 }
@@ -32,7 +36,8 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
   );
   const covingsByParent: Record<string, typeof linkedCovings> = {};
   for (const c of linkedCovings) {
-    const key = (c.parent_finish_code as string).toUpperCase();
+    // Key is level-aware so L1 and L2 covings for the same finish code don't cross-contaminate
+    const key = `${(c.parent_finish_code as string).toUpperCase()}::${c.level ?? ""}`;
     if (!covingsByParent[key]) covingsByParent[key] = [];
     covingsByParent[key].push(c);
   }
@@ -47,7 +52,8 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
   for (const row of rawPrimaryRows) {
     const code = row.finish_code as string | null;
     if (code) {
-      const key = `${row.scope_category}::${code.toUpperCase()}`;
+      // Include level in key so same finish code on different levels stays separate
+      const key = `${row.scope_category}::${code.toUpperCase()}::${row.level ?? ""}`;
       if (consolidatedKeys.has(key)) {
         const idx = consolidatedKeys.get(key)!;
         primaryRows[idx] = {
@@ -77,8 +83,9 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
     let covArea: number | null = null;
     let covHeightMm: number | null = null;
 
-    if ((scope === "vinyl" || scope === "wall_vinyl") && finishCode && covingsByParent[finishCode]) {
-      const covings = covingsByParent[finishCode];
+    const covKey = finishCode ? `${finishCode}::${row.level ?? ""}` : null;
+    if ((scope === "vinyl" || scope === "wall_vinyl") && covKey && covingsByParent[covKey]) {
+      const covings = covingsByParent[covKey];
       covLm = covings.reduce((s, c) => s + Number(c.qty), 0);
       // Use the first cove_height_mm (all should match; user can edit if not)
       covHeightMm = Number(covings[0].cove_height_mm) || null;
@@ -123,6 +130,8 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
         mat_rate: matRate,
         lab_rate: labRate,
         is_auto: false,
+        level: row.level ?? null,
+        product_type: row.product_type ?? null,
       })
       .select("id")
       .single();
@@ -131,189 +140,56 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
     const parentId = primary.id as string;
 
     // ── Auto-generate consumable children ─────────────────────────────────────
-    const children: Omit<EstimateItem, "id" | "created_at" | "updated_at">[] = [];
+    const children: Omit<EstimateItem, "id" | "created_at" | "updated_at" | "level" | "product_type">[] = [];
     const floorArea = qty; // base floor area (no coving) for adhesive/ff calculations
 
+    const productType = row.product_type as string | null;
+
     if (scope === "vinyl" || scope === "wall_vinyl") {
-      // Glue Sheet (floor area)
-      children.push({
-        estimate_id: estimateId,
-        parent_item_id: parentId,
-        sort_order: sortOrder++,
-        type: "consumable",
-        scope_category: scope,
-        finish_code: null,
-        description: "Glue Sheet/Plank",
-        qty: ceil(floorArea / COVERAGE),
-        unit: "drum",
-        waste_pct: 0,
-        cov_lm: null,
-        cov_area: null,
-        cov_height_mm: null,
-        mat_rate: MAT.glueSheet,
-        lab_rate: 0,
-        coverage_m2: COVERAGE,
-        manufacturer: null,
-        is_auto: true,
-      });
+      const base = {
+        estimate_id: estimateId, parent_item_id: parentId,
+        type: "consumable" as const, scope_category: scope,
+        finish_code: null, waste_pct: 0,
+        cov_lm: null, cov_area: null, cov_height_mm: null,
+        manufacturer: null, is_auto: true, level: null,
+      };
 
-      // Feather Finish material (floor area)
-      if (floorArea > 0) {
-        children.push({
-          estimate_id: estimateId,
-          parent_item_id: parentId,
-          sort_order: sortOrder++,
-          type: "consumable",
-          scope_category: scope,
-          finish_code: null,
-          description: "Feather Finish 20kg",
-          qty: ceil(floorArea / COVERAGE),
-          unit: "bag",
-          waste_pct: 0,
-          cov_lm: null,
-          cov_area: null,
-          cov_height_mm: null,
-          mat_rate: MAT.featherFinish,
-          lab_rate: 0,
-          coverage_m2: COVERAGE,
-          manufacturer: null,
-          is_auto: true,
-        });
-
-        // Feather Finish labour (per m² of floor area)
-        children.push({
-          estimate_id: estimateId,
-          parent_item_id: parentId,
-          sort_order: sortOrder++,
-          type: "consumable",
-          scope_category: scope,
-          finish_code: null,
-          description: "Feather Finish Labour",
-          qty: floorArea,
-          unit: "m2",
-          waste_pct: 0,
-          cov_lm: null,
-          cov_area: null,
-          cov_height_mm: null,
-          mat_rate: 0,
-          lab_rate: LAB.featherFinish,
-          coverage_m2: null,
-          manufacturer: null,
-          is_auto: true,
-        });
-
-        // Weld Rod — 1 lm per 2 m² of vinyl (coverage_m2=2 → 50% of floor area)
-        children.push({
-          estimate_id: estimateId,
-          parent_item_id: parentId,
-          sort_order: sortOrder++,
-          type: "consumable",
-          scope_category: scope,
-          finish_code: null,
-          description: "Weld Rod",
-          qty: ceil(floorArea / 2),
-          unit: "lm",
-          waste_pct: 0,
-          cov_lm: null,
-          cov_area: null,
-          cov_height_mm: null,
-          mat_rate: MAT.weldRod,
-          lab_rate: 0,
-          coverage_m2: 2,
-          manufacturer: null,
-          is_auto: true,
-        });
+      // Glue — sheet and plank_glued only (not floating)
+      if (!isFloating(productType)) {
+        children.push({ ...base, sort_order: sortOrder++, description: "Glue Sheet/Plank", qty: ceil(floorArea / COVERAGE), unit: "drum", mat_rate: MAT.glueSheet, lab_rate: 0, coverage_m2: COVERAGE });
       }
 
-      // Coving children (when coving is merged in)
-      if (covLm && covArea && covArea > 0) {
-        // Contact Brushable for coving wall area
-        children.push({
-          estimate_id: estimateId,
-          parent_item_id: parentId,
-          sort_order: sortOrder++,
-          type: "consumable",
-          scope_category: scope,
-          finish_code: null,
-          description: "Contact Brushable (Max Bond 102)",
-          qty: ceil(covArea / COVERAGE),
-          unit: "drum",
-          waste_pct: 0,
-          cov_lm: null,
-          cov_area: null,
-          cov_height_mm: null,
-          mat_rate: MAT.contactBrushable,
-          lab_rate: 0,
-          coverage_m2: COVERAGE,
-          manufacturer: null,
-          is_auto: true,
-        });
+      if (floorArea > 0) {
+        children.push({ ...base, sort_order: sortOrder++, description: "Feather Finish 20kg",   qty: ceil(floorArea / COVERAGE), unit: "bag", mat_rate: MAT.featherFinish, lab_rate: 0,                 coverage_m2: COVERAGE });
+        children.push({ ...base, sort_order: sortOrder++, description: "Feather Finish Labour",  qty: floorArea,                  unit: "m2",  mat_rate: 0,                 lab_rate: LAB.featherFinish, coverage_m2: null     });
 
-        // Cove Fillet coils
-        children.push({
-          estimate_id: estimateId,
-          parent_item_id: parentId,
-          sort_order: sortOrder++,
-          type: "consumable",
-          scope_category: scope,
-          finish_code: null,
-          description: "Cove Fillet",
-          qty: ceil(covLm / FILLET_LM),
-          unit: "coil",
-          waste_pct: 0,
-          cov_lm: null,
-          cov_area: null,
-          cov_height_mm: null,
-          mat_rate: MAT.coveFillet,
-          lab_rate: 0,
-          coverage_m2: null,
-          manufacturer: null,
-          is_auto: true,
-        });
+        // Weld rod — sheet only (planks are clicked/glued, not welded)
+        if (!isPlank(productType)) {
+          children.push({ ...base, sort_order: sortOrder++, description: "Weld Rod", qty: ceil(floorArea / 2), unit: "lm", mat_rate: MAT.weldRod, lab_rate: 0, coverage_m2: 2 });
+        }
+      }
 
-        // Coving labour (per lm)
-        children.push({
-          estimate_id: estimateId,
-          parent_item_id: parentId,
-          sort_order: sortOrder++,
-          type: "consumable",
-          scope_category: scope,
-          finish_code: null,
-          description: "Coving Labour",
-          qty: covLm,
-          unit: "lm",
-          waste_pct: 0,
-          cov_lm: null,
-          cov_area: null,
-          cov_height_mm: null,
-          mat_rate: 0,
-          lab_rate: LAB.coving,
-          coverage_m2: null,
-          manufacturer: null,
-          is_auto: true,
-        });
+      // Coving — sheet only (planks cannot cove)
+      if (!isPlank(productType) && covLm && covArea && covArea > 0) {
+        children.push({ ...base, sort_order: sortOrder++, description: "Contact Brushable (Max Bond 102)", qty: ceil(covArea / COVERAGE), unit: "drum",  mat_rate: MAT.contactBrushable, lab_rate: 0,          coverage_m2: COVERAGE });
+        children.push({ ...base, sort_order: sortOrder++, description: "Cove Fillet",                      qty: ceil(covLm / FILLET_LM), unit: "coil",  mat_rate: MAT.coveFillet,        lab_rate: 0,          coverage_m2: null     });
+        children.push({ ...base, sort_order: sortOrder++, description: "Coving Labour",                    qty: covLm,                   unit: "lm",    mat_rate: 0,                     lab_rate: LAB.coving, coverage_m2: null     });
       }
     } else if (scope === "carpet") {
-      children.push({
-        estimate_id: estimateId,
-        parent_item_id: parentId,
-        sort_order: sortOrder++,
-        type: "consumable",
-        scope_category: scope,
-        finish_code: null,
-        description: "Glue Carpet",
-        qty: ceil(floorArea / COVERAGE),
-        unit: "drum",
-        waste_pct: 0,
-        cov_lm: null,
-        cov_area: null,
-        cov_height_mm: null,
-        mat_rate: MAT.glueCarpet,
-        lab_rate: 0,
-        coverage_m2: COVERAGE,
-        manufacturer: null,
-        is_auto: true,
-      });
+      const base = {
+        estimate_id: estimateId, parent_item_id: parentId,
+        type: "consumable" as const, scope_category: scope,
+        finish_code: null, waste_pct: 0,
+        cov_lm: null, cov_area: null, cov_height_mm: null,
+        manufacturer: null, is_auto: true, level: null,
+      };
+
+      children.push({ ...base, sort_order: sortOrder++, description: "Glue Carpet", qty: ceil(floorArea / COVERAGE), unit: "drum", mat_rate: MAT.glueCarpet, lab_rate: 0, coverage_m2: COVERAGE });
+
+      // Underlay — broadloom only (not tiles)
+      if (!productType || productType === "broadloom") {
+        children.push({ ...base, sort_order: sortOrder++, description: "Carpet Underlay", qty: floorArea, unit: "m2", mat_rate: MAT.underlay, lab_rate: 0, coverage_m2: null });
+      }
     } else if (scope === "coving_skirting" && row.cove_height_mm) {
       // Standalone coved skirting (no parent link)
       const area = qty * (Number(row.cove_height_mm) / 1000);
@@ -397,7 +273,8 @@ function buildAutoChildren(
   estimateId: string,
   parentId: string,
   scopeCategory: string,
-  startOrder: number
+  startOrder: number,
+  productType: string | null = null
 ): Omit<EstimateItem, "id" | "created_at" | "updated_at">[] {
   const children: Omit<EstimateItem, "id" | "created_at" | "updated_at">[] = [];
   let order = startOrder;
@@ -415,16 +292,24 @@ function buildAutoChildren(
     cov_height_mm: null,
     manufacturer: null,
     is_auto: true,
+    level: null,
+    product_type: null,
   };
 
   if (scopeCategory === "vinyl" || scopeCategory === "wall_vinyl") {
-    children.push({ ...base, sort_order: order++, description: "Glue Sheet/Plank",     unit: "drum", mat_rate: MAT.glueSheet,     lab_rate: 0,                 coverage_m2: COVERAGE });
+    if (!isFloating(productType)) {
+      children.push({ ...base, sort_order: order++, description: "Glue Sheet/Plank",     unit: "drum", mat_rate: MAT.glueSheet,     lab_rate: 0,                 coverage_m2: COVERAGE });
+    }
     children.push({ ...base, sort_order: order++, description: "Feather Finish 20kg",  unit: "bag",  mat_rate: MAT.featherFinish, lab_rate: 0,                 coverage_m2: COVERAGE });
     children.push({ ...base, sort_order: order++, description: "Feather Finish Labour", unit: "m2",  mat_rate: 0,                 lab_rate: LAB.featherFinish, coverage_m2: null    });
-    // Weld rod: 1 lm per 2 m² of vinyl (coverage_m2=2 drives the 50% formula in sync)
-    children.push({ ...base, sort_order: order++, description: "Weld Rod",              unit: "lm",  mat_rate: MAT.weldRod,       lab_rate: 0,                 coverage_m2: 2       });
+    if (!isPlank(productType)) {
+      children.push({ ...base, sort_order: order++, description: "Weld Rod", unit: "lm", mat_rate: MAT.weldRod, lab_rate: 0, coverage_m2: 2 });
+    }
   } else if (scopeCategory === "carpet") {
     children.push({ ...base, sort_order: order++, description: "Glue Carpet", unit: "drum", mat_rate: MAT.glueCarpet, lab_rate: 0, coverage_m2: COVERAGE });
+    if (!productType || productType === "broadloom") {
+      children.push({ ...base, sort_order: order++, description: "Carpet Underlay", unit: "m2", mat_rate: MAT.underlay, lab_rate: 0, coverage_m2: null });
+    }
   }
   // coving_skirting, stairs, transition, matting: no auto children on manual add
 
@@ -435,7 +320,8 @@ function buildAutoChildren(
 export async function addEstimateItem(
   estimateId: string,
   scopeCategory: string,
-  sortOrder: number
+  sortOrder: number,
+  productType: string | null = null
 ): Promise<{ primary: EstimateItem; children: EstimateItem[] }> {
   const { supabase } = await createAuthedClient();
 
@@ -460,12 +346,12 @@ export async function addEstimateItem(
 
   const { data: primary, error } = await supabase
     .from("estimate_items")
-    .insert({ estimate_id: estimateId, sort_order: sortOrder, type: "primary", scope_category: scopeCategory, qty: 0, unit, waste_pct: 0, mat_rate: matRate, lab_rate: labRate, is_auto: false })
+    .insert({ estimate_id: estimateId, sort_order: sortOrder, type: "primary", scope_category: scopeCategory, qty: 0, unit, waste_pct: 0, mat_rate: matRate, lab_rate: labRate, is_auto: false, product_type: productType })
     .select("*")
     .single();
   if (error) throw new Error(error.message);
 
-  const childDefs = buildAutoChildren(estimateId, primary.id, scopeCategory, sortOrder + 1);
+  const childDefs = buildAutoChildren(estimateId, primary.id, scopeCategory, sortOrder + 1, productType);
   let children: EstimateItem[] = [];
   if (childDefs.length > 0) {
     const { data: childRows } = await supabase.from("estimate_items").insert(childDefs).select("*");
@@ -539,6 +425,8 @@ export async function addCovingToItem(
     cov_lm: null, cov_area: null, cov_height_mm: null,
     manufacturer: null,
     is_auto: true,
+    level: null,
+    product_type: null,
   };
 
   const { data } = await supabase.from("estimate_items").insert([

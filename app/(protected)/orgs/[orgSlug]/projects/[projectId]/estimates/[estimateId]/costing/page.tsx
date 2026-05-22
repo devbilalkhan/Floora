@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ChevronRight, ShoppingCart, ArrowLeft, ShieldCheck, BarChart2 } from "lucide-react";
+import { ChevronRight, ShoppingCart, ArrowLeft, ShieldCheck, BarChart2, FileText } from "lucide-react";
 import { PriceListLinks } from "./price-list-sheet";
 import { createClient } from "@/lib/supabase/server";
 import type { Estimate, EstimateItem, WetArea } from "@/lib/estimate-types";
@@ -107,6 +107,13 @@ export default async function CostingPage({
           projectId={params.projectId}
         />
         <div className="ml-auto flex items-center gap-2">
+          <Link
+            href={`/orgs/${params.orgSlug}/projects/${params.projectId}/estimates/${params.estimateId}/quote`}
+            className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-3 py-1.5 text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Quote
+          </Link>
           <Link
             href={`/orgs/${params.orgSlug}/projects/${params.projectId}/estimates/${params.estimateId}/report`}
             className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-3 py-1.5 text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"

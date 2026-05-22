@@ -10,11 +10,28 @@ export async function Nav() {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const isSuperadmin = user
+    ? await supabase
+        .from("profiles")
+        .select("app_role")
+        .eq("id", user.id)
+        .single()
+        .then(({ data }) => data?.app_role === "superadmin")
+    : false;
+
   return (
     <header className="h-12 bg-card/65 backdrop-blur-xl border-b border-border sticky top-0 z-40 flex items-center px-4 gap-4">
       <Link href="/orgs" className="text-sm font-semibold tracking-tight">
         Flooring Estimator
       </Link>
+      {isSuperadmin && (
+        <Link
+          href="/admin"
+          className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Admin
+        </Link>
+      )}
       <div className="flex-1" />
       {user && <TaskButton />}
       <ThemeToggle />

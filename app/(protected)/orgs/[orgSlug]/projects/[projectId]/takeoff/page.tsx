@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { ChevronRight, Printer, ArrowLeft } from "lucide-react";
+import { ChevronRight, Printer, ArrowLeft, Mail } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { TakeoffTable } from "./takeoff-table";
 import { TakeoffSelector } from "./takeoff-selector";
@@ -127,6 +127,15 @@ export default async function TakeoffPage({
         </div>
         <div className="flex items-center gap-2">
           <MarkupControl />
+          {canWrite && (
+            <Link
+              href={`/orgs/${params.orgSlug}/projects/${params.projectId}/price-requests`}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-sm hover:bg-muted/40 transition-colors shrink-0"
+            >
+              <Mail className="h-3.5 w-3.5" />
+              Price Requests
+            </Link>
+          )}
           <Link
             href={`/orgs/${params.orgSlug}/projects/${params.projectId}/takeoff/print`}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-sm hover:bg-muted/40 transition-colors shrink-0"

@@ -4,7 +4,7 @@ import React, { useState, useRef, useCallback, useMemo, useEffect } from "react"
 import { Trash2, Plus, ChevronDown, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { CATEGORIES } from "@/lib/takeoff-types";
+import { CATEGORIES, LEVELS } from "@/lib/takeoff-types";
 import { CalcInput } from "@/components/calc-input";
 import { FloorPrepPanel } from "@/components/floor-prep-panel";
 import { WetAreasPanel } from "@/components/wet-areas-panel";
@@ -168,6 +168,7 @@ function PrimaryRow({
   const total = itemTotal(local);
 
   const isVinyl = local.scope_category === "vinyl" || local.scope_category === "wall_vinyl";
+  const isPlankType = local.product_type === "plank_glued" || local.product_type === "plank_floating";
   const hasCov = (local.cov_lm ?? 0) > 0;
 
   const openCovingForm = () => {
@@ -330,8 +331,8 @@ function PrimaryRow({
             placeholder="Product name"
           />
 
-          {/* Coving button / annotation */}
-          {isVinyl && (
+          {/* Coving button / annotation — sheet only */}
+          {isVinyl && !isPlankType && (
             hasCov ? (
               <span className="shrink-0 flex items-center gap-0 rounded-sm overflow-hidden font-mono text-[10px] bg-secondary/10">
                 <button
@@ -355,8 +356,8 @@ function PrimaryRow({
             )
           )}
 
-          {/* Weld rod restore — only shown when missing */}
-          {isVinyl && !hasWeldRod && (
+          {/* Weld rod restore — sheet only, shown when missing */}
+          {isVinyl && !isPlankType && !hasWeldRod && (
             <button onClick={handleAddWeldRod} className="shrink-0 text-[10px] text-muted-foreground/45 hover:text-primary/60 px-1 py-0.5 transition-colors">
               +weld rod
             </button>
@@ -702,6 +703,7 @@ export function CostingTable({
 }) {
   const [items, setItems] = useState<EstimateItem[]>(initialItems);
   const [wetAreas, setWetAreas] = useState<WetArea[]>(initialWetAreas);
+  const [selectedLevel, setSelectedLevel] = useState<string>("all");
   const [settings, setSettings] = useState<EstimateSettings>({
     accounting_rate: estimate.accounting_rate,
     admin_rate: estimate.admin_rate,
@@ -876,11 +878,28 @@ export function CostingTable({
     }
   };
 
+  // Distinct levels present in primary items, sorted by LEVELS order
+  const levels = useMemo(() => {
+    const set = new Set(items.filter(i => !i.parent_item_id && i.level).map(i => i.level as string));
+    return LEVELS.filter(l => set.has(l));
+  }, [items]);
+
+  // Items visible under the current level selection
+  const filteredItems = useMemo(() => {
+    if (selectedLevel === "all" || levels.length < 2) return items;
+    const visibleIds = new Set(
+      items.filter(i => !i.parent_item_id && i.level === selectedLevel).map(i => i.id)
+    );
+    return items.filter(i =>
+      i.parent_item_id ? visibleIds.has(i.parent_item_id) : i.level === selectedLevel
+    );
+  }, [items, selectedLevel, levels]);
+
   // Group items: primary items with their children
   const grouped = useMemo(() => {
     const children = new Map<string, EstimateItem[]>();
     const primaries: EstimateItem[] = [];
-    items.forEach((item) => {
+    filteredItems.forEach((item) => {
       if (item.parent_item_id) {
         const arr = children.get(item.parent_item_id) ?? [];
         arr.push(item);
@@ -890,9 +909,9 @@ export function CostingTable({
       }
     });
     return { primaries, children };
-  }, [items]);
+  }, [filteredItems]);
 
-  const summary = useMemo(() => computeSummary(items, settings, wetAreas), [items, settings, wetAreas]);
+  const summary = useMemo(() => computeSummary(filteredItems, settings, wetAreas), [filteredItems, settings, wetAreas]);
 
   // Category totals (primary rows only, children excluded from section display)
   const catTotals = useMemo(() => {
@@ -905,10 +924,10 @@ export function CostingTable({
   }, [grouped]);
 
   const tableTotals = useMemo(() => {
-    const mat = items.reduce((s, i) => s + itemMatCost(i), 0);
-    const lab = items.reduce((s, i) => s + itemLabCost(i), 0);
+    const mat = filteredItems.reduce((s, i) => s + itemMatCost(i), 0);
+    const lab = filteredItems.reduce((s, i) => s + itemLabCost(i), 0);
     return { mat, lab, total: mat + lab };
-  }, [items]);
+  }, [filteredItems]);
 
   const grossMarginPct = summary.grossMarginPct;
   const markupWarning = grossMarginPct < 0.18;
@@ -1000,6 +1019,28 @@ export function CostingTable({
 
       {/* ── Line items table ───────────────────────────────────────────────── */}
       <div className="border border-border rounded-sm overflow-hidden bg-card/65 backdrop-blur-xl">
+        {/* Level filter strip — only shown when estimate has multiple levels */}
+        {levels.length > 1 && (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border bg-muted/15">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mr-1">
+              Level
+            </span>
+            {(["all", ...levels] as string[]).map((lvl) => (
+              <button
+                key={lvl}
+                onClick={() => setSelectedLevel(lvl)}
+                className={cn(
+                  "px-2.5 py-0.5 rounded text-[11px] font-medium transition-colors",
+                  selectedLevel === lvl
+                    ? "bg-primary/90 text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                )}
+              >
+                {lvl === "all" ? "All" : lvl}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="overflow-x-auto" ref={tableWrapRef}>
           <table
             className="border-collapse"

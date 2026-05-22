@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useTransition } from "react";
+import { useState, useMemo, useTransition, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -224,6 +224,8 @@ export function Composer({
   orgSlug,
   projectId,
   projectName,
+  projectAddress,
+  projectSpecifier,
   takeoffs,
   allRows,
   hasGmail,
@@ -234,6 +236,8 @@ export function Composer({
   orgSlug: string;
   projectId: string;
   projectName: string;
+  projectAddress: string;
+  projectSpecifier: string;
   takeoffs: { id: string; name: string }[];
   allRows: TakeoffRow[];
   hasGmail: boolean;
@@ -250,6 +254,32 @@ export function Composer({
 
   const [supplierName, setSupplierName] = useState("");
   const [supplierEmail, setSupplierEmail] = useState("");
+  const [contactSuggestions, setContactSuggestions] = useState<{ name: string; email: string }[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [contactsLoading, setContactsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!hasGmail || supplierEmail.trim().length < 2) {
+      setContactSuggestions([]);
+      setShowSuggestions(false);
+      setContactsLoading(false);
+      return;
+    }
+    setContactsLoading(true);
+    setShowSuggestions(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/gmail/contacts?q=${encodeURIComponent(supplierEmail)}`);
+        const data = await res.json();
+        setContactSuggestions(data.contacts ?? []);
+      } catch {
+        setContactSuggestions([]);
+      } finally {
+        setContactsLoading(false);
+      }
+    }, 150);
+    return () => { clearTimeout(t); };
+  }, [supplierEmail, hasGmail]);
   const [subject, setSubject] = useState(
     `Price Request - ${projectName} - ${new Date().toLocaleDateString("en-AU")}`
   );
@@ -282,12 +312,14 @@ export function Composer({
         {
           Name: supplierName.trim() || "Supplier",
           "Project name": projectName,
+          Address: projectAddress,
+          Specifier: projectSpecifier,
           "Sender name": senderEmail,
           Signature: signature,
         },
         emailProducts
       ),
-    [template, supplierName, projectName, senderEmail, signature, emailProducts]
+    [template, supplierName, projectName, projectAddress, projectSpecifier, senderEmail, signature, emailProducts]
   );
 
   function addProduct(product: ProductSnapshot) {
@@ -447,18 +479,49 @@ export function Composer({
                     value={supplierName}
                     onChange={(e) => setSupplierName(e.target.value)}
                     placeholder="e.g. Polyflor Australia"
-                    className="h-8 text-xs"
+                    className="h-8 text-xs rounded-sm"
                   />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 relative">
                   <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Email address *</Label>
                   <Input
                     type="email"
                     value={supplierEmail}
-                    onChange={(e) => setSupplierEmail(e.target.value)}
+                    onChange={(e) => { setSupplierEmail(e.target.value); }}
+                    onFocus={() => supplierEmail.trim().length >= 2 && setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                     placeholder="supplier@example.com"
-                    className="h-8 text-xs"
+                    className="h-8 text-xs rounded-sm"
+                    autoComplete="off"
                   />
+                  {showSuggestions && (
+                    <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-sm shadow-lg overflow-hidden">
+                      {contactsLoading ? (
+                        <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Searching contacts…
+                        </div>
+                      ) : contactSuggestions.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-muted-foreground">No contacts found</p>
+                      ) : (
+                        contactSuggestions.map((c, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onMouseDown={() => {
+                              setSupplierEmail(c.email);
+                              if (!supplierName && c.name) setSupplierName(c.name);
+                              setShowSuggestions(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-muted/60 transition-colors flex items-center gap-2 min-w-0"
+                          >
+                            {c.name && <span className="font-medium text-foreground/80 shrink-0">{c.name}</span>}
+                            <span className="text-muted-foreground truncate">{c.email}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="space-y-1">
@@ -466,7 +529,7 @@ export function Composer({
                 <Input
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  className="h-8 text-xs"
+                  className="h-8 text-xs rounded-sm"
                 />
               </div>
             </div>

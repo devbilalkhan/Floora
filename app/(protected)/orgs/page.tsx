@@ -36,30 +36,46 @@ export default async function OrgsPage() {
     }
   }
 
-  const [{ data: memberships }, { data: acceptedInvites }] = await Promise.all([
-    supabase
-      .from("organization_members")
-      .select("role, organizations(id, name, slug)")
-      .eq("user_id", user.id),
-    user.email
-      ? adminDb
-          .from("org_invites")
-          .select("id")
-          .eq("email", user.email.toLowerCase())
-          .eq("status", "accepted")
-          .limit(1)
-      : Promise.resolve({ data: [] as { id: string }[] }),
-  ]);
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("app_role")
+    .eq("id", user.id)
+    .single();
+
+  const isSuperadmin = profile?.app_role === "superadmin";
+
+  const [{ data: memberships }, { data: allOrgs }, { data: acceptedInvites }] =
+    await Promise.all([
+      isSuperadmin
+        ? Promise.resolve({ data: [] as any[] })
+        : supabase
+            .from("organization_members")
+            .select("role, organizations(id, name, slug)")
+            .eq("user_id", user.id),
+      isSuperadmin
+        ? supabase.from("organizations").select("id, name, slug").order("name")
+        : Promise.resolve({ data: [] as any[] }),
+      user.email
+        ? adminDb
+            .from("org_invites")
+            .select("id")
+            .eq("email", user.email.toLowerCase())
+            .eq("status", "accepted")
+            .limit(1)
+        : Promise.resolve({ data: [] as { id: string }[] }),
+    ]);
 
   type OrgRow = { id: string; name: string; slug: string };
   type Org = OrgRow & { role: string };
-  const orgs: Org[] =
-    memberships?.map((m) => ({
-      ...(m.organizations as unknown as OrgRow),
-      role: m.role as string,
-    })) ?? [];
 
-  const hasElevatedRole = orgs.some((o) => ["admin", "project_manager"].includes(o.role));
+  const orgs: Org[] = isSuperadmin
+    ? (allOrgs ?? []).map((o) => ({ ...o, role: "superadmin" }))
+    : (memberships ?? []).map((m) => ({
+        ...(m.organizations as unknown as OrgRow),
+        role: m.role as string,
+      }));
+
+  const hasElevatedRole = isSuperadmin || orgs.some((o) => ["admin", "project_manager"].includes(o.role));
   if (orgs.length === 1 && !hasElevatedRole) {
     redirect(`/orgs/${orgs[0].slug}/projects`);
   }
@@ -119,7 +135,7 @@ export default async function OrgsPage() {
                 <span className="text-xs text-muted-foreground capitalize">
                   {org.role.replace("_", " ")}
                 </span>
-                {org.role === "admin" && (
+                {(org.role === "admin" || isSuperadmin) && (
                   <OrgRowActions orgId={org.id} orgSlug={org.slug} orgName={org.name} />
                 )}
               </div>

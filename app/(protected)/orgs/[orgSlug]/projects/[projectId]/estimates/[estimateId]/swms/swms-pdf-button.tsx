@@ -16,6 +16,7 @@ interface Props {
     address: string | null;
     phone: string | null;
     org_email: string | null;
+    logo_url: string | null;
   };
   project: { id: string; name: string; location: string | null };
   estimate: { id: string; name: string };

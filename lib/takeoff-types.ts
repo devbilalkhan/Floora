@@ -17,6 +17,7 @@ export type TakeoffRow = {
   colour: string | null;
   location: string | null;
   level: string | null;
+  product_type: string | null;
   qty: number;
   unit: string;
   waste_pct: number;
@@ -25,6 +26,18 @@ export type TakeoffRow = {
   parent_finish_code: string | null;
   cove_height_mm: number | null;
 };
+
+// product_type values per scope category
+export const VINYL_TYPES = [
+  { key: "sheet",          label: "Sheet"       },
+  { key: "plank_glued",    label: "Plank · Glued"  },
+  { key: "plank_floating", label: "Plank · Float"  },
+] as const;
+
+export const CARPET_TYPES = [
+  { key: "broadloom", label: "Broadloom" },
+  { key: "tiles",     label: "Tiles"     },
+] as const;
 
 export const CATEGORIES: {
   key: string;

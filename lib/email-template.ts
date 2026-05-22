@@ -12,6 +12,8 @@ export type ProductSnapshot = {
 export const TEMPLATE_PLACEHOLDERS = [
   { key: "{{Name}}",         description: "Supplier name" },
   { key: "{{Project name}}", description: "Project name" },
+  { key: "{{Address}}",      description: "Project address" },
+  { key: "{{Specifier}}",    description: "Specifier / head client" },
   { key: "{{Products}}",     description: "Auto-generated product list" },
   { key: "{{Sender name}}",  description: "Your email address" },
   { key: "{{Signature}}",    description: "Your email signature (set in Settings)" },
@@ -57,6 +59,8 @@ export function renderEmailBody(
   vars: {
     Name: string;
     "Project name": string;
+    Address: string;
+    Specifier: string;
     "Sender name": string;
     Signature: string;
   },
@@ -66,8 +70,13 @@ export function renderEmailBody(
     ...vars,
     Products: buildProductsBlock(products),
   };
-  return template.replace(/\{\{([^}]+)\}\}/g, (match, key: string) => {
+  return template.replace(/\{\{([^|}]+?)(?:\|([^}]*))?\}\}/g, (match, key: string, fallback?: string) => {
     const trimmed = key.trim();
-    return trimmed in allVars ? allVars[trimmed] : match;
+    const known = trimmed in allVars;
+    const value = known ? allVars[trimmed] : undefined;
+    if (value) return value;                              // non-empty value → use it
+    if (fallback !== undefined) return fallback.trim();   // empty/missing + fallback → use fallback
+    if (known) return "";                                 // known key, empty value, no fallback → blank
+    return match;                                         // unknown key → leave placeholder
   });
 }

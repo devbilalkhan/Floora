@@ -45,6 +45,8 @@ export type EstimateItem = {
   coverage_m2: number | null;
   is_auto: boolean;
   manufacturer: string | null;
+  level: string | null;
+  product_type: string | null;
 };
 
 export type EstimateSettings = {

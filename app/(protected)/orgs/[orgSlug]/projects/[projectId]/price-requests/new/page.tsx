@@ -31,7 +31,7 @@ export default async function NewPriceRequestPage({
     { data: { user } },
     { data: org },
   ] = await Promise.all([
-    supabase.from("projects").select("name").eq("id", params.projectId).single(),
+    supabase.from("projects").select("name, location, head_client").eq("id", params.projectId).single(),
     supabase
       .from("takeoffs")
       .select("id, name, sort_order")
@@ -80,6 +80,8 @@ export default async function NewPriceRequestPage({
       orgSlug={params.orgSlug}
       projectId={params.projectId}
       projectName={project.name}
+      projectAddress={project.location ?? ""}
+      projectSpecifier={project.head_client ?? ""}
       takeoffs={takeoffs}
       allRows={rows}
       hasGmail={hasGmail}

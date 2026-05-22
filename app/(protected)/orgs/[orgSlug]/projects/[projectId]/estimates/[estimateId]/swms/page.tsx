@@ -36,7 +36,7 @@ export default async function SwmsPage({
     await Promise.all([
       supabase
         .from("organizations")
-        .select("id, name, slug, org_code, abn, address, phone, org_email")
+        .select("id, name, slug, org_code, abn, address, phone, org_email, logo_url")
         .eq("id", project.organization_id)
         .single(),
       supabase
@@ -90,6 +90,7 @@ export default async function SwmsPage({
           address: org.address,
           phone: org.phone,
           org_email: org.org_email,
+          logo_url: org.logo_url ?? null,
         }}
         params={params}
       />

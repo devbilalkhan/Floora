@@ -6,7 +6,15 @@ import { toast } from "sonner";
 import { Plus, Trash2, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CATEGORIES, LEVELS } from "./constants";
+import { VINYL_TYPES, CARPET_TYPES } from "@/lib/takeoff-types";
 import type { TakeoffRow } from "./constants";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { CalcInput } from "@/components/calc-input";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 
@@ -22,9 +30,9 @@ const selectCell =
   "appearance-none bg-card focus:ring-1 focus:ring-inset focus:ring-primary/40 " +
   "text-foreground/70";
 
-// Initial column widths (px). Sum = 1280. Flex description col (index 3) pre-calculated.
-// Cols: # | Code | Mfr | Description | Colour | Location | Level | Qty | Unit | Waste% | Wastage | Parent Code | Cove H. | Notes | Del
-const INIT_WIDTHS = [32, 84, 124, 100, 68, 84, 60, 72, 52, 56, 56, 56, 56, 252, 32];
+// Initial column widths (px). Flex description col (index 3) pre-calculated.
+// Cols: # | Code | Mfr | Description | Colour | Location | Level | Qty | Unit | Waste% | Wastage | Parent Code | Type | Notes | Del
+const INIT_WIDTHS = [32, 84, 124, 100, 68, 84, 60, 72, 52, 56, 56, 56, 80, 252, 32];
 const COL_MIN = 32;
 
 // ── Single editable row ────────────────────────────────────────────────────────
@@ -299,24 +307,58 @@ function TakeoffRowComp({
         )}
       </td>
 
-      {/* Cove Height — coving_skirting rows only */}
+      {/* Type column — product type for vinyl/carpet, cove height for coving_skirting */}
       <td className="border-r border-border p-0">
-        {local.scope_category === "coving_skirting" ? (
-          <select
-            value={local.cove_height_mm ?? ""}
-            onChange={(e) => {
-              const v = e.target.value ? Number(e.target.value) : null;
-              set("cove_height_mm", v);
-              flush({ cove_height_mm: v });
+        {local.scope_category === "vinyl" || local.scope_category === "wall_vinyl" ? (
+          <Select
+            value={local.product_type ?? "sheet"}
+            onValueChange={(v) => handleSelectChange("product_type", v)}
+            disabled={!canWrite}
+          >
+            <SelectTrigger className="h-full w-full border-0 rounded-none shadow-none bg-transparent text-[11px] text-foreground/70 px-2 py-1 focus:ring-1 focus:ring-inset focus:ring-primary/40 hover:bg-muted/20 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-40 [&>svg]:shrink-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {VINYL_TYPES.map((t) => (
+                <SelectItem key={t.key} value={t.key} className="text-xs">{t.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : local.scope_category === "carpet" ? (
+          <Select
+            value={local.product_type ?? "broadloom"}
+            onValueChange={(v) => handleSelectChange("product_type", v)}
+            disabled={!canWrite}
+          >
+            <SelectTrigger className="h-full w-full border-0 rounded-none shadow-none bg-transparent text-[11px] text-foreground/70 px-2 py-1 focus:ring-1 focus:ring-inset focus:ring-primary/40 hover:bg-muted/20 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-40 [&>svg]:shrink-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CARPET_TYPES.map((t) => (
+                <SelectItem key={t.key} value={t.key} className="text-xs">{t.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : local.scope_category === "coving_skirting" ? (
+          <Select
+            value={local.cove_height_mm ? String(local.cove_height_mm) : "none"}
+            onValueChange={(v) => {
+              const n = v === "none" ? null : Number(v);
+              set("cove_height_mm", n);
+              flush({ cove_height_mm: n });
             }}
             disabled={!canWrite}
-            className={selectCell}
           >
-            <option value="">—</option>
-            <option value="100">100</option>
-            <option value="150">150</option>
-            <option value="200">200</option>
-          </select>
+            <SelectTrigger className="h-full w-full border-0 rounded-none shadow-none bg-transparent text-[11px] text-foreground/70 px-2 py-1 focus:ring-1 focus:ring-inset focus:ring-primary/40 hover:bg-muted/20 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-40 [&>svg]:shrink-0">
+              <SelectValue placeholder="—" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none" className="text-xs">—</SelectItem>
+              <SelectItem value="100" className="text-xs">100 mm</SelectItem>
+              <SelectItem value="150" className="text-xs">150 mm</SelectItem>
+              <SelectItem value="200" className="text-xs">200 mm</SelectItem>
+            </SelectContent>
+          </Select>
         ) : (
           <span className="block h-full w-full px-2 py-1 text-[11px] text-muted-foreground/20 select-none">—</span>
         )}
@@ -473,6 +515,7 @@ export function TakeoffTable({
         colour: null,
         location: null,
         level: null,
+        product_type: null,
         qty: 0,
         unit: cat.defaultUnit,
         waste_pct: 10,
@@ -626,7 +669,7 @@ export function TakeoffTable({
                     ["Waste %",              "text-right"],
                     ["Wastage",              "text-right"],
                     ["Parent Code",          "text-left"],
-                    ["Cove H.",              "text-left"],
+                    ["Type",                 "text-left"],
                     ["Notes / Ref",          "text-left"],
                     ["",                     ""],
                   ] as [string, string][]

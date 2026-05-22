@@ -10,6 +10,7 @@ export const MAT = {
   vinylSkirting:      5.00,
   trims:             35.00,
   weldRod:            2.70,
+  underlay:           0.00,  // placeholder — update when rate is known
 } as const;
 
 export const LAB = {
