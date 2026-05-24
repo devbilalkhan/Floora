@@ -3,12 +3,14 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ChevronRight, FileText, Image, Mail, ClipboardList } from "lucide-react";
+import { ChevronRight, FileText, Image, Mail } from "lucide-react";
 import { NewEstimateDialog } from "./new-estimate-dialog";
+import { QuoteActions } from "./quotes/quote-actions";
 import { EstimateTableRow } from "./estimate-table-row";
 import { TakeoffListTable } from "./takeoff-list-table";
 import { ProjectNameHeader } from "./project-name-header";
 import { DeleteProjectZone } from "./delete-project-zone";
+import { EditProjectDetailsDialog } from "./edit-project-details-dialog";
 import { computeSummary } from "@/lib/estimate-types";
 import type { EstimateItem, EstimateSettings } from "@/lib/estimate-types";
 
@@ -34,7 +36,7 @@ export default async function ProjectDetailPage({
 }) {
   const supabase = createClient();
 
-  const [{ data: project }, { data: rawEstimates }, { data: drawings }, { data: rawTakeoffs }, { data: rawPriceRequests }, { data: userRole }] =
+  const [{ data: project }, { data: rawEstimates }, { data: drawings }, { data: rawTakeoffs }, { data: rawPriceRequests }, { data: rawQuotes }, { data: userRole }] =
     await Promise.all([
       supabase
         .from("projects")
@@ -61,6 +63,11 @@ export default async function ProjectDetailPage({
         .from("price_requests")
         .select("id, status")
         .eq("project_id", params.projectId),
+      supabase
+        .from("quotes")
+        .select("id, quote_number, quote_date, to_name, project_ref, project_loc, total_ex_gst, grand_total, status")
+        .eq("project_id", params.projectId)
+        .order("created_at", { ascending: false }),
       supabase.rpc("user_project_role", { proj_id: params.projectId }),
     ]);
 
@@ -108,6 +115,7 @@ export default async function ProjectDetailPage({
 
   const priceRequests = rawPriceRequests ?? [];
   const pendingReplies = priceRequests.filter((r) => r.status === "sent").length;
+  const quotes = rawQuotes ?? [];
 
   const takeoffItems = (rawTakeoffs ?? []).map((t: any) => ({
     id: t.id as string,
@@ -168,6 +176,15 @@ export default async function ProjectDetailPage({
                 <span className="text-border">·</span>
               )}
               {project.head_client && <span>{project.head_client}</span>}
+              {canWrite && (
+                <EditProjectDetailsDialog
+                  projectId={params.projectId}
+                  orgSlug={params.orgSlug}
+                  initialLocation={project.location}
+                  initialHeadClient={project.head_client}
+                  initialNotes={project.notes}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -179,7 +196,190 @@ export default async function ProjectDetailPage({
         )}
       </div>
 
-      {/* Takeoffs — read-only for viewers */}
+      {/* Estimates — hidden for viewers */}
+      {!isViewer && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold">Estimates</h2>
+            {canManageEstimates && (
+              <NewEstimateDialog
+                projectId={params.projectId}
+                orgSlug={params.orgSlug}
+                takeoffs={takeoffItems.map((t) => ({ id: t.id, name: t.name }))}
+              />
+            )}
+          </div>
+
+          {estimates.length === 0 ? (
+            <div className="border border-dashed border-border rounded-xl flex items-center justify-center h-32">
+              <div className="text-center space-y-2">
+                <p className="text-sm font-medium">No estimates yet</p>
+                {canManageEstimates ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      Create an estimate to begin pricing this project.
+                    </p>
+                    <NewEstimateDialog
+                      projectId={params.projectId}
+                      orgSlug={params.orgSlug}
+                      takeoffs={takeoffItems.map((t) => ({ id: t.id, name: t.name }))}
+                    />
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Estimates will appear here once a PM creates one.
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="border border-black/10 dark:border-white/10 rounded-sm overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-black/10 dark:border-white/10 bg-muted/40">
+                    <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                      Name
+                    </th>
+                    <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                      Status
+                    </th>
+                    <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                      Updated
+                    </th>
+                    <th className="text-right px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                      Value ex-GST
+                    </th>
+                    <th className="text-center px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                      GP
+                    </th>
+                    <th className="text-right px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                      Margin
+                    </th>
+                    <th className="w-8 px-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {estimates.map((e) => (
+                    <EstimateTableRow
+                      key={e.id}
+                      estimate={e}
+                      orgSlug={params.orgSlug}
+                      projectId={params.projectId}
+                      summary={estimateSummaries.get(e.id)!}
+                      canManageEstimates={canManageEstimates}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Quotes — hidden for viewers */}
+      {!isViewer && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold">Quotes</h2>
+            <Link
+              href={`/orgs/${params.orgSlug}/projects/${params.projectId}/price-requests`}
+              className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors"
+            >
+              <Mail className="h-3 w-3 shrink-0" />
+              <span>Price Requests</span>
+              <span className={`flex h-4 min-w-[16px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums ${
+                pendingReplies > 0
+                  ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                  : "bg-muted text-muted-foreground"
+              }`}>
+                {priceRequests.length}
+              </span>
+            </Link>
+          </div>
+
+          {quotes.length === 0 ? (
+            <div className="border border-dashed border-border rounded-xl flex items-center justify-center h-24">
+              <p className="text-sm text-muted-foreground">
+                No quotes yet — save one from an estimate&apos;s costing view.
+              </p>
+            </div>
+          ) : (
+            <div className="border border-black/10 dark:border-white/10 rounded-sm">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-black/10 dark:border-white/10 bg-muted/40">
+                    <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Quote #</th>
+                    <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">To</th>
+                    <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Site / Ref</th>
+                    <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Date</th>
+                    <th className="text-right px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Total ex GST</th>
+                    <th className="text-right px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Inc GST</th>
+                    <th className="text-center px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Status</th>
+                    <th className="w-8 px-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {quotes.map((q) => (
+                    <tr
+                      key={q.id}
+                      className="group border-b border-black/5 dark:border-white/5 last:border-0 hover:bg-muted/20 transition-colors"
+                    >
+                      <td className="px-2 py-2">
+                        <Link
+                          href={`/orgs/${params.orgSlug}/projects/${params.projectId}/quotes/${q.id}`}
+                          className="text-xs font-mono text-primary hover:underline"
+                        >
+                          {q.quote_number}
+                        </Link>
+                      </td>
+                      <td className="px-2 py-2 text-xs text-foreground/70">
+                        {q.to_name ?? <span className="text-muted-foreground/50">—</span>}
+                      </td>
+                      <td className="px-2 py-2 text-xs text-muted-foreground">
+                        {q.project_loc || q.project_ref || <span className="text-muted-foreground/50">—</span>}
+                      </td>
+                      <td className="px-2 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                        {q.quote_date ?? "—"}
+                      </td>
+                      <td className="px-2 py-2 text-xs text-right tabular-nums text-foreground/70">
+                        {q.total_ex_gst != null
+                          ? `$${q.total_ex_gst.toLocaleString("en-AU", { minimumFractionDigits: 2 })}`
+                          : "—"}
+                      </td>
+                      <td className="px-2 py-2 text-xs text-right tabular-nums text-muted-foreground">
+                        {q.grand_total != null
+                          ? `$${q.grand_total.toLocaleString("en-AU", { minimumFractionDigits: 2 })}`
+                          : "—"}
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          q.status === "sent"
+                            ? "bg-green-500/10 text-green-600 dark:text-green-400"
+                            : q.status === "accepted"
+                            ? "bg-primary/10 text-primary"
+                            : "bg-muted/60 text-muted-foreground"
+                        }`}>
+                          {q.status ?? "draft"}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2">
+                        <QuoteActions
+                          quoteId={q.id}
+                          orgSlug={params.orgSlug}
+                          projectId={params.projectId}
+                          currentStatus={q.status ?? "draft"}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Takeoffs */}
       <div className="space-y-3">
         <TakeoffListTable
           takeoffs={takeoffItems}
@@ -188,150 +388,6 @@ export default async function ProjectDetailPage({
           canWrite={canWrite}
         />
       </div>
-
-      {/* Price Requests — hidden for viewers */}
-      {!isViewer && <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold">Price Requests</h2>
-            {priceRequests.length > 0 && (
-              <span className="text-xs text-muted-foreground">
-                {priceRequests.length} total
-                {pendingReplies > 0 && (
-                  <span className="ml-1.5 text-amber-600 dark:text-amber-400 font-medium">
-                    · {pendingReplies} awaiting reply
-                  </span>
-                )}
-              </span>
-            )}
-          </div>
-          {canManageEstimates && (
-            <Link
-              href={`/orgs/${params.orgSlug}/projects/${params.projectId}/price-requests/new`}
-              className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors font-medium"
-            >
-              <Mail className="h-3.5 w-3.5" />
-              New Request
-            </Link>
-          )}
-        </div>
-
-        <Link
-          href={`/orgs/${params.orgSlug}/projects/${params.projectId}/quotes`}
-          className="group flex items-center gap-3 px-4 py-3 bg-card/65 backdrop-blur-xl border border-border rounded-xl hover:border-primary/40 transition-colors"
-        >
-          <ClipboardList className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-          <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
-            Quotes
-          </span>
-        </Link>
-
-        <Link
-          href={`/orgs/${params.orgSlug}/projects/${params.projectId}/price-requests`}
-          className="group flex items-center justify-between px-4 py-3 bg-card/65 backdrop-blur-xl border border-border rounded-xl hover:border-primary/40 transition-colors"
-        >
-          <div className="flex items-center gap-3">
-            <Mail className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-            <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
-              {priceRequests.length === 0
-                ? "No price requests yet"
-                : `${priceRequests.length} price ${priceRequests.length === 1 ? "request" : "requests"}`}
-            </span>
-          </div>
-          {pendingReplies > 0 && (
-            <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px]">
-              {pendingReplies} pending
-            </Badge>
-          )}
-        </Link>
-      </div>}
-
-      {/* Estimates — hidden for viewers */}
-      {!isViewer && <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">Estimates</h2>
-          {canManageEstimates && (
-            <NewEstimateDialog
-              projectId={params.projectId}
-              orgSlug={params.orgSlug}
-              takeoffs={takeoffItems.map((t) => ({ id: t.id, name: t.name }))}
-            />
-          )}
-        </div>
-
-        {estimates.length === 0 ? (
-          <div className="border-2 border-dashed border-border rounded-xl flex items-center justify-center h-40">
-            <div className="text-center space-y-2">
-              <p className="text-sm font-medium">No estimates yet</p>
-              {canManageEstimates ? (
-                <>
-                  <p className="text-xs text-muted-foreground">
-                    Create an estimate to begin pricing this project.
-                  </p>
-                  <NewEstimateDialog
-                    projectId={params.projectId}
-                    orgSlug={params.orgSlug}
-                    takeoffs={takeoffItems.map((t) => ({ id: t.id, name: t.name }))}
-                  />
-                </>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Estimates will appear here once a PM creates one.
-                </p>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="border border-black/10 dark:border-white/10 rounded-sm overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-black/10 dark:border-white/10 bg-muted/40">
-                  <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                    Name
-                  </th>
-                  <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                    Status
-                  </th>
-                  <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                    Updated
-                  </th>
-                  <th className="text-right px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                    Value ex-GST
-                  </th>
-                  <th className="text-center px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                    GP
-                  </th>
-                  <th className="text-right px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                    Margin
-                  </th>
-                  <th className="w-8 px-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {estimates.map((e) => (
-                  <EstimateTableRow
-                    key={e.id}
-                    estimate={e}
-                    orgSlug={params.orgSlug}
-                    projectId={params.projectId}
-                    summary={estimateSummaries.get(e.id)!}
-                    canManageEstimates={canManageEstimates}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>}
-
-      {/* Danger zone — admins only */}
-      {userRole === "admin" && (
-        <DeleteProjectZone
-          projectId={params.projectId}
-          projectName={project.name}
-          orgSlug={params.orgSlug}
-        />
-      )}
 
       {/* Drawings */}
       {drawings && drawings.length > 0 && (
@@ -369,6 +425,15 @@ export default async function ProjectDetailPage({
             ))}
           </div>
         </div>
+      )}
+
+      {/* Danger zone — admins only */}
+      {userRole === "admin" && (
+        <DeleteProjectZone
+          projectId={params.projectId}
+          projectName={project.name}
+          orgSlug={params.orgSlug}
+        />
       )}
     </div>
   );

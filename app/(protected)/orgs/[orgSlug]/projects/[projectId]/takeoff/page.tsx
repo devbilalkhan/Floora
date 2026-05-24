@@ -22,7 +22,7 @@ export default async function TakeoffPage({
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: project }, { data: takeoffs }, { data: fromEstimate }] = await Promise.all([
+  const [{ data: project }, { data: takeoffs }, { data: fromEstimate }, { data: projectDocs }] = await Promise.all([
     supabase
       .from("projects")
       .select("id, name, brand, location, head_client, organization_id")
@@ -41,6 +41,11 @@ export default async function TakeoffPage({
           .eq("id", searchParams.fromEstimate)
           .single()
       : Promise.resolve({ data: null }),
+    supabase
+      .from("project_documents")
+      .select("id, name")
+      .eq("project_id", params.projectId)
+      .order("created_at", { ascending: false }),
   ]);
 
   if (!project) notFound();
@@ -126,7 +131,11 @@ export default async function TakeoffPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <MarkupControl />
+          <MarkupControl
+            projectId={params.projectId}
+            orgSlug={params.orgSlug}
+            initialDocs={projectDocs ?? []}
+          />
           {canWrite && (
             <Link
               href={`/orgs/${params.orgSlug}/projects/${params.projectId}/price-requests`}

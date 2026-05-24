@@ -411,6 +411,7 @@ export function TakeoffTable({
   const [rows, setRows] = useState<TakeoffRow[]>(initialRows);
   const [userId, setUserId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [addSectionOpen, setAddSectionOpen] = useState(false);
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finishMap = useRef<Record<string, Partial<TakeoffRow>>>({});
 
@@ -631,6 +632,16 @@ export function TakeoffTable({
     return Object.values(map).sort((a, b) => a.finish_code.localeCompare(b.finish_code));
   }, [rows]);
 
+  const usedCategories = useMemo(
+    () => new Set(rows.map((r) => r.scope_category)),
+    [rows]
+  );
+
+  const emptyCategories = useMemo(
+    () => CATEGORIES.filter((c) => !usedCategories.has(c.key)),
+    [usedCategories]
+  );
+
   const fmt = (n: number) =>
     n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const uLabel = (u: string) => (u === "m2" ? "m²" : u);
@@ -771,6 +782,35 @@ export function TakeoffTable({
             </tbody>
           </table>
         </div>
+
+        {/* Add section control */}
+        {canWrite && emptyCategories.length > 0 && (
+          <div className="relative px-3 py-1.5 border-t border-border">
+            {addSectionOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setAddSectionOpen(false)} />
+                <div className="absolute left-3 bottom-full mb-1 z-50 bg-card border border-border rounded-sm shadow-xl shadow-black/30 overflow-hidden min-w-[200px]">
+                  {emptyCategories.map((cat) => (
+                    <button
+                      key={cat.key}
+                      onClick={() => { addRow(cat.key); setAddSectionOpen(false); }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-foreground/70 hover:bg-muted/40 hover:text-foreground transition-colors"
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            <button
+              onClick={() => setAddSectionOpen((v) => !v)}
+              className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors py-0.5"
+            >
+              <Plus className="h-3 w-3" />
+              Add section
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Grand total + save indicator */}

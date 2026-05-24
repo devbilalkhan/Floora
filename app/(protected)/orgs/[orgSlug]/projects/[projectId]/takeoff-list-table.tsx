@@ -98,7 +98,7 @@ export function TakeoffListTable({
       </div>
 
       {items.length === 0 ? (
-        <div className="border-2 border-dashed border-border rounded-xl flex items-center justify-center h-32">
+        <div className="border border-dashed border-border rounded-xl flex items-center justify-center h-32">
           <div className="text-center space-y-1.5">
             <p className="text-sm font-medium">No takeoffs yet</p>
             <p className="text-xs text-muted-foreground">Create a takeoff to start measuring quantities.</p>

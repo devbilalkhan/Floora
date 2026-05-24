@@ -1264,20 +1264,11 @@ export function CostingTable({
 
         <table className="w-full">
           <tbody>
-            <SummaryRow label="Materials & Labour" value={summary.base} />
-            {summary.wetAreasCount > 0 && (
-              <tr className="bg-muted/10 border-b border-border">
-                <td className="pl-9 pr-4 py-1.5 text-xs text-muted-foreground/45">
-                  Wet Areas ({summary.wetAreasCount} type{summary.wetAreasCount !== 1 ? "s" : ""})
-                </td>
-                <td className={cn(
-                  "px-4 py-1.5 text-xs text-right tabular-nums",
-                  summary.wetAreasProfit >= 0 ? "text-muted-foreground/45" : "text-destructive/70"
-                )}>
-                  {summary.wetAreasProfit >= 0 ? "+" : ""}${fmt(summary.wetAreasProfit)}
-                </td>
-              </tr>
-            )}
+            <SummaryRow label="Materials" value={tableTotals.mat} />
+            <SummaryRow
+              label="Labour"
+              value={tableTotals.lab + (summary.wetAreasCount > 0 ? summary.wetAreasProfit : 0)}
+            />
             <tr className="bg-muted/10 border-b border-border">
               <td className="pl-9 pr-4 py-1.5 text-xs text-muted-foreground/45">
                 Accounting ({fmtPct(settings.accounting_rate)}%)
@@ -1362,7 +1353,7 @@ export function CostingTable({
             {summary.floorPrepBags > 0 && (
               <SummaryRow label={`Floor Prep material & labour (${summary.floorPrepBags} bags)`} value={summary.floorPrepCost} />
             )}
-            <SummaryRow label="Total ex-GST" value={summary.totalExGst} bold />
+            <SummaryRow label="Total ex-GST" value={summary.totalExGst} primary />
             <SummaryRow label="GST (10%)" value={summary.gst} muted />
           </tbody>
         </table>
@@ -1433,6 +1424,7 @@ function SummaryRow({
   bold,
   subtotal,
   highlight,
+  primary,
 }: {
   label: string;
   value: number;
@@ -1440,16 +1432,19 @@ function SummaryRow({
   bold?: boolean;
   subtotal?: boolean;
   highlight?: "warning";
+  primary?: boolean;
 }) {
   return (
     <tr className={cn(
       "border-b border-border",
       subtotal && "bg-muted/20",
+      primary && "bg-primary/[0.07] border-t-2 border-t-primary/25",
     )}>
       <td
         className={cn(
           "px-4 py-2 text-xs",
-          bold ? "font-semibold text-muted-foreground"
+          primary ? "font-semibold text-foreground/80 uppercase tracking-wide text-[10px]"
+          : bold ? "font-semibold text-muted-foreground"
           : subtotal ? "font-medium text-muted-foreground"
           : muted ? "text-muted-foreground/45"
           : "text-muted-foreground",
@@ -1461,7 +1456,8 @@ function SummaryRow({
       <td
         className={cn(
           "px-4 py-2 text-right tabular-nums",
-          bold ? "text-sm font-semibold text-foreground/75"
+          primary ? "text-xl font-bold text-foreground/90"
+          : bold ? "text-sm font-semibold text-foreground/75"
           : subtotal ? "text-xs font-semibold text-foreground/70"
           : muted ? "text-xs text-muted-foreground/45"
           : "text-xs text-foreground/55",

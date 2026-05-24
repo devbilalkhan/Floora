@@ -930,6 +930,170 @@ function ProjectDateEditor({
   );
 }
 
+// ── Today / Tomorrow sidebar card ────────────────────────────────────────────
+
+function DaySection({
+  label,
+  sublabel,
+  tasks: dayTasks,
+  onToggle,
+}: {
+  label: string;
+  sublabel: string;
+  tasks: Task[];
+  onToggle: (t: Task) => void;
+}) {
+  const done = dayTasks.filter((t) => t.status === "done").length;
+  const allDone = dayTasks.length > 0 && done === dayTasks.length;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[11px] font-semibold text-foreground/80">{label}</p>
+          <p className="text-[10px] text-muted-foreground/60">{sublabel}</p>
+        </div>
+        {dayTasks.length > 0 && (
+          <span className={cn(
+            "text-[10px] tabular-nums rounded-full px-1.5 py-px font-medium",
+            allDone
+              ? "bg-success/15 text-success"
+              : "bg-primary/15 text-primary"
+          )}>
+            {done}/{dayTasks.length}
+          </span>
+        )}
+      </div>
+
+      {dayTasks.length === 0 ? (
+        <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-muted/20 border border-white/[0.05]">
+          <CheckCircle2 className="h-3 w-3 text-muted-foreground/25 flex-shrink-0" />
+          <p className="text-[10px] text-muted-foreground/40">Nothing scheduled</p>
+        </div>
+      ) : allDone ? (
+        <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-success/10 border border-success/20">
+          <CheckCircle2 className="h-3.5 w-3.5 text-success flex-shrink-0" />
+          <p className="text-[10px] font-medium text-success">All done!</p>
+        </div>
+      ) : (
+        <div className="space-y-1 max-h-72 overflow-y-auto">
+          {dayTasks.map((t) => {
+            const isDone = t.status === "done";
+            const sortedItems = t.checklist_items.slice().sort((a, b) => a.position - b.position);
+            return (
+              <div
+                key={t.id}
+                className={cn(
+                  "group/item rounded-lg px-2 py-1.5 transition-colors",
+                  isDone ? "opacity-50 hover:opacity-70" : "hover:bg-muted/30"
+                )}
+              >
+                {/* Title row */}
+                <div className="flex items-start gap-2">
+                  <span className={cn(
+                    "mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full",
+                    isDone ? "bg-muted-foreground/40" : P[t.priority as TaskPriority].dot
+                  )} />
+                  <span className={cn(
+                    "flex-1 min-w-0 text-[10px] leading-snug",
+                    isDone ? "line-through text-muted-foreground" : "text-foreground/80"
+                  )}>
+                    {renderTitle(t.title)}
+                  </span>
+                  <button
+                    onClick={() => onToggle(t)}
+                    title={isDone ? "Reopen" : t.status === "in_progress" ? "Mark done" : "Start"}
+                    className="flex-shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity mt-0.5"
+                  >
+                    {isDone
+                      ? <Circle className="h-2.5 w-2.5 text-muted-foreground" />
+                      : t.status === "in_progress"
+                        ? <CheckCircle2 className="h-2.5 w-2.5 text-primary" />
+                        : <Clock className="h-2.5 w-2.5 text-muted-foreground" />}
+                  </button>
+                </div>
+
+                {/* Checklist items */}
+                {sortedItems.length > 0 && (
+                  <div className="mt-1 ml-3.5 space-y-0.5">
+                    {sortedItems.map((item) => (
+                      <div key={item.id} className="flex items-start gap-1.5">
+                        {item.done
+                          ? <CheckSquare2 className="h-2.5 w-2.5 flex-shrink-0 mt-px text-success/60" />
+                          : <Square className="h-2.5 w-2.5 flex-shrink-0 mt-px text-muted-foreground/40" />}
+                        <span className={cn(
+                          "text-[9px] leading-snug",
+                          item.done ? "line-through text-muted-foreground/40" : "text-muted-foreground/70"
+                        )}>
+                          {item.text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TodayTomorrowCard({
+  tasks,
+  todayDateStr,
+  tomorrowDateStr,
+  onToggle,
+}: {
+  tasks: Task[];
+  todayDateStr: string;
+  tomorrowDateStr: string;
+  onToggle: (t: Task) => void;
+}) {
+  const byDay = (ds: string) =>
+    tasks
+      .filter((t) => t.due_date === ds)
+      .sort((a, b) =>
+        (PRIORITY_ORDER[b.priority as TaskPriority] ?? 0) -
+        (PRIORITY_ORDER[a.priority as TaskPriority] ?? 0)
+      );
+
+  const todayTasks    = byDay(todayDateStr);
+  const tomorrowTasks = byDay(tomorrowDateStr);
+
+  const now = new Date();
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+
+  const todaySub    = now.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "short" });
+  const tomorrowSub = tomorrow.toLocaleDateString("en-AU", { weekday: "long" });
+
+  return (
+    <div className="w-60 flex-shrink-0 bg-card/65 backdrop-blur-xl border border-white/[0.08] rounded-xl p-4 space-y-4 self-start sticky top-4">
+      <div className="flex items-center gap-2 pb-1 border-b border-white/[0.06]">
+        <CalendarDays className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Daily View</p>
+      </div>
+
+      <DaySection
+        label="Today"
+        sublabel={todaySub}
+        tasks={todayTasks}
+        onToggle={onToggle}
+      />
+
+      <div className="border-t border-white/[0.06]" />
+
+      <DaySection
+        label="Tomorrow"
+        sublabel={tomorrowSub}
+        tasks={tomorrowTasks}
+        onToggle={onToggle}
+      />
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function PlannerView({
@@ -1593,8 +1757,9 @@ export function PlannerView({
             </button>
           </div>
 
-          {/* Grid */}
-          <div className="rounded-xl border border-white/[0.08] overflow-hidden">
+          {/* Grid + daily card */}
+          <div className="flex gap-4 items-start">
+          <div className="flex-1 min-w-0 rounded-xl border border-white/[0.08] overflow-hidden">
             {/* Weekday headers */}
             <div className="grid grid-cols-7 border-b border-black/10 dark:border-white/10 bg-muted/30">
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
@@ -1687,6 +1852,14 @@ export function PlannerView({
               );
             })}
           </div>
+
+          <TodayTomorrowCard
+            tasks={tasks}
+            todayDateStr={today}
+            tomorrowDateStr={getTomorrowStr()}
+            onToggle={handleToggle}
+          />
+          </div>{/* end grid + card flex row */}
 
           {/* Unscheduled projects */}
           {unscheduledProjects.length > 0 && (

@@ -81,7 +81,7 @@ export default async function QuotesListPage({
           </p>
         </div>
       ) : (
-        <div className="border border-black/10 dark:border-white/10 rounded-sm overflow-hidden">
+        <div className="border border-black/10 dark:border-white/10 rounded-sm">
           <table className="w-full">
             <thead>
               <tr className="bg-muted/40 border-b border-black/10 dark:border-white/10">
