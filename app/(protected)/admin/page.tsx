@@ -24,41 +24,23 @@ export default async function AdminPage() {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  // All orgs with their admin members
-  const { data: orgs } = await db
-    .from("organizations")
-    .select("id, name, slug, created_at")
-    .order("created_at", { ascending: false });
+  // Fetch orgs, admin members, and member counts in parallel
+  const [{ data: orgs }, { data: adminMembers }, { data: memberCounts }] = await Promise.all([
+    db.from("organizations").select("id, name, slug, created_at").order("created_at", { ascending: false }),
+    db.from("organization_members").select("organization_id, user_id, role").eq("role", "admin"),
+    db.from("organization_members").select("organization_id"),
+  ]);
 
-  // All admin members (owners) across all orgs
-  const { data: adminMembers } = await db
-    .from("organization_members")
-    .select("organization_id, user_id, role")
-    .eq("role", "admin");
-
-  // All profiles for those admin users
+  // Once we know the admin user IDs, fetch profiles and plans in parallel
   const ownerIds = Array.from(new Set((adminMembers ?? []).map((m) => m.user_id)));
-  const { data: ownerProfiles } =
+  const [{ data: ownerProfiles }, { data: plans }] = await Promise.all([
     ownerIds.length > 0
-      ? await db
-          .from("profiles")
-          .select("id, display_name, email")
-          .in("id", ownerIds)
-      : { data: [] as any[] };
-
-  // Plans for all owner users
-  const { data: plans } =
+      ? db.from("profiles").select("id, display_name, email").in("id", ownerIds)
+      : Promise.resolve({ data: [] as any[] }),
     ownerIds.length > 0
-      ? await db
-          .from("user_plans")
-          .select("user_id, plan, status, org_limit, trial_ends_at")
-          .in("user_id", ownerIds)
-      : { data: [] as any[] };
-
-  // Member counts per org
-  const { data: memberCounts } = await db
-    .from("organization_members")
-    .select("organization_id");
+      ? db.from("user_plans").select("user_id, plan, status, org_limit, trial_ends_at").in("user_id", ownerIds)
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
 
   const countByOrg = (memberCounts ?? []).reduce<Record<string, number>>(
     (acc, m) => {

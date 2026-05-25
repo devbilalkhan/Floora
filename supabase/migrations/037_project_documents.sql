@@ -23,6 +23,7 @@ create table if not exists project_documents (
 alter table project_documents enable row level security;
 
 -- Any org member can read project documents
+drop policy if exists "select_project_documents" on project_documents;
 create policy "select_project_documents" on project_documents for select
   using (
     is_superadmin()
@@ -30,6 +31,7 @@ create policy "select_project_documents" on project_documents for select
   );
 
 -- Non-viewers can upload
+drop policy if exists "insert_project_documents" on project_documents;
 create policy "insert_project_documents" on project_documents for insert
   with check (
     created_by = auth.uid()
@@ -40,6 +42,7 @@ create policy "insert_project_documents" on project_documents for insert
   );
 
 -- Creator or PM+ can delete
+drop policy if exists "delete_project_documents" on project_documents;
 create policy "delete_project_documents" on project_documents for delete
   using (
     is_superadmin()

@@ -36,7 +36,7 @@ export default async function PriceRequestDetailPage({
   }
 
   const [{ data: req }, { data: project }] = await Promise.all([
-    supabase.from("price_requests").select("*").eq("id", params.requestId).single(),
+    supabase.from("price_requests").select("id, project_id, takeoff_id, supplier_name, supplier_email, subject, email_body, products, status, gmail_message_id, gmail_thread_id, reply_body, reply_from, reply_received_at, sent_at, created_by, created_at").eq("id", params.requestId).single(),
     supabase.from("projects").select("name").eq("id", params.projectId).single(),
   ]);
 

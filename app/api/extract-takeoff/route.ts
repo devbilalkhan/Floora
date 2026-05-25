@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
 const client = new Anthropic();
 
@@ -8,6 +9,10 @@ const UNITS = ["m2", "lm", "blm", "ea"] as const;
 const LEVELS = ["B2", "B1", "GF", "L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10"] as const;
 
 export async function POST(req: NextRequest) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
     const { sheets, fileName } = await req.json();
 

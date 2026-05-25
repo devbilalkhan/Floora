@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { ChevronRight, CalendarCheck2, CalendarDays, Settings } from "lucide-react";
+import { ChevronRight, CalendarCheck2, CalendarDays, Settings, BarChart2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const STATUS_STYLE: Record<string, string> = {
@@ -103,6 +103,15 @@ export default async function OrgLayout({
         )}
 
         <div className="flex-1" />
+        <Link
+          href={`/orgs/${params.orgSlug}/reports`}
+          className="flex items-center gap-1 hover:text-foreground transition-colors"
+          title="Consolidated Reports"
+        >
+          <BarChart2 className="h-3.5 w-3.5" />
+          <span>Reports</span>
+        </Link>
+        <span className="text-border">·</span>
         <Link
           href={`/orgs/${params.orgSlug}/planner`}
           className="flex items-center gap-1 hover:text-foreground transition-colors"

@@ -25,12 +25,11 @@ export default async function QuotePage({
     { data: rawWetAreas },
     { data: org },
   ] = await Promise.all([
-    supabase.from("estimates").select("*").eq("id", params.estimateId).single(),
+    supabase.from("estimates").select("id, project_id, name, description, status, source_takeoff_id, accounting_rate, admin_rate, net_markup_pct, freight, accommodation, travel_allowance, bailing_fee, floor_prep_area, floor_prep_depth_mm, floor_prep_charge_per_bag, floor_prep_mat_per_bag, floor_prep_lab_per_bag").eq("id", params.estimateId).single(),
     supabase
       .from("estimate_items")
-      .select("*")
+      .select("id, estimate_id, parent_item_id, sort_order, type, scope_category, finish_code, description, qty, unit, waste_pct, cov_lm, cov_area, cov_height_mm, mat_rate, lab_rate, coverage_m2, is_auto, manufacturer, level, product_type")
       .eq("estimate_id", params.estimateId)
-      .eq("type", "primary")
       .order("sort_order"),
     supabase
       .from("projects")
@@ -39,7 +38,7 @@ export default async function QuotePage({
       .single(),
     supabase
       .from("estimate_wet_areas")
-      .select("*")
+      .select("id, estimate_id, sort_order, name, floor_sqm, wall_semi_sqm, wall_full_sqm, coving_lm, qty, charge")
       .eq("estimate_id", params.estimateId)
       .order("sort_order"),
     supabase
@@ -53,19 +52,9 @@ export default async function QuotePage({
 
   const allItems = (rawItems ?? []) as EstimateItem[];
   const wetAreas = (rawWetAreas ?? []) as WetArea[];
+  const primaryItems = allItems.filter((i) => i.type === "primary");
 
-  // We need all items (including consumables) for the summary calculation
-  const { data: allRawItems } = await supabase
-    .from("estimate_items")
-    .select("*")
-    .eq("estimate_id", params.estimateId)
-    .order("sort_order");
-
-  const summary = computeSummary(
-    (allRawItems ?? []) as EstimateItem[],
-    estimate as Estimate,
-    wetAreas
-  );
+  const summary = computeSummary(allItems, estimate as Estimate, wetAreas);
 
   const today = new Date().toLocaleDateString("en-AU", {
     day: "2-digit",
@@ -93,7 +82,7 @@ export default async function QuotePage({
       projectLocation={project.location ?? ""}
       clientName={project.head_client ?? ""}
       estimateName={estimate.name}
-      primaryItems={allItems}
+      primaryItems={primaryItems}
       summary={summary}
       quoteNumber={quoteNumber}
       today={today}

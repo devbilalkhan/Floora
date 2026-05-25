@@ -38,14 +38,12 @@ function Td({
   children,
   right,
   mono,
-  dim,
   bold,
   success,
 }: {
   children?: React.ReactNode;
   right?: boolean;
   mono?: boolean;
-  dim?: boolean;
   bold?: boolean;
   success?: boolean;
 }) {
@@ -57,9 +55,7 @@ function Td({
         mono && "font-mono uppercase tracking-wide",
         bold && "font-semibold",
         success && "text-success print:text-green-700",
-        !success && (dim
-          ? "text-muted-foreground/55 print:text-gray-400"
-          : "text-foreground/75 print:text-gray-800"),
+        !success && "text-foreground/90 print:text-gray-900",
       )}
     >
       {children}
@@ -76,14 +72,12 @@ function WfRow({
   variant = "normal",
   positive,
   negative,
-  dimValue,
 }: {
   label: string;
   value: string | number;
   variant?: WfVariant;
   positive?: boolean;
   negative?: boolean;
-  dimValue?: boolean;
 }) {
   const display = typeof value === "number" ? `$${fmt(value)}` : value;
   return (
@@ -100,11 +94,11 @@ function WfRow({
         className={cn(
           "py-2 text-xs",
           variant === "indent"
-            ? "pl-9 pr-4 text-muted-foreground/60 print:text-gray-500"
-            : "px-4 text-foreground/75 print:text-gray-700",
-          variant === "subtotal" && "font-semibold text-foreground/80 print:text-gray-800",
+            ? "pl-9 pr-4 text-foreground/90 print:text-gray-900"
+            : "px-4 text-foreground/90 print:text-gray-700",
+          variant === "subtotal" && "font-semibold text-foreground/80 print:text-gray-900",
           variant === "total" && "font-bold text-foreground/85 print:text-gray-900",
-          variant === "gst-line" && "pl-9 pr-4 text-muted-foreground/55 print:text-gray-500",
+          variant === "gst-line" && "pl-9 pr-4 text-foreground/90 print:text-gray-900",
           variant === "grand" && "px-4 font-bold text-foreground/90 print:text-gray-900 text-sm",
         )}
       >
@@ -114,14 +108,13 @@ function WfRow({
         className={cn(
           "py-2 px-4 text-right tabular-nums",
           variant === "indent" || variant === "gst-line"
-            ? "text-xs text-muted-foreground/60 print:text-gray-500"
-            : "text-xs text-foreground/75 print:text-gray-800",
-          variant === "subtotal" && "font-semibold text-foreground/80 print:text-gray-800",
+            ? "text-xs text-foreground/90 print:text-gray-900"
+            : "text-xs text-foreground/90 print:text-gray-900",
+          variant === "subtotal" && "font-semibold text-foreground/80 print:text-gray-900",
           variant === "total" && "font-bold text-foreground/85 print:text-gray-900",
           variant === "grand" && "text-base font-bold text-foreground/90 print:text-gray-900",
           positive && "text-success print:text-green-700",
           negative && "text-destructive print:text-red-700",
-          dimValue && "text-muted-foreground/50 print:text-gray-400",
         )}
       >
         {display}
@@ -257,7 +250,7 @@ export function ReportDocument({
                 className="h-10 max-w-[160px] object-contain mb-2 print:h-9"
               />
             ) : (
-              <p className="text-[10px] font-bold uppercase tracking-widest text-primary/70 print:text-gray-400 mb-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-primary/70 print:text-gray-600 mb-1.5">
                 {orgName}
               </p>
             )}
@@ -270,7 +263,7 @@ export function ReportDocument({
             <p className="text-xs font-semibold text-muted-foreground print:text-gray-500 uppercase tracking-widest">
               Profit &amp; Loss Report
             </p>
-            <p className="text-xs text-muted-foreground/70 print:text-gray-400">{today}</p>
+            <p className="text-xs text-foreground/90 print:text-gray-900">{today}</p>
             <span
               className={cn(
                 "inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border",
@@ -295,7 +288,7 @@ export function ReportDocument({
                 {level}
               </span>
             )}
-            <span className="text-[10px] text-muted-foreground/50 print:text-gray-400">
+            <span className="text-[10px] text-foreground/90 print:text-gray-900">
               All amounts exclusive of GST unless stated
             </span>
           </div>
@@ -315,7 +308,7 @@ export function ReportDocument({
             <p className="text-2xl font-bold tabular-nums text-foreground print:text-gray-900 leading-none">
               ${fmt(summary.totalExGst)}
             </p>
-            <p className="text-[11px] text-muted-foreground/60 print:text-gray-400 mt-1.5">
+            <p className="text-[11px] text-foreground/90 print:text-gray-900 mt-1.5">
               ex-GST · ${fmt(summary.grandTotal)} inc. GST
             </p>
           </div>
@@ -328,10 +321,10 @@ export function ReportDocument({
             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground print:text-gray-500 mb-2">
               Total Cost
             </p>
-            <p className="text-2xl font-bold tabular-nums text-foreground/85 print:text-gray-800 leading-none">
+            <p className="text-2xl font-bold tabular-nums text-foreground/85 print:text-gray-900 leading-none">
               ${fmt(totalCost)}
             </p>
-            <p className="text-[11px] text-muted-foreground/60 print:text-gray-400 mt-1.5">
+            <p className="text-[11px] text-foreground/90 print:text-gray-900 mt-1.5">
               ex-GST · incl. overheads
             </p>
           </div>
@@ -359,7 +352,7 @@ export function ReportDocument({
             >
               ${fmt(grossProfit)}
             </p>
-            <p className="text-[11px] text-muted-foreground/60 print:text-gray-400 mt-1.5">ex-GST</p>
+            <p className="text-[11px] text-foreground/90 print:text-gray-900 mt-1.5">ex-GST</p>
           </div>
         </div>
 
@@ -463,7 +456,7 @@ export function ReportDocument({
             <WfDivider />
 
             <WfRow label="Total (ex-GST)" value={summary.totalExGst} variant="total" />
-            <WfRow label="+ GST (10%)" value={summary.gst} variant="gst-line" dimValue />
+            <WfRow label="+ GST (10%)" value={summary.gst} variant="gst-line" />
 
             {/* Grand total */}
             <tr className="bg-primary/[0.07] print:bg-gray-100 border-t-2 border-primary/20 print:border-gray-400">
@@ -471,7 +464,7 @@ export function ReportDocument({
                 <p className="text-xs font-bold uppercase tracking-widest text-foreground/80 print:text-gray-900">
                   Grand Total
                 </p>
-                <p className="text-[10px] text-muted-foreground/55 print:text-gray-400 mt-0.5">Including GST</p>
+                <p className="text-[10px] text-foreground/90 print:text-gray-900 mt-0.5">Including GST</p>
               </td>
               <td className="px-4 py-4 text-right">
                 <p className="text-2xl font-bold tabular-nums text-foreground print:text-gray-900">
@@ -517,18 +510,18 @@ export function ReportDocument({
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-2">
                         <div className="w-0.5 h-3 rounded-full bg-primary/40 print:bg-gray-300 shrink-0" />
-                        <span className="text-xs font-medium text-foreground/75 print:text-gray-700">
+                        <span className="text-xs font-medium text-foreground/90 print:text-gray-700">
                           {cat.label}
                         </span>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-right text-xs tabular-nums text-muted-foreground/70 print:text-gray-500">
+                    <td className="px-3 py-2.5 text-right text-xs tabular-nums text-foreground/90 print:text-gray-900">
                       ${fmt(catMat)}
                     </td>
-                    <td className="px-3 py-2.5 text-right text-xs tabular-nums text-muted-foreground/70 print:text-gray-500">
+                    <td className="px-3 py-2.5 text-right text-xs tabular-nums text-foreground/90 print:text-gray-900">
                       ${fmt(catLab)}
                     </td>
-                    <td className="px-3 py-2.5 text-right text-xs tabular-nums font-semibold text-foreground/80 print:text-gray-800">
+                    <td className="px-3 py-2.5 text-right text-xs tabular-nums font-semibold text-foreground/80 print:text-gray-900">
                       ${fmt(catTotal)}
                     </td>
                     <td className="px-3 py-2.5">
@@ -539,7 +532,7 @@ export function ReportDocument({
                             style={{ width: `${pct}%` }}
                           />
                         </div>
-                        <span className="text-xs tabular-nums text-muted-foreground/70 print:text-gray-500 w-12 text-right shrink-0">
+                        <span className="text-xs tabular-nums text-foreground/90 print:text-gray-900 w-12 text-right shrink-0">
                           {pct.toFixed(1)}%
                         </span>
                       </div>
@@ -550,7 +543,7 @@ export function ReportDocument({
             </tbody>
             <tfoot>
               <tr className="bg-muted/25 print:bg-gray-100 border-t-2 border-border print:border-gray-300">
-                <td className="px-3 py-2 text-xs font-bold text-muted-foreground print:text-gray-600 uppercase tracking-wide">
+                <td className="px-3 py-2 text-xs font-bold text-foreground/90 print:text-gray-900 uppercase tracking-wide">
                   Total
                 </td>
                 <td className="px-3 py-2 text-right text-xs tabular-nums font-semibold text-foreground/70 print:text-gray-700">
@@ -562,7 +555,7 @@ export function ReportDocument({
                 <td className="px-3 py-2 text-right text-sm tabular-nums font-bold text-foreground/85 print:text-gray-900">
                   ${fmt(itemsGrandTotal)}
                 </td>
-                <td className="px-3 py-2 text-right text-xs tabular-nums text-muted-foreground/60 print:text-gray-400">
+                <td className="px-3 py-2 text-right text-xs tabular-nums text-foreground/90 print:text-gray-900">
                   100.0%
                 </td>
               </tr>
@@ -586,7 +579,7 @@ export function ReportDocument({
                     {cat.label}
                   </span>
                 </div>
-                <div className="flex items-center gap-4 text-xs tabular-nums text-muted-foreground/70 print:text-gray-500">
+                <div className="flex items-center gap-4 text-xs tabular-nums text-foreground/90 print:text-gray-900">
                   <span>Mat ${fmt(catMat)}</span>
                   <span>Lab ${fmt(catLab)}</span>
                   <span className="font-semibold text-foreground/80 print:text-gray-700">${fmt(catTotal)}</span>
@@ -630,18 +623,18 @@ export function ReportDocument({
                     return (
                       <React.Fragment key={primary.id}>
                         <tr className="border-b border-border print:border-gray-100 bg-muted/[0.04] print:bg-transparent hover:bg-muted/10 print:hover:bg-transparent">
-                          <Td dim>{idx + 1}</Td>
-                          <Td mono dim>{primary.finish_code ?? "—"}</Td>
+                          <Td>{idx + 1}</Td>
+                          <Td mono>{primary.finish_code ?? "—"}</Td>
                           <Td bold>
                             {primary.manufacturer && (
-                              <span className="mr-1.5 text-[10px] font-normal text-muted-foreground/55 print:text-gray-400">
+                              <span className="mr-1.5 text-[10px] font-normal text-foreground/90 print:text-gray-900">
                                 {primary.manufacturer}
                               </span>
                             )}
                             {primary.description ?? "—"}
                           </Td>
                           <Td right>{effQty > 0 ? fmt(effQty) : "—"}</Td>
-                          <Td dim>{uLabel(primary.unit)}</Td>
+                          <Td>{uLabel(primary.unit)}</Td>
                           <Td right>{pMat > 0 ? `$${fmt(pMat)}` : "—"}</Td>
                           <Td right>{pLab > 0 ? `$${fmt(pLab)}` : "—"}</Td>
                           <Td right bold>
@@ -654,16 +647,16 @@ export function ReportDocument({
                           const cLab = itemLabCost(child);
                           return (
                             <tr key={child.id} className="border-b border-border print:border-gray-100 hover:bg-muted/10 print:hover:bg-transparent">
-                              <Td dim>↳</Td>
-                              <Td dim>—</Td>
-                              <Td dim>{child.description ?? "—"}</Td>
-                              <Td right dim>
+                              <Td>↳</Td>
+                              <Td>—</Td>
+                              <Td>{child.description ?? "—"}</Td>
+                              <Td right>
                                 {child.qty > 0 ? `${child.qty} ${uLabel(child.unit)}` : "—"}
                               </Td>
-                              <Td dim>{uLabel(child.unit)}</Td>
-                              <Td right dim>{cMat > 0 ? `$${fmt(cMat)}` : "—"}</Td>
-                              <Td right dim>{cLab > 0 ? `$${fmt(cLab)}` : "—"}</Td>
-                              <Td right dim>
+                              <Td>{uLabel(child.unit)}</Td>
+                              <Td right>{cMat > 0 ? `$${fmt(cMat)}` : "—"}</Td>
+                              <Td right>{cLab > 0 ? `$${fmt(cLab)}` : "—"}</Td>
+                              <Td right>
                                 {itemTotal(child) > 0 ? `$${fmt(itemTotal(child))}` : "—"}
                               </Td>
                             </tr>
@@ -672,16 +665,16 @@ export function ReportDocument({
 
                         {children.length > 0 && (
                           <tr className="border-b border-dashed border-border print:border-gray-200 bg-primary/[0.03] print:bg-gray-50">
-                            <td colSpan={5} className="px-3 py-1.5 text-right text-[10px] font-semibold text-muted-foreground/55 print:text-gray-400 uppercase tracking-wide">
+                            <td colSpan={5} className="px-3 py-1.5 text-right text-[10px] font-semibold text-foreground/90 print:text-gray-900 uppercase tracking-wide">
                               {primary.finish_code || primary.description || `#${idx + 1}`} subtotal
                             </td>
-                            <td className="px-3 py-1.5 text-right text-xs tabular-nums text-muted-foreground/70 print:text-gray-500">
+                            <td className="px-3 py-1.5 text-right text-xs tabular-nums text-foreground/90 print:text-gray-900">
                               ${fmt(groupMat)}
                             </td>
-                            <td className="px-3 py-1.5 text-right text-xs tabular-nums text-muted-foreground/70 print:text-gray-500">
+                            <td className="px-3 py-1.5 text-right text-xs tabular-nums text-foreground/90 print:text-gray-900">
                               ${fmt(groupLab)}
                             </td>
-                            <td className="px-3 py-1.5 text-right text-xs tabular-nums font-semibold text-foreground/65 print:text-gray-600">
+                            <td className="px-3 py-1.5 text-right text-xs tabular-nums font-semibold text-foreground/90 print:text-gray-900">
                               ${fmt(groupMat + groupLab)}
                             </td>
                           </tr>
@@ -748,10 +741,10 @@ export function ReportDocument({
                     return (
                       <tr key={wa.id} className="border-b border-border print:border-gray-100 hover:bg-muted/10 print:hover:bg-transparent">
                         <Td>{wa.name}</Td>
-                        <Td right dim>{qty}</Td>
+                        <Td right>{qty}</Td>
                         <Td right>{charge > 0 ? `$${fmt(charge)}` : "—"}</Td>
                         <Td right>{totalCharge > 0 ? `$${fmt(totalCharge)}` : "—"}</Td>
-                        <Td right dim>{totalLabor > 0 ? `$${fmt(totalLabor)}` : "—"}</Td>
+                        <Td right>{totalLabor > 0 ? `$${fmt(totalLabor)}` : "—"}</Td>
                         <Td right success={net >= 0}>{net >= 0 ? "+" : ""}${fmt(net)}</Td>
                       </tr>
                     );
@@ -765,10 +758,10 @@ export function ReportDocument({
 
       {/* Footer (print only) */}
       <div className="hidden print:flex items-center justify-between border-t border-gray-200 pt-3 mt-4">
-        <p className="text-[9px] text-gray-400">
+        <p className="text-[9px] text-gray-600">
           {orgName} · {projectName} · {estimate.name}{level && level !== "all" ? ` · ${level}` : ""}
         </p>
-        <p className="text-[9px] text-gray-400">
+        <p className="text-[9px] text-gray-600">
           All amounts exclusive of GST unless stated · Generated {today}
         </p>
       </div>

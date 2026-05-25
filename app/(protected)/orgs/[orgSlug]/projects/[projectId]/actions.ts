@@ -66,7 +66,7 @@ export async function renameProject(
 export async function updateProjectDetails(
   projectId: string,
   orgSlug: string,
-  details: { location: string | null; head_client: string | null; notes: string | null }
+  details: { location: string | null; head_client: string | null; notes: string | null; retention_pct: number | null }
 ) {
   await requireProjectManagerRole(projectId);
   const { supabase } = await createAuthedClient();
@@ -101,6 +101,21 @@ export async function uploadProjectDocument(
 
   const file = formData.get("file") as File;
   if (!file || file.size === 0) throw new Error("No file provided.");
+
+  const ALLOWED_MIME_TYPES = [
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+  ];
+  if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+    throw new Error("File type not allowed. Upload a PDF, image, or Excel file.");
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    throw new Error("File too large. Maximum size is 20 MB.");
+  }
 
   await ensureDocsBucket(supabase);
 

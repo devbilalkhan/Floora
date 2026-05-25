@@ -75,7 +75,7 @@ export async function deleteProject(projectId: string, orgSlug: string) {
 export async function setProjectStatus(
   projectId: string,
   orgSlug: string,
-  status: "active" | "archived"
+  status: "active" | "archived" | "completed" | "rejected"
 ) {
   await requireProjectWriteRole(projectId);
   const { supabase } = await createAuthedClient();

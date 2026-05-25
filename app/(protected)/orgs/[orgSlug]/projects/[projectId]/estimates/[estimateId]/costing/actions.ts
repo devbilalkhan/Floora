@@ -1,9 +1,34 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createAuthedClient } from "@/lib/supabase/server";
+import { createClient, createAuthedClient } from "@/lib/supabase/server";
 import type { EstimateItem, EstimateSettings, WetArea } from "@/lib/estimate-types";
 import { MAT, LAB, COVERAGE_M2 as COVERAGE, FILLET_LM } from "@/lib/default-rates";
+
+const ESTIMATE_ITEMS_COLS =
+  "id, estimate_id, parent_item_id, sort_order, type, scope_category, finish_code, description, qty, unit, waste_pct, cov_lm, cov_area, cov_height_mm, mat_rate, lab_rate, coverage_m2, is_auto, manufacturer, level, product_type";
+
+const TAKEOFF_ROW_COLS =
+  "id, takeoff_id, scope_category, finish_code, description, manufacturer, colour, location, level, product_type, qty, unit, waste_pct, notes, sort_order, parent_finish_code, cove_height_mm";
+
+// ── Authorization guards ───────────────────────────────────────────────────────
+// These use the RLS-respecting user client to verify access before proceeding
+// with the service-role client in the calling action.
+
+async function assertEstimateAccess(estimateId: string): Promise<void> {
+  const { data } = await createClient().from("estimates").select("id").eq("id", estimateId).single();
+  if (!data) throw new Error("Estimate not found or access denied.");
+}
+
+async function assertItemAccess(itemId: string): Promise<void> {
+  const { data } = await createClient().from("estimate_items").select("id").eq("id", itemId).single();
+  if (!data) throw new Error("Item not found or access denied.");
+}
+
+async function assertWetAreaAccess(id: string): Promise<void> {
+  const { data } = await createClient().from("estimate_wet_areas").select("id").eq("id", id).single();
+  if (!data) throw new Error("Wet area not found or access denied.");
+}
 
 // Product type helpers
 const isPlank = (t: string | null | undefined) => t === "plank_glued" || t === "plank_floating";
@@ -15,12 +40,13 @@ function ceil(n: number) {
 
 // ── Import takeoff into estimate ───────────────────────────────────────────────
 export async function importTakeoff(estimateId: string, takeoffId: string, orgSlug: string, projectId: string) {
+  await assertEstimateAccess(estimateId);
   const { supabase } = await createAuthedClient();
 
   // Load all takeoff rows
   const { data: rows, error: rowErr } = await supabase
     .from("project_takeoff")
-    .select("*")
+    .select(TAKEOFF_ROW_COLS)
     .eq("takeoff_id", takeoffId)
     .order("sort_order");
 
@@ -256,6 +282,7 @@ export async function updateEstimateItem(
   itemId: string,
   patch: Partial<Pick<EstimateItem, "finish_code" | "description" | "qty" | "unit" | "waste_pct" | "mat_rate" | "lab_rate" | "coverage_m2" | "manufacturer">>
 ) {
+  await assertItemAccess(itemId);
   const { supabase } = await createAuthedClient();
   const { error } = await supabase.from("estimate_items").update(patch).eq("id", itemId);
   if (error) throw new Error(error.message);
@@ -263,6 +290,7 @@ export async function updateEstimateItem(
 
 // ── Delete an estimate item (and its children via cascade) ────────────────────
 export async function deleteEstimateItem(itemId: string) {
+  await assertItemAccess(itemId);
   const { supabase } = await createAuthedClient();
   const { error } = await supabase.from("estimate_items").delete().eq("id", itemId);
   if (error) throw new Error(error.message);
@@ -323,6 +351,7 @@ export async function addEstimateItem(
   sortOrder: number,
   productType: string | null = null
 ): Promise<{ primary: EstimateItem; children: EstimateItem[] }> {
+  await assertEstimateAccess(estimateId);
   const { supabase } = await createAuthedClient();
 
   const unit =
@@ -347,14 +376,14 @@ export async function addEstimateItem(
   const { data: primary, error } = await supabase
     .from("estimate_items")
     .insert({ estimate_id: estimateId, sort_order: sortOrder, type: "primary", scope_category: scopeCategory, qty: 0, unit, waste_pct: 0, mat_rate: matRate, lab_rate: labRate, is_auto: false, product_type: productType })
-    .select("*")
+    .select(ESTIMATE_ITEMS_COLS)
     .single();
   if (error) throw new Error(error.message);
 
   const childDefs = buildAutoChildren(estimateId, primary.id, scopeCategory, sortOrder + 1, productType);
   let children: EstimateItem[] = [];
   if (childDefs.length > 0) {
-    const { data: childRows } = await supabase.from("estimate_items").insert(childDefs).select("*");
+    const { data: childRows } = await supabase.from("estimate_items").insert(childDefs).select(ESTIMATE_ITEMS_COLS);
     children = (childRows ?? []) as EstimateItem[];
   }
 
@@ -370,6 +399,7 @@ const COVING_DESCS = new Set([
 
 // ── Recalculate auto-consumable qtys when a primary row's qty changes ─────────
 export async function syncAutoConsumables(parentId: string, parentQty: number) {
+  await assertItemAccess(parentId);
   const { supabase } = await createAuthedClient();
   const { data: children } = await supabase
     .from("estimate_items")
@@ -400,6 +430,7 @@ export async function addCovingToItem(
   covHeightMm: number,
   startSortOrder: number
 ): Promise<EstimateItem[]> {
+  await assertEstimateAccess(estimateId);
   const { supabase } = await createAuthedClient();
   const covArea = covLm * (covHeightMm / 1000);
 
@@ -433,13 +464,14 @@ export async function addCovingToItem(
     { ...base, sort_order: startSortOrder,     description: "Contact Brushable (Max Bond 102)", unit: "drum", mat_rate: MAT.contactBrushable, lab_rate: 0,          coverage_m2: COVERAGE,   qty: ceil(covArea / COVERAGE) },
     { ...base, sort_order: startSortOrder + 1, description: "Cove Fillet",                      unit: "coil", mat_rate: MAT.coveFillet,        lab_rate: 0,          coverage_m2: null,       qty: ceil(covLm / FILLET_LM) },
     { ...base, sort_order: startSortOrder + 2, description: "Coving Labour",                    unit: "lm",   mat_rate: 0,                     lab_rate: LAB.coving, coverage_m2: null,       qty: covLm },
-  ]).select("*");
+  ]).select(ESTIMATE_ITEMS_COLS);
 
   return (data ?? []) as EstimateItem[];
 }
 
 // ── Remove coving from a vinyl primary row ────────────────────────────────────
 export async function removeCovingFromItem(primaryId: string): Promise<void> {
+  await assertItemAccess(primaryId);
   const { supabase } = await createAuthedClient();
 
   await supabase.from("estimate_items")
@@ -459,6 +491,7 @@ export async function restoreAutoConsumables(
   scopeCategory: string,
   parentQty: number
 ): Promise<EstimateItem[]> {
+  await assertEstimateAccess(estimateId);
   const { supabase } = await createAuthedClient();
 
   const { data: existing } = await supabase
@@ -484,17 +517,18 @@ export async function restoreAutoConsumables(
       : 0,
   }));
 
-  const { data } = await supabase.from("estimate_items").insert(withQty).select("*");
+  const { data } = await supabase.from("estimate_items").insert(withQty).select(ESTIMATE_ITEMS_COLS);
   return (data ?? []) as EstimateItem[];
 }
 
 // ── Wet area CRUD ─────────────────────────────────────────────────────────────
 export async function addWetArea(estimateId: string, sortOrder: number): Promise<WetArea> {
+  await assertEstimateAccess(estimateId);
   const { supabase } = await createAuthedClient();
   const { data, error } = await supabase
     .from("estimate_wet_areas")
     .insert({ estimate_id: estimateId, sort_order: sortOrder, name: "Wet Area" })
-    .select("*")
+    .select("id, estimate_id, sort_order, name, floor_sqm, wall_semi_sqm, wall_full_sqm, coving_lm, qty, charge")
     .single();
   if (error) throw new Error(error.message);
   return data as WetArea;
@@ -504,12 +538,14 @@ export async function updateWetArea(
   id: string,
   patch: Partial<Pick<WetArea, "name" | "floor_sqm" | "wall_semi_sqm" | "wall_full_sqm" | "coving_lm" | "qty" | "charge">>
 ) {
+  await assertWetAreaAccess(id);
   const { supabase } = await createAuthedClient();
   const { error } = await supabase.from("estimate_wet_areas").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
 }
 
 export async function deleteWetArea(id: string) {
+  await assertWetAreaAccess(id);
   const { supabase } = await createAuthedClient();
   const { error } = await supabase.from("estimate_wet_areas").delete().eq("id", id);
   if (error) throw new Error(error.message);
@@ -517,6 +553,7 @@ export async function deleteWetArea(id: string) {
 
 // ── Update estimate status ────────────────────────────────────────────────────
 export async function updateEstimateStatus(estimateId: string, status: string) {
+  await assertEstimateAccess(estimateId);
   const { supabase } = await createAuthedClient();
   const { error } = await supabase.from("estimates").update({ status }).eq("id", estimateId);
   if (error) throw new Error(error.message);
@@ -527,6 +564,7 @@ export async function updateEstimateSettings(
   estimateId: string,
   patch: Partial<EstimateSettings>
 ) {
+  await assertEstimateAccess(estimateId);
   const { supabase } = await createAuthedClient();
   const { error } = await supabase.from("estimates").update(patch).eq("id", estimateId);
   if (error) throw new Error(error.message);

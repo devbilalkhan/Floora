@@ -33,7 +33,7 @@ export default async function SubmissionSendPage({
       .single(),
     supabase
       .from("quotes")
-      .select("*")
+      .select("id, org_id, project_id, estimate_id, quote_number, quote_date, valid_for, company_name, company_abn, company_address, company_phone, company_email, to_name, to_address, to_contact, to_email, project_ref, project_loc, scope_text, notes, terms, lines, total_ex_gst, gst, grand_total, status, created_at, updated_at")
       .eq("project_id", params.projectId)
       .order("created_at", { ascending: true }),
     supabase.from("takeoffs").select("id").eq("project_id", params.projectId),
@@ -50,7 +50,7 @@ export default async function SubmissionSendPage({
     takeoffIds.length > 0
       ? await supabase
           .from("project_takeoff")
-          .select("*")
+          .select("id, takeoff_id, scope_category, finish_code, description, manufacturer, colour, location, level, product_type, qty, unit, waste_pct, notes, sort_order, parent_finish_code, cove_height_mm")
           .in("takeoff_id", takeoffIds)
           .order("scope_category")
           .order("sort_order")

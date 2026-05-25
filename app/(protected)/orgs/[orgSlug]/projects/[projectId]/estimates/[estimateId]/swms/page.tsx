@@ -41,12 +41,12 @@ export default async function SwmsPage({
         .single(),
       supabase
         .from("swms")
-        .select("*")
+        .select("id, estimate_id, org_id, version, document_number, status, s1_pc_name, s1_pc_contact, s1_works_manager, s1_works_manager_contact, s1_date_provided_to_pc, s1_workplace_location, s1_work_activity, s1_project_reference, s1_dev_responsible, s1_compliance_person, s1_compliance_measures, s1_reviewer, s1_date_received_by_reviewer, s1_review_triggers, s1_next_review_date, s2_hrcw, s3_persons, s4_project, s4_pc, s4_activity_description, s4_plant_equipment, s4_materials, s4_ppe, s4_training, s4_permits, s4_maintenance, s4_legislation, s4_codes, s4_standards, s6_hazards, s7_procedures, s7_contacts, s8_responsible_person, s8_responsible_quals, s8_workers, created_at, updated_at")
         .eq("estimate_id", params.estimateId)
         .maybeSingle(),
       supabase
         .from("org_workers")
-        .select("*")
+        .select("id, org_id, name, role, phone, email, sort_order")
         .eq("org_id", project.organization_id)
         .order("sort_order")
         .order("created_at"),

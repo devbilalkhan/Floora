@@ -18,29 +18,31 @@ export default async function OrgsPage() {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  // Process pending invites — catches password login, which bypasses /auth/callback
-  if (user.email) {
-    const { data: pendingInvites } = await adminDb
-      .from("org_invites")
-      .select("id, org_id, role")
-      .eq("email", user.email.toLowerCase())
-      .eq("status", "pending")
-      .gt("expires_at", new Date().toISOString());
+  // Process pending invites and fetch profile in parallel
+  // Invite processing catches password login, which bypasses /auth/callback
+  const [{ data: pendingInvites }, { data: profile }] = await Promise.all([
+    user.email
+      ? adminDb
+          .from("org_invites")
+          .select("id, org_id, role")
+          .eq("email", user.email.toLowerCase())
+          .eq("status", "pending")
+          .gt("expires_at", new Date().toISOString())
+      : Promise.resolve({ data: [] as { id: string; org_id: string; role: string }[] }),
+    supabase.from("profiles").select("app_role").eq("id", user.id).single(),
+  ]);
 
-    for (const invite of pendingInvites ?? []) {
-      await adminDb.from("organization_members").upsert(
-        { organization_id: invite.org_id, user_id: user.id, role: invite.role },
-        { onConflict: "organization_id,user_id", ignoreDuplicates: true }
-      );
-      await adminDb.from("org_invites").update({ status: "accepted" }).eq("id", invite.id);
-    }
+  if (pendingInvites && pendingInvites.length > 0) {
+    await Promise.all(
+      pendingInvites.map(async (invite) => {
+        await adminDb.from("organization_members").upsert(
+          { organization_id: invite.org_id, user_id: user.id, role: invite.role },
+          { onConflict: "organization_id,user_id", ignoreDuplicates: true }
+        );
+        await adminDb.from("org_invites").update({ status: "accepted" }).eq("id", invite.id);
+      })
+    );
   }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("app_role")
-    .eq("id", user.id)
-    .single();
 
   const isSuperadmin = profile?.app_role === "superadmin";
 

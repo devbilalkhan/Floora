@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
 
   const takeoffIds = (takeoffList ?? []).map((t) => t.id as string);
   const { data: rawRows } = takeoffIds.length > 0
-    ? await supabase.from("project_takeoff").select("*").in("takeoff_id", takeoffIds).order("scope_category").order("sort_order")
+    ? await supabase.from("project_takeoff").select("id, takeoff_id, scope_category, finish_code, description, manufacturer, colour, location, level, product_type, qty, unit, waste_pct, notes, sort_order, parent_finish_code, cove_height_mm").in("takeoff_id", takeoffIds).order("scope_category").order("sort_order")
     : { data: [] };
 
   const packDate = new Date().toLocaleDateString("en-AU", {

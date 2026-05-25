@@ -30,12 +30,12 @@ export default async function CostingPage({
   ] = await Promise.all([
     supabase
       .from("estimates")
-      .select("*")
+      .select("id, project_id, name, description, status, source_takeoff_id, accounting_rate, admin_rate, net_markup_pct, freight, accommodation, travel_allowance, bailing_fee, floor_prep_area, floor_prep_depth_mm, floor_prep_charge_per_bag, floor_prep_mat_per_bag, floor_prep_lab_per_bag")
       .eq("id", params.estimateId)
       .single(),
     supabase
       .from("estimate_items")
-      .select("*")
+      .select("id, estimate_id, parent_item_id, sort_order, type, scope_category, finish_code, description, qty, unit, waste_pct, cov_lm, cov_area, cov_height_mm, mat_rate, lab_rate, coverage_m2, is_auto, manufacturer, level, product_type")
       .eq("estimate_id", params.estimateId)
       .order("sort_order"),
     supabase
@@ -50,7 +50,7 @@ export default async function CostingPage({
       .order("sort_order"),
     supabase
       .from("estimate_wet_areas")
-      .select("*")
+      .select("id, estimate_id, sort_order, name, floor_sqm, wall_semi_sqm, wall_full_sqm, coving_lm, qty, charge")
       .eq("estimate_id", params.estimateId)
       .order("sort_order"),
     supabase

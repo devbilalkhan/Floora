@@ -23,7 +23,7 @@ export default async function OrgSettingsPage({
 
   const { data: workers } = await supabase
     .from("org_workers")
-    .select("*")
+    .select("id, org_id, name, role, phone, email, sort_order")
     .eq("org_id", org.id)
     .order("sort_order")
     .order("created_at");

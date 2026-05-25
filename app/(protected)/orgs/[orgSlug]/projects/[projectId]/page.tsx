@@ -11,6 +11,8 @@ import { TakeoffListTable } from "./takeoff-list-table";
 import { ProjectNameHeader } from "./project-name-header";
 import { DeleteProjectZone } from "./delete-project-zone";
 import { EditProjectDetailsDialog } from "./edit-project-details-dialog";
+import { ProjectSummaryChart } from "./project-summary-chart";
+import { ProjectMarginChart } from "./project-margin-chart";
 import { computeSummary } from "@/lib/estimate-types";
 import type { EstimateItem, EstimateSettings } from "@/lib/estimate-types";
 
@@ -36,11 +38,11 @@ export default async function ProjectDetailPage({
 }) {
   const supabase = createClient();
 
-  const [{ data: project }, { data: rawEstimates }, { data: drawings }, { data: rawTakeoffs }, { data: rawPriceRequests }, { data: rawQuotes }, { data: userRole }] =
+  const [{ data: project }, { data: rawEstimates }, { data: drawings }, { data: rawTakeoffs }, { data: rawPriceRequests }, { data: rawQuotes }, { data: userRole }, { data: rawActualsGroups }, { data: rawActualsItems }] =
     await Promise.all([
       supabase
         .from("projects")
-        .select("name, brand, status, location, head_client, notes")
+        .select("name, brand, status, location, head_client, notes, retention_pct")
         .eq("id", params.projectId)
         .single(),
       supabase
@@ -69,6 +71,14 @@ export default async function ProjectDetailPage({
         .eq("project_id", params.projectId)
         .order("created_at", { ascending: false }),
       supabase.rpc("user_project_role", { proj_id: params.projectId }),
+      supabase
+        .from("actual_groups")
+        .select("id, type")
+        .eq("project_id", params.projectId),
+      supabase
+        .from("actual_line_items")
+        .select("group_id, invoice_date, subtotal, qty, unit_price")
+        .eq("project_id", params.projectId),
     ]);
 
   const isViewer = userRole === "viewer";
@@ -82,7 +92,7 @@ export default async function ProjectDetailPage({
   const { data: allItems } = estimateIds.length
     ? await supabase
         .from("estimate_items")
-        .select("*")
+        .select("id, estimate_id, parent_item_id, sort_order, type, scope_category, finish_code, description, qty, unit, waste_pct, cov_lm, cov_area, cov_height_mm, mat_rate, lab_rate, coverage_m2, is_auto, manufacturer, level, product_type")
         .in("estimate_id", estimateIds)
     : { data: [] };
 
@@ -112,6 +122,32 @@ export default async function ProjectDetailPage({
       return [e.id, computeSummary(itemsByEstimate.get(e.id) ?? [], settings)];
     })
   );
+
+  // Merge actuals items with group type for the project summary chart
+  const actualsGroupTypeMap = new Map((rawActualsGroups ?? []).map(g => [g.id, g.type as "income" | "expense"]));
+  const actualsItems = (rawActualsItems ?? []).map(i => ({
+    invoice_date: i.invoice_date as string | null,
+    subtotal: i.subtotal as number,
+    qty: i.qty as number | null,
+    unit_price: i.unit_price as number | null,
+    type: actualsGroupTypeMap.get(i.group_id) ?? ("expense" as "income" | "expense"),
+  }));
+
+  // Actuals GP for margin chart
+  function actualsEffSub(item: { qty: number | null; unit_price: number | null; subtotal: number }) {
+    return item.qty != null && item.unit_price != null ? item.qty * item.unit_price : item.subtotal;
+  }
+  const totalActualIncome = actualsItems.filter(i => i.type === "income").reduce((s, i) => s + actualsEffSub(i), 0);
+  const totalActualCost = actualsItems.filter(i => i.type === "expense").reduce((s, i) => s + actualsEffSub(i), 0);
+  const actualGp = totalActualIncome - totalActualCost;
+  const actualGpPct = totalActualIncome > 0 ? (actualGp / totalActualIncome) * 100 : null;
+
+  // Pick approved → submitted → latest estimate for the chart
+  const chartEstimate =
+    estimates.find(e => e.status === "approved") ??
+    estimates.find(e => e.status === "submitted") ??
+    estimates[0] ?? null;
+  const chartSummary = chartEstimate ? estimateSummaries.get(chartEstimate.id) : null;
 
   const priceRequests = rawPriceRequests ?? [];
   const pendingReplies = priceRequests.filter((r) => r.status === "sent").length;
@@ -161,13 +197,14 @@ export default async function ProjectDetailPage({
               >
                 {project.brand === "dfo" ? "DFO" : "SPM"}
               </Badge>
+              {project.status === "completed" && (
+                <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-[11px]">Completed</Badge>
+              )}
+              {project.status === "rejected" && (
+                <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-[11px]">Rejected</Badge>
+              )}
               {project.status === "archived" && (
-                <Badge
-                  variant="outline"
-                  className="text-muted-foreground text-xs"
-                >
-                  Archived
-                </Badge>
+                <Badge variant="outline" className="text-muted-foreground text-[11px]">Archived</Badge>
               )}
             </div>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -183,6 +220,7 @@ export default async function ProjectDetailPage({
                   initialLocation={project.location}
                   initialHeadClient={project.head_client}
                   initialNotes={project.notes}
+                  initialRetentionPct={project.retention_pct ?? null}
                 />
               )}
             </div>
@@ -375,6 +413,47 @@ export default async function ProjectDetailPage({
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Actuals — admin/PM only */}
+      {canManageEstimates && (
+        <div className="space-y-3">
+          <h2 className="text-base font-semibold">Actuals</h2>
+          {chartEstimate && chartSummary ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <ProjectSummaryChart
+                estimateLabel={chartEstimate.name}
+                estimateValue={chartSummary.totalExGst}
+                actualsItems={actualsItems}
+                href={`/orgs/${params.orgSlug}/projects/${params.projectId}/actuals`}
+              />
+              <ProjectMarginChart
+                estimateGpPct={chartSummary.grossMarginPct}
+                estimateGp={chartSummary.totalExGst * chartSummary.grossMarginPct}
+                estimateValue={chartSummary.totalExGst}
+                actualGpPct={actualGpPct}
+                actualGp={actualGp}
+                actualIncome={totalActualIncome}
+                href={`/orgs/${params.orgSlug}/projects/${params.projectId}/actuals`}
+              />
+            </div>
+          ) : (
+            <Link
+              href={`/orgs/${params.orgSlug}/projects/${params.projectId}/actuals`}
+              className="group flex items-center gap-3 rounded-xl border border-border bg-card/65 backdrop-blur-xl px-4 py-3 hover:border-primary/40 transition-colors"
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium group-hover:text-primary transition-colors">
+                  Income, Expenses &amp; Margin
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Track real revenue and costs against the estimate
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-primary/60 transition-colors" />
+            </Link>
           )}
         </div>
       )}

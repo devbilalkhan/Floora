@@ -30,7 +30,7 @@ export default async function TakeoffPage({
       .single(),
     supabase
       .from("takeoffs")
-      .select("*")
+      .select("id, project_id, name, sort_order, created_by, created_at")
       .eq("project_id", params.projectId)
       .order("sort_order")
       .order("created_at"),
@@ -65,7 +65,7 @@ export default async function TakeoffPage({
     selectedId
       ? supabase
           .from("project_takeoff")
-          .select("*")
+          .select("id, takeoff_id, scope_category, finish_code, description, manufacturer, colour, location, level, product_type, qty, unit, waste_pct, notes, sort_order, parent_finish_code, cove_height_mm")
           .eq("takeoff_id", selectedId)
           .order("scope_category")
           .order("sort_order")

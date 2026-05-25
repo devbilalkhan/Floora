@@ -52,16 +52,14 @@ function Td({
   children,
   right,
   mono,
-  dim,
 }: {
   children?: React.ReactNode;
   right?: boolean;
   mono?: boolean;
-  dim?: boolean;
 }) {
   return (
     <td
-      className={`px-3 py-2 text-xs border-r border-border last:border-r-0 ${right ? "text-right tabular-nums" : "text-left"} ${mono ? "font-mono uppercase tracking-wide" : ""} ${dim ? "text-muted-foreground" : "text-foreground/75"}`}
+      className={`px-3 py-2 text-xs border-r border-border last:border-r-0 text-foreground ${right ? "text-right tabular-nums" : "text-left"} ${mono ? "font-mono uppercase tracking-wide" : ""}`}
     >
       {children}
     </td>
@@ -102,10 +100,10 @@ function ConsolidatedTable({ rows }: { rows: ConsolidatedRow[] }) {
           <tr key={row.description} className="hover:bg-muted/10">
             <Td>{row.description}</Td>
             <Td right>{fmt(row.qty)}</Td>
-            <Td dim>{row.unit}</Td>
+            <Td>{row.unit}</Td>
             <Td right>{row.rate > 0 ? `$${fmt(row.rate)}` : "—"}</Td>
             <Td right>{row.rate > 0 ? `$${fmt(row.qty * row.rate)}` : "—"}</Td>
-            <Td dim>{row.note ?? ""}</Td>
+            <Td>{row.note ?? ""}</Td>
           </tr>
         ))}
       </tbody>
@@ -131,7 +129,7 @@ export default async function MaterialsPage({
     supabase.from("estimates").select("name, description").eq("id", params.estimateId).single(),
     supabase
       .from("estimate_items")
-      .select("*")
+      .select("id, estimate_id, parent_item_id, sort_order, type, scope_category, finish_code, description, qty, unit, waste_pct, cov_lm, cov_area, cov_height_mm, mat_rate, lab_rate, coverage_m2, is_auto, manufacturer, level, product_type")
       .eq("estimate_id", params.estimateId)
       .order("sort_order"),
     supabase.from("projects").select("id, name").eq("id", params.projectId).single(),
@@ -273,10 +271,10 @@ export default async function MaterialsPage({
                     return (
                       <tr key={item.id} className="hover:bg-muted/10">
                         <Td mono>{item.finish_code ?? "—"}</Td>
-                        <Td dim>{item.manufacturer ?? "—"}</Td>
+                        <Td>{item.manufacturer ?? "—"}</Td>
                         <Td>{item.description ?? "—"}</Td>
                         <Td right>{purchaseQty > 0 ? fmt(purchaseQty) : "—"}</Td>
-                        <Td dim>{uLabel(item.unit)}</Td>
+                        <Td>{uLabel(item.unit)}</Td>
                         <Td right>{item.mat_rate > 0 ? `$${fmt(item.mat_rate)}` : "—"}</Td>
                         <Td right>{item.mat_rate > 0 && purchaseQty > 0 ? `$${fmt(matTotal)}` : "—"}</Td>
                       </tr>
@@ -329,7 +327,7 @@ export default async function MaterialsPage({
               {weldRods.map((wr, i) => (
                 <tr key={i} className="hover:bg-muted/10">
                   <Td mono>{wr.parent?.finish_code ?? "—"}</Td>
-                  <Td dim>{wr.parent?.manufacturer ?? "—"}</Td>
+                  <Td>{wr.parent?.manufacturer ?? "—"}</Td>
                   <Td>{wr.parent?.description ?? "—"}</Td>
                   <Td right>{fmt(wr.qty)}</Td>
                   <Td right>{wr.rate > 0 ? `$${fmt(wr.rate)}` : "—"}</Td>

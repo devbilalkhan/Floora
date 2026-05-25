@@ -71,16 +71,15 @@ export async function GET(request: Request) {
         .gt("expires_at", new Date().toISOString());
 
       if (pendingInvites && pendingInvites.length > 0) {
-        for (const invite of pendingInvites) {
-          await adminDb.from("organization_members").upsert(
-            { organization_id: invite.org_id, user_id: user.id, role: invite.role },
-            { onConflict: "organization_id,user_id", ignoreDuplicates: true }
-          );
-          await adminDb
-            .from("org_invites")
-            .update({ status: "accepted" })
-            .eq("id", invite.id);
-        }
+        await Promise.all(
+          pendingInvites.map(async (invite) => {
+            await adminDb.from("organization_members").upsert(
+              { organization_id: invite.org_id, user_id: user.id, role: invite.role },
+              { onConflict: "organization_id,user_id", ignoreDuplicates: true }
+            );
+            await adminDb.from("org_invites").update({ status: "accepted" }).eq("id", invite.id);
+          })
+        );
       }
     }
   }

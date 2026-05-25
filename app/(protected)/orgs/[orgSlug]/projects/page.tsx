@@ -7,6 +7,9 @@ import { FileSpreadsheet } from "lucide-react";
 import { NewProjectDialog } from "./new-project-dialog";
 import { ProjectRowActions } from "./project-row-actions";
 import { ImportTakeoffDialog } from "./import-takeoff-dialog";
+import { ProjectsSearch } from "./projects-search";
+
+const PAGE_SIZE = 20;
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-AU", {
@@ -18,9 +21,16 @@ function formatDate(iso: string) {
 
 export default async function OrgProjectsPage({
   params,
+  searchParams,
 }: {
   params: { orgSlug: string };
+  searchParams: { q?: string; page?: string };
 }) {
+  const q = (searchParams.q ?? "").trim();
+  const page = Math.max(1, parseInt(searchParams.page ?? "1", 10) || 1);
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
   const supabase = createClient();
 
   const { data: org } = await supabase
@@ -31,25 +41,50 @@ export default async function OrgProjectsPage({
 
   if (!org) notFound();
 
-  const [{ data: projects }, { data: userRole }] = await Promise.all([
-    supabase
-      .from("projects")
-      .select(
-        "id, name, location, head_client, status, brand, updated_at, estimates(count)"
-      )
-      .eq("organization_id", org.id)
-      .order("updated_at", { ascending: false }),
+  const basePath = `/orgs/${params.orgSlug}/projects`;
+
+  let dataQuery = supabase
+    .from("projects")
+    .select("id, name, location, head_client, status, brand, updated_at, estimates(count)")
+    .eq("organization_id", org.id);
+
+  let countQuery = supabase
+    .from("projects")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", org.id);
+
+  if (q) {
+    const filter = `name.ilike.%${q}%,location.ilike.%${q}%,head_client.ilike.%${q}%`;
+    dataQuery = dataQuery.or(filter);
+    countQuery = countQuery.or(filter);
+  }
+
+  const [{ data: projects }, { count: totalCount }, { data: userRole }] = await Promise.all([
+    dataQuery.order("updated_at", { ascending: false }).range(from, to),
+    countQuery,
     supabase.rpc("user_org_role", { org_id: org.id }),
   ]);
 
+  const total = totalCount ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
   const canWrite = ["admin", "project_manager"].includes(userRole ?? "");
+
+  function pageLink(p: number) {
+    const qs = new URLSearchParams();
+    if (q) qs.set("q", q);
+    if (p > 1) qs.set("page", String(p));
+    const str = qs.toString();
+    return str ? `${basePath}?${str}` : basePath;
+  }
 
   return (
     <div className="max-w-6xl mx-auto py-6 px-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Projects</h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-xl font-semibold shrink-0">Projects</h1>
+        <div className="flex-1" />
+        <ProjectsSearch initialValue={q} basePath={basePath} />
         {canWrite && (
-          <div className="flex items-center gap-2">
+          <>
             <ImportTakeoffDialog
               orgId={org.id}
               orgSlug={org.slug}
@@ -61,25 +96,39 @@ export default async function OrgProjectsPage({
               }
             />
             <NewProjectDialog orgId={org.id} orgSlug={org.slug} />
-          </div>
+          </>
         )}
       </div>
 
       {!projects || projects.length === 0 ? (
         <div className="border border-border rounded-xl flex items-center justify-center h-64">
           <div className="text-center space-y-3">
-            <p className="text-base font-medium">No projects yet</p>
-            {canWrite ? (
+            {q ? (
               <>
-                <p className="text-sm text-muted-foreground">
-                  Create your first project to get started.
-                </p>
-                <NewProjectDialog orgId={org.id} orgSlug={org.slug} />
+                <p className="text-base font-medium">No projects match &ldquo;{q}&rdquo;</p>
+                <Link
+                  href={basePath}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Clear search
+                </Link>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                Projects will appear here once they&apos;re created.
-              </p>
+              <>
+                <p className="text-base font-medium">No projects yet</p>
+                {canWrite ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      Create your first project to get started.
+                    </p>
+                    <NewProjectDialog orgId={org.id} orgSlug={org.slug} />
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Projects will appear here once they&apos;re created.
+                  </p>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -125,14 +174,17 @@ export default async function OrgProjectsPage({
                       {estimateCount}
                     </td>
                     <td className="px-2 py-1.5">
-                      {p.status === "active" ? (
-                        <Badge className="bg-success/15 text-success border-success/30 text-[11px]">
-                          Active
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-muted-foreground text-[11px]">
-                          Archived
-                        </Badge>
+                      {p.status === "active" && (
+                        <Badge className="bg-success/15 text-success border-success/30 text-[11px]">Active</Badge>
+                      )}
+                      {p.status === "completed" && (
+                        <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-[11px]">Completed</Badge>
+                      )}
+                      {p.status === "rejected" && (
+                        <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-[11px]">Rejected</Badge>
+                      )}
+                      {p.status === "archived" && (
+                        <Badge variant="outline" className="text-muted-foreground text-[11px]">Archived</Badge>
                       )}
                     </td>
                     <td className="px-2 py-1.5 text-[11px] text-muted-foreground">
@@ -144,7 +196,7 @@ export default async function OrgProjectsPage({
                           projectId={p.id}
                           projectName={p.name}
                           orgSlug={params.orgSlug}
-                          currentStatus={p.status as "active" | "archived"}
+                          currentStatus={p.status as "active" | "archived" | "completed" | "rejected"}
                         />
                       )}
                     </td>
@@ -153,6 +205,35 @@ export default async function OrgProjectsPage({
               })}
             </tbody>
           </table>
+
+          {/* Footer: count + pagination */}
+          <div className="flex items-center justify-between px-3 py-2 border-t border-black/10 dark:border-white/10 bg-card/65">
+            <span className="text-[11px] text-muted-foreground">
+              {total} project{total !== 1 ? "s" : ""}
+              {q && <span className="ml-1 opacity-60">matching &ldquo;{q}&rdquo;</span>}
+            </span>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                <span>Page {page} of {totalPages}</span>
+                <div className="flex items-center gap-2">
+                  {page > 1 ? (
+                    <Link href={pageLink(page - 1)} className="hover:text-foreground transition-colors">
+                      ← Prev
+                    </Link>
+                  ) : (
+                    <span className="opacity-30">← Prev</span>
+                  )}
+                  {page < totalPages ? (
+                    <Link href={pageLink(page + 1)} className="hover:text-foreground transition-colors">
+                      Next →
+                    </Link>
+                  ) : (
+                    <span className="opacity-30">Next →</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

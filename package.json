@@ -46,6 +46,7 @@
     "react-dom": "^18",
     "react-hook-form": "^7.75.0",
     "react-konva": "^18",
+    "recharts": "^2.15.4",
     "sonner": "^1",
     "tailwind-merge": "^2",
     "tailwindcss-animate": "^1.0.7",

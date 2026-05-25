@@ -54,7 +54,7 @@ export default async function NewPriceRequestPage({
   const { data: rawRows } = takeoffIds.length
     ? await supabase
         .from("project_takeoff")
-        .select("*")
+        .select("id, takeoff_id, scope_category, finish_code, description, manufacturer, colour, location, level, product_type, qty, unit, waste_pct, notes, sort_order, parent_finish_code, cove_height_mm")
         .in("takeoff_id", takeoffIds)
     : { data: [] };
 
