@@ -13,8 +13,8 @@ interface ActualItem {
 }
 
 interface Props {
-  estimateLabel: string;
-  estimateValue: number;
+  estimateLabel?: string;
+  estimateValue?: number;
   actualsItems: ActualItem[];
   href: string;
 }
@@ -81,6 +81,17 @@ export function ProjectSummaryChart({ estimateLabel, estimateValue, actualsItems
   const gpPct = totalIncome > 0 ? (gp / totalIncome) * 100 : null;
 
   const hasData = series.length > 0;
+  const hasEstimate = estimateValue != null && estimateValue > 0;
+
+  const domainMax = (max: number) =>
+    Math.max(max, hasEstimate ? estimateValue! * 1.05 : 1);
+
+  // Header label adapts to available data
+  const headerLabel = hasEstimate && estimateLabel
+    ? <span>vs <span className="text-foreground/70">{estimateLabel}</span></span>
+    : hasData
+    ? <span className="text-foreground/70">Actual income &amp; costs</span>
+    : <span>Estimate target</span>;
 
   return (
     <Link
@@ -89,7 +100,7 @@ export function ProjectSummaryChart({ estimateLabel, estimateValue, actualsItems
     >
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs text-muted-foreground">
-          vs <span className="text-foreground/70">{estimateLabel}</span>
+          {headerLabel}
           {gpPct != null && (
             <span className={`ml-2 font-medium tabular-nums ${gpPct >= 0 ? "text-emerald-400" : "text-orange-400"}`}>
               GP {gpPct.toFixed(1)}%
@@ -122,15 +133,17 @@ export function ProjectSummaryChart({ estimateLabel, estimateValue, actualsItems
               tick={{ fontSize: 9 }}
               interval="preserveStartEnd"
             />
-            <YAxis hide domain={[0, (max: number) => Math.max(max, estimateValue * 1.05)]} />
+            <YAxis hide domain={[0, domainMax]} />
             <Tooltip content={<AreaTooltip />} />
-            <ReferenceLine
-              y={estimateValue}
-              stroke="hsl(var(--primary))"
-              strokeDasharray="4 3"
-              strokeOpacity={0.5}
-              label={{ value: fmtK(estimateValue), position: "insideTopRight", fontSize: 9, fill: "hsl(var(--primary) / 0.7)" }}
-            />
+            {hasEstimate && (
+              <ReferenceLine
+                y={estimateValue}
+                stroke="hsl(var(--primary))"
+                strokeDasharray="4 3"
+                strokeOpacity={0.5}
+                label={{ value: fmtK(estimateValue!), position: "insideTopRight", fontSize: 9, fill: "hsl(var(--primary) / 0.7)" }}
+              />
+            )}
             <Area
               type="monotone"
               dataKey="income"
@@ -153,8 +166,11 @@ export function ProjectSummaryChart({ estimateLabel, estimateValue, actualsItems
         </ResponsiveContainer>
       </div>
 
-      {!hasData && (
-        <p className="text-center text-[10px] text-muted-foreground/50 -mt-1">No dated actuals yet</p>
+      {!hasData && hasEstimate && (
+        <p className="text-center text-[10px] text-muted-foreground/50 -mt-1">No dated actuals yet — target {fmtK(estimateValue!)}</p>
+      )}
+      {!hasData && !hasEstimate && (
+        <p className="text-center text-[10px] text-muted-foreground/50 -mt-1">No actuals recorded yet</p>
       )}
     </Link>
   );

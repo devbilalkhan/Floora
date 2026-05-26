@@ -5,9 +5,9 @@ import { ChevronRight } from "lucide-react";
 import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 interface Props {
-  estimateGpPct: number;   // decimal e.g. 0.25
-  estimateGp: number;
-  estimateValue: number;
+  estimateGpPct?: number;   // decimal e.g. 0.25 — omit when no estimate
+  estimateGp?: number;
+  estimateValue?: number;
   actualGpPct: number | null;
   actualGp: number;
   actualIncome: number;
@@ -62,19 +62,24 @@ export function ProjectMarginChart({
   actualGpPct, actualGp, actualIncome,
   href,
 }: Props) {
-  const estPctNum = estimateGpPct * 100;
+  const hasEstimate = estimateValue != null && estimateValue > 0;
+  const hasActuals = actualIncome > 0 || actualGp !== 0;
+
+  const estPctNum = hasEstimate ? (estimateGpPct ?? 0) * 100 : 0;
   const estPct = estPctNum.toFixed(1);
   const actPositive = actualGpPct == null || actualGpPct >= 0;
   const actColor = actPositive ? "rgb(52 211 153 / 0.85)" : "rgb(251 146 60 / 0.85)";
   const pctMax = Math.max(50, estPctNum * 1.3, Math.abs(actualGpPct ?? 0) * 1.3);
 
   const data = [
-    { category: "Income",   est: estimateValue, act: actualIncome, estM: undefined, actM: undefined },
-    { category: "GP",       est: estimateGp,    act: actualGp,     estM: undefined, actM: undefined },
-    { category: "Margin %", est: undefined,     act: undefined,    estM: estPctNum, actM: actualGpPct ?? 0 },
+    { category: "Income",   est: hasEstimate ? estimateValue : undefined, act: hasActuals ? actualIncome : undefined, estM: undefined, actM: undefined },
+    { category: "GP",       est: hasEstimate ? estimateGp : undefined,    act: hasActuals ? actualGp : undefined,     estM: undefined, actM: undefined },
+    { category: "Margin %", est: undefined, act: undefined,
+      estM: hasEstimate ? estPctNum : undefined,
+      actM: hasActuals && actualGpPct != null ? actualGpPct : undefined },
   ];
 
-  // Labels for dollar bars — GP row shows % only (no dollar); other rows show dollar value
+  // Labels for dollar bars — GP row shows % only; other rows show dollar value
   const EstDollarLabel = ({ x, y, width, value, index }: any) => {
     if (!value || isNaN(value)) return <g />;
     if (index === 1) {
@@ -92,7 +97,7 @@ export function ProjectMarginChart({
     return <text x={x + width / 2} y={y - 5} textAnchor="middle" fontSize={9} fill="hsl(var(--muted-foreground) / 0.85)">{fmtK(value)}</text>;
   };
 
-  // Labels for margin % bars — show dollar value above, percentage below with spacing
+  // Labels for margin % bars — show dollar value above, percentage below
   const EstPctLabel = ({ x, y, width, value }: any) => {
     if (!value || isNaN(value)) return <g />;
     return (
@@ -120,15 +125,20 @@ export function ProjectMarginChart({
     >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-            <span className="inline-block h-2 w-2 rounded-sm bg-primary/65" />
-            Est. GP {estPct}%
-          </div>
-          {actualGpPct != null && (
+          {hasEstimate && (
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              <span className="inline-block h-2 w-2 rounded-sm bg-primary/65" />
+              Est. GP {estPct}%
+            </div>
+          )}
+          {hasActuals && actualGpPct != null && (
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
               <span className="inline-block h-2 w-2 rounded-sm" style={{ background: actColor }} />
               Act. GP {actualGpPct.toFixed(1)}%
             </div>
+          )}
+          {!hasEstimate && !hasActuals && (
+            <span className="text-[10px] text-muted-foreground">No data yet</span>
           )}
         </div>
         <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-primary/60 transition-colors" />
@@ -143,19 +153,19 @@ export function ProjectMarginChart({
             <Tooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted) / 0.3)" }} />
 
             {/* Dollar bars */}
-            <Bar yAxisId="d" dataKey="est" name="Estimate" fill="hsl(var(--primary) / 0.65)" shape={<SafeBar />} radius={[3,3,0,0]} maxBarSize={38}>
+            <Bar yAxisId="d" dataKey="est" name="Estimate" fill="hsl(var(--primary) / 0.65)" shape={<SafeBar />} radius={[3,3,0,0]} maxBarSize={76}>
               <LabelList content={EstDollarLabel} />
             </Bar>
-            <Bar yAxisId="d" dataKey="act" name="Actual" shape={<SafeBar />} radius={[3,3,0,0]} maxBarSize={38}>
+            <Bar yAxisId="d" dataKey="act" name="Actual" shape={<SafeBar />} radius={[3,3,0,0]} maxBarSize={76}>
               {data.map((_, i) => <Cell key={i} fill={actColor} />)}
               <LabelList content={ActDollarLabel} />
             </Bar>
 
             {/* Margin % bars */}
-            <Bar yAxisId="p" dataKey="estM" name="Est. Margin" fill="hsl(var(--primary) / 0.45)" shape={<SafeBar />} radius={[3,3,0,0]} maxBarSize={38}>
+            <Bar yAxisId="p" dataKey="estM" name="Est. Margin" fill="hsl(var(--primary) / 0.45)" shape={<SafeBar />} radius={[3,3,0,0]} maxBarSize={76}>
               <LabelList content={EstPctLabel} />
             </Bar>
-            <Bar yAxisId="p" dataKey="actM" name="Act. Margin" shape={<SafeBar />} radius={[3,3,0,0]} maxBarSize={38}>
+            <Bar yAxisId="p" dataKey="actM" name="Act. Margin" shape={<SafeBar />} radius={[3,3,0,0]} maxBarSize={76}>
               {data.map((_, i) => <Cell key={i} fill={actColor.replace("0.85", "0.55")} />)}
               <LabelList content={ActPctLabel} />
             </Bar>

@@ -145,7 +145,7 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
         type: "primary",
         scope_category: scope,
         finish_code: row.finish_code,
-        description: row.description,
+        description: row.colour ? `${row.description ?? ""} — ${row.colour}`.trim() : row.description,
         manufacturer: row.manufacturer ?? null,
         qty,
         unit,

@@ -6,6 +6,7 @@ import type { EstimateItem } from "@/lib/estimate-types";
 import { itemMatQty } from "@/lib/estimate-types";
 import { CATEGORIES } from "@/lib/takeoff-types";
 import { PrintButton } from "./print-button";
+import { CsvExportButton, type CsvRow } from "./csv-export-button";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -28,10 +29,10 @@ const D = {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="border border-border rounded-sm overflow-hidden bg-card/65 backdrop-blur-xl">
-      <div className="px-4 py-2.5 bg-muted/30 border-b border-border flex items-center gap-2">
-        <div className="w-0.5 h-3.5 rounded-full bg-primary/60" />
-        <h2 className="text-[11px] font-bold text-foreground/80 uppercase tracking-widest">{title}</h2>
+    <div className="border border-border print:border-black print:border-[0.5px] rounded-sm overflow-hidden bg-card/65 backdrop-blur-xl print:bg-white">
+      <div className="px-4 py-2.5 bg-muted/30 print:bg-gray-100 border-b border-border print:border-black print:border-[0.5px] flex items-center gap-2">
+        <div className="w-0.5 h-3.5 rounded-full bg-primary/60 print:bg-black" />
+        <h2 className="text-[11px] font-bold text-foreground/80 print:text-black uppercase tracking-widest">{title}</h2>
       </div>
       {children}
     </div>
@@ -41,7 +42,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Th({ children, right }: { children?: React.ReactNode; right?: boolean }) {
   return (
     <th
-      className={`px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide border-r border-border last:border-r-0 ${right ? "text-right" : "text-left"}`}
+      className={`px-3 py-1.5 text-[10px] font-semibold text-muted-foreground print:text-black uppercase tracking-wide border-r border-border print:border-black print:border-[0.5px] last:border-r-0 ${right ? "text-right" : "text-left"}`}
     >
       {children}
     </th>
@@ -59,7 +60,7 @@ function Td({
 }) {
   return (
     <td
-      className={`px-3 py-2 text-xs border-r border-border last:border-r-0 text-foreground ${right ? "text-right tabular-nums" : "text-left"} ${mono ? "font-mono uppercase tracking-wide" : ""}`}
+      className={`px-3 py-2 text-xs border-r border-border print:border-black print:border-[0.5px] last:border-r-0 text-foreground print:text-black ${right ? "text-right tabular-nums" : "text-left"} ${mono ? "font-mono uppercase tracking-wide" : ""}`}
     >
       {children}
     </td>
@@ -86,7 +87,7 @@ function ConsolidatedTable({ rows }: { rows: ConsolidatedRow[] }) {
         <col className="w-48" />
       </colgroup>
       <thead>
-        <tr className="border-b border-border bg-muted/10">
+        <tr className="border-b border-border print:border-black print:border-[0.5px] bg-muted/10 print:bg-gray-50 print:break-inside-avoid">
           <Th>Material</Th>
           <Th right>Qty</Th>
           <Th>Unit</Th>
@@ -95,9 +96,9 @@ function ConsolidatedTable({ rows }: { rows: ConsolidatedRow[] }) {
           <Th>Note</Th>
         </tr>
       </thead>
-      <tbody className="divide-y divide-border">
+      <tbody className="divide-y divide-border print:divide-black print:divide-y-[0.5px]">
         {rows.map((row) => (
-          <tr key={row.description} className="hover:bg-muted/10">
+          <tr key={row.description} className="hover:bg-muted/10 print:bg-gray-50 print:break-inside-avoid">
             <Td>{row.description}</Td>
             <Td right>{fmt(row.qty)}</Td>
             <Td>{row.unit}</Td>
@@ -196,6 +197,59 @@ export default async function MaterialsPage({
       : []),
   ];
 
+  // ── CSV rows ──────────────────────────────────────────────────────────────
+  const csvRows: CsvRow[] = [
+    ...groupedPrimaries.flatMap(({ cat, rows }) =>
+      rows.map((item) => {
+        const purchaseQty = itemMatQty(item);
+        return {
+          section: `Floor Coverings — ${cat.label}`,
+          code: item.finish_code ?? "",
+          manufacturer: item.manufacturer ?? "",
+          description: item.description ?? "",
+          qty: purchaseQty,
+          unit: uLabel(item.unit),
+          rate: item.mat_rate,
+          total: purchaseQty * item.mat_rate,
+          note: "",
+        };
+      })
+    ),
+    ...adhesiveRows.map((r) => ({
+      section: "Adhesives & Preparation",
+      code: "",
+      manufacturer: "",
+      description: r.description,
+      qty: r.qty,
+      unit: r.unit,
+      rate: r.rate,
+      total: r.qty * r.rate,
+      note: r.note ?? "",
+    })),
+    ...covingRows.map((r) => ({
+      section: "Coving Materials",
+      code: "",
+      manufacturer: "",
+      description: r.description,
+      qty: r.qty,
+      unit: r.unit,
+      rate: r.rate,
+      total: r.qty * r.rate,
+      note: r.note ?? "",
+    })),
+    ...weldRods.map((wr) => ({
+      section: "Weld Rod",
+      code: wr.parent?.finish_code ?? "",
+      manufacturer: wr.parent?.manufacturer ?? "",
+      description: wr.parent?.description ?? "",
+      qty: wr.qty,
+      unit: "lm",
+      rate: wr.rate,
+      total: wr.qty * wr.rate,
+      note: "",
+    })),
+  ];
+
   return (
     <div className="max-w-5xl mx-auto py-6 px-4 space-y-5 print:py-4 print:px-0 print:space-y-4">
       {/* Breadcrumb */}
@@ -227,10 +281,16 @@ export default async function MaterialsPage({
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-lg font-bold">{estimate.name} — Material Schedule</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{project.name}</p>
+          <h1 className="text-lg font-bold print:text-black">{estimate.name} — Material Schedule</h1>
+          <p className="text-sm text-muted-foreground print:text-black mt-0.5">{project.name}</p>
         </div>
-        <PrintButton />
+        <div className="flex items-center gap-2 print:hidden">
+          <CsvExportButton
+            rows={csvRows}
+            filename={`${project.name} — ${estimate.name} Material Schedule.csv`}
+          />
+          <PrintButton />
+        </div>
       </div>
 
       {/* ── Floor Coverings ─────────────────────────────────────────────────── */}
@@ -238,12 +298,12 @@ export default async function MaterialsPage({
         <Section title="Floor Coverings">
           {groupedPrimaries.map(({ cat, rows }) => (
             <div key={cat.key}>
-              <div className="px-4 py-1.5 bg-muted/20 border-b border-border">
-                <span className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest">
+              <div className="px-4 py-1.5 bg-muted/20 border-b border-border print:border-black print:border-[0.5px]">
+                <span className="text-[10px] font-semibold text-muted-foreground/70 print:text-black uppercase tracking-widest">
                   {cat.label}
                 </span>
               </div>
-              <table className="w-full text-xs border-b border-border">
+              <table className="w-full text-xs border-b border-border print:border-black print:border-[0.5px]">
                 <colgroup>
                   <col className="w-20" />
                   <col className="w-28" />
@@ -254,7 +314,7 @@ export default async function MaterialsPage({
                   <col className="w-28" />
                 </colgroup>
                 <thead>
-                  <tr className="bg-muted/10 border-b border-border">
+                  <tr className="bg-muted/10 print:bg-gray-50 print:break-inside-avoid border-b border-border print:border-black print:border-[0.5px]">
                     <Th>Code</Th>
                     <Th>Manufacturer</Th>
                     <Th>Description</Th>
@@ -264,12 +324,12 @@ export default async function MaterialsPage({
                     <Th right>Mat Total</Th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody className="divide-y divide-border print:divide-black print:divide-y-[0.5px]">
                   {rows.map((item) => {
                     const purchaseQty = itemMatQty(item);
                     const matTotal = purchaseQty * item.mat_rate;
                     return (
-                      <tr key={item.id} className="hover:bg-muted/10">
+                      <tr key={item.id} className="hover:bg-muted/10 print:bg-gray-50 print:break-inside-avoid">
                         <Td mono>{item.finish_code ?? "—"}</Td>
                         <Td>{item.manufacturer ?? "—"}</Td>
                         <Td>{item.description ?? "—"}</Td>
@@ -314,7 +374,7 @@ export default async function MaterialsPage({
               <col className="w-28" />
             </colgroup>
             <thead>
-              <tr className="border-b border-border bg-muted/10">
+              <tr className="border-b border-border print:border-black print:border-[0.5px] bg-muted/10 print:bg-gray-50 print:break-inside-avoid">
                 <Th>Code</Th>
                 <Th>Manufacturer</Th>
                 <Th>Vinyl Product</Th>
@@ -323,9 +383,9 @@ export default async function MaterialsPage({
                 <Th right>Total</Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-border print:divide-black print:divide-y-[0.5px]">
               {weldRods.map((wr, i) => (
-                <tr key={i} className="hover:bg-muted/10">
+                <tr key={i} className="hover:bg-muted/10 print:bg-gray-50 print:break-inside-avoid">
                   <Td mono>{wr.parent?.finish_code ?? "—"}</Td>
                   <Td>{wr.parent?.manufacturer ?? "—"}</Td>
                   <Td>{wr.parent?.description ?? "—"}</Td>
@@ -340,7 +400,7 @@ export default async function MaterialsPage({
       )}
 
       {items.length === 0 && (
-        <div className="border-2 border-dashed border-border rounded-xl flex items-center justify-center h-40">
+        <div className="border-2 border-dashed border-border print:border-black print:border-[0.5px] rounded-xl flex items-center justify-center h-40">
           <p className="text-sm text-muted-foreground">No items in this estimate yet.</p>
         </div>
       )}

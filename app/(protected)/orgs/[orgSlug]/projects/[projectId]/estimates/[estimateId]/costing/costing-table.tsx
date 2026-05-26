@@ -66,13 +66,13 @@ function brandHue(name: string): number {
 const cell =
   "h-full w-full px-2 py-1 text-[11px] bg-transparent border-0 outline-none " +
   "focus:ring-1 focus:ring-inset focus:ring-primary/40 " +
-  "placeholder:text-muted-foreground/55 text-foreground/70";
+  "placeholder:text-muted-foreground/55 text-black dark:text-foreground/70";
 
 const cellRight = cell + " text-right tabular-nums";
 const cellMono = cell + " font-mono uppercase tracking-wide";
 
 const readonlyCell =
-  "h-full w-full px-2 py-1 text-[11px] tabular-nums text-right text-foreground/70 select-none cursor-default";
+  "h-full w-full px-2 py-1 text-[11px] tabular-nums text-right text-black dark:text-foreground/70 select-none cursor-default";
 
 const dimCell =
   "h-full w-full px-2 py-1 text-[11px] text-muted-foreground/45 select-none";
@@ -80,7 +80,7 @@ const dimCell =
 const selectCell =
   "h-full w-full px-2 py-1 text-xs border-0 outline-none cursor-pointer " +
   "appearance-none bg-transparent focus:ring-1 focus:ring-inset focus:ring-primary/40 " +
-  "text-foreground/70";
+  "text-black dark:text-foreground/70";
 
 const INIT_WIDTHS = [28, 76, 200, 64, 52, 52, 108, 84, 84, 80, 80, 96, 28];
 // # | Code | Description | Qty | Unit | Waste% | Eff.Qty | Mat$/u | Lab$/u | Mat$ | Lab$ | Total | Del
@@ -327,7 +327,7 @@ function PrimaryRow({
             value={local.description ?? ""}
             onChange={(e) => { set("description", e.target.value); schedule({ description: e.target.value || null }); }}
             onBlur={(e) => flush({ description: e.target.value.trim() || null })}
-            className="flex-1 min-w-0 text-xs bg-transparent border-0 outline-none focus:ring-0 placeholder:text-muted-foreground/55 text-foreground/70"
+            className="flex-1 min-w-0 text-xs bg-transparent border-0 outline-none focus:ring-0 placeholder:text-muted-foreground/55 text-black dark:text-foreground/70"
             placeholder="Product name"
           />
 
@@ -367,8 +367,8 @@ function PrimaryRow({
 
       <td className="border-r border-border p-0">
         <CalcInput
-          value={local.qty}
-          onCommit={(v) => { set("qty", v); flush({ qty: v }); }}
+          value={r2(local.qty)}
+          onCommit={(v) => { const newQty = r2(v); set("qty", newQty); flush({ qty: newQty }); }}
           className={cellRight}
           placeholder="0.00"
         />
@@ -393,7 +393,7 @@ function PrimaryRow({
           value={local.waste_pct === 0 ? "" : r2(local.waste_pct)}
           onChange={(e) => { const v = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)); set("waste_pct", v); schedule({ waste_pct: v }); }}
           onBlur={(e) => { const v = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)); set("waste_pct", v); flush({ waste_pct: v }); }}
-          className={cellRight}
+          className={cn(cellRight, "!text-muted-foreground/60 dark:!text-foreground/70")}
           placeholder="0"
           min={0}
           max={100}
@@ -402,9 +402,17 @@ function PrimaryRow({
       </td>
 
       <td className="border-r border-border p-0">
-        <div className={cn(readonlyCell, "text-secondary/80")}>
-          {local.qty > 0 ? fmt(effQty) : "—"}
-        </div>
+        <CalcInput
+          value={r2(effQty)}
+          onCommit={(v) => {
+            const divisor = 1 + local.waste_pct / 100;
+            const newQty = r2(Math.max(0, v / divisor - (local.cov_area ?? 0)));
+            set("qty", newQty);
+            flush({ qty: newQty });
+          }}
+          className={cn(cellRight, "text-secondary/80")}
+          placeholder="0.00"
+        />
       </td>
 
       <td className="border-r border-border p-0">
@@ -442,7 +450,7 @@ function PrimaryRow({
       </td>
 
       <td className="border-r border-border p-0">
-        <div className={cn(readonlyCell, "font-semibold text-foreground/75")}>
+        <div className={cn(readonlyCell, "font-semibold text-black dark:text-foreground/75")}>
           {total > 0 ? `$${fmt(total)}` : "—"}
         </div>
       </td>
@@ -915,10 +923,16 @@ export function CostingTable({
 
   // Category totals (primary rows only, children excluded from section display)
   const catTotals = useMemo(() => {
-    const map: Record<string, number> = {};
+    const map: Record<string, { mat: number; lab: number; total: number }> = {};
     grouped.primaries.forEach((item) => {
-      const t = itemTotal(item) + (grouped.children.get(item.id) ?? []).reduce((s, c) => s + itemTotal(c), 0);
-      map[item.scope_category] = (map[item.scope_category] ?? 0) + t;
+      const children = grouped.children.get(item.id) ?? [];
+      const mat = itemMatCost(item) + children.reduce((s, c) => s + itemMatCost(c), 0);
+      const lab = itemLabCost(item) + children.reduce((s, c) => s + itemLabCost(c), 0);
+      const entry = map[item.scope_category] ?? { mat: 0, lab: 0, total: 0 };
+      entry.mat += mat;
+      entry.lab += lab;
+      entry.total += mat + lab;
+      map[item.scope_category] = entry;
     });
     return map;
   }, [grouped]);
@@ -931,6 +945,18 @@ export function CostingTable({
 
   const grossMarginPct = summary.grossMarginPct;
   const markupWarning = grossMarginPct < 0.18;
+
+  const markupBadgeCls = settings.net_markup_pct >= 0.333
+    ? "bg-success/15 text-success border-success/30"
+    : settings.net_markup_pct >= 0.176
+    ? "bg-warning/15 text-warning border-warning/30"
+    : "bg-destructive/15 text-destructive border-destructive/30";
+
+  const markupTextCls = settings.net_markup_pct >= 0.333
+    ? "text-success"
+    : settings.net_markup_pct >= 0.176
+    ? "text-warning"
+    : "text-destructive";
 
   return (
     <div className="space-y-4">
@@ -980,6 +1006,9 @@ export function CostingTable({
             step={0.5}
           />
           <span className="text-muted-foreground">%</span>
+          <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold tabular-nums border", markupBadgeCls)}>
+            {fmtPct(settings.net_markup_pct)}%
+          </span>
           <span className={cn(
             "px-2 py-0.5 rounded text-[10px] font-bold tabular-nums border",
             markupWarning
@@ -1096,7 +1125,7 @@ export function CostingTable({
 
                 if (catPrimaries.length === 0) return null;
 
-                const catTotal = catTotals[cat.key] ?? 0;
+                const catTotal = catTotals[cat.key] ?? { mat: 0, lab: 0, total: 0 };
 
                 return (
                   <React.Fragment key={cat.key}>
@@ -1110,10 +1139,18 @@ export function CostingTable({
                               {cat.label}
                             </span>
                           </div>
-                          {catTotal > 0 && (
-                            <span className="text-[11px] tabular-nums text-foreground/55 font-medium">
-                              ${fmt(catTotal)}
-                            </span>
+                          {catTotal.total > 0 && (
+                            <div className="flex items-center gap-3">
+                              <span className="text-[10px] tabular-nums text-muted-foreground/60">
+                                Mat <span className="text-foreground/50 font-medium">${fmt(catTotal.mat)}</span>
+                              </span>
+                              <span className="text-[10px] tabular-nums text-muted-foreground/60">
+                                Lab <span className="text-foreground/50 font-medium">${fmt(catTotal.lab)}</span>
+                              </span>
+                              <span className="text-[11px] tabular-nums text-foreground/55 font-semibold">
+                                ${fmt(catTotal.total)}
+                              </span>
+                            </div>
                           )}
                         </div>
                       </td>
@@ -1297,19 +1334,11 @@ export function CostingTable({
                     <span className={cn("text-xs", markupWarning ? "text-warning" : "text-muted-foreground")}>
                       Mark-up
                     </span>
-                    <span className={cn(
-                      "px-1.5 py-0.5 rounded text-[10px] font-semibold border tabular-nums",
-                      markupWarning
-                        ? "bg-warning/15 text-warning border-warning/30"
-                        : "bg-secondary/15 text-secondary border-secondary/30"
-                    )}>
+                    <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-semibold border tabular-nums", markupBadgeCls)}>
                       {fmtPct(settings.net_markup_pct)}%
                     </span>
                   </div>
-                  <span className={cn(
-                    "tabular-nums font-bold text-base",
-                    markupWarning ? "text-warning" : "text-secondary"
-                  )}>
+                  <span className={cn("tabular-nums font-bold text-base", markupTextCls)}>
                     ${fmt(summary.markupAmount)}
                   </span>
                 </div>
