@@ -72,6 +72,23 @@ export async function deleteProject(projectId: string, orgSlug: string) {
   revalidatePath(`/orgs/${orgSlug}/projects`);
 }
 
+export async function duplicateProject(
+  projectId: string,
+  orgSlug: string,
+  newName: string
+): Promise<{ projectId: string }> {
+  await requireProjectWriteRole(projectId);
+  const { supabase } = await createAuthedClient();
+
+  const { data, error } = await supabase
+    .rpc("duplicate_project", { p_project_id: projectId, p_new_name: newName });
+
+  if (error) throw new Error(friendlyError(error.message));
+
+  revalidatePath(`/orgs/${orgSlug}/projects`);
+  return { projectId: data as string };
+}
+
 export async function setProjectStatus(
   projectId: string,
   orgSlug: string,
