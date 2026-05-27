@@ -78,12 +78,19 @@ export async function duplicateProject(
   newName: string
 ): Promise<{ projectId: string }> {
   await requireProjectWriteRole(projectId);
-  const { supabase } = await createAuthedClient();
+
+  // Must use the anon client (user JWT) so auth.uid() works inside the
+  // SECURITY DEFINER function. The service role client sends no JWT, which
+  // makes auth.uid() return NULL and fail the membership check.
+  const supabase = createClient();
 
   const { data, error } = await supabase
     .rpc("duplicate_project", { p_project_id: projectId, p_new_name: newName });
 
-  if (error) throw new Error(friendlyError(error.message));
+  if (error) {
+    console.error("[duplicateProject] RPC error:", error);
+    throw new Error(error.message);
+  }
 
   revalidatePath(`/orgs/${orgSlug}/projects`);
   return { projectId: data as string };
