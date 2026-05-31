@@ -2,10 +2,13 @@
 
 import React, { useState, useCallback } from "react";
 import Link from "next/link";
-import { ChevronRight, Sparkles, Loader2, Plus, Trash2, Download, X } from "lucide-react";
+import { ChevronRight, Sparkles, Loader2, Plus, Trash2, Download, X, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { pdf } from "@react-pdf/renderer";
+import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { QuotePdfDocument, type QuotePdfLine } from "./quote-pdf-document";
 import { saveQuote } from "./actions";
 import type { EstimateItem, Summary } from "@/lib/estimate-types";
@@ -29,6 +32,7 @@ const SCOPE_LABELS: Record<string, string> = {
 
 type QuoteLine = {
   id: string;
+  type?: "item" | "header";
   description: string;
   qty: number;
   unit: string;
@@ -36,29 +40,181 @@ type QuoteLine = {
   amount: number;
 };
 
-function buildLines(items: EstimateItem[]): QuoteLine[] {
-  return items.map((item) => {
-    const label = SCOPE_LABELS[item.scope_category] ?? item.scope_category;
-    const code = item.finish_code ? `${item.finish_code} — ` : "";
-    const desc = item.description ?? label;
-    const qty = Number(item.qty) || 0;
-    const total = itemTotal(item);
-    const rate = qty > 0 ? total / qty : 0;
-    return {
-      id: item.id,
-      description: `${code}${desc}`,
-      qty,
-      unit: item.unit,
-      rate,
-      amount: total,
-    };
-  });
+function levelLabel(lvl: string): string {
+  if (lvl === "GF") return "Ground Floor";
+  if (lvl === "B1") return "Basement Level 1";
+  if (lvl === "B2") return "Basement Level 2";
+  const match = lvl.match(/^L(\d+)$/);
+  if (match) return `Level ${match[1]}`;
+  return lvl;
+}
+
+function toLine(item: EstimateItem): QuoteLine {
+  const label = SCOPE_LABELS[item.scope_category] ?? item.scope_category;
+  const code = item.finish_code ? `${item.finish_code} — ` : "";
+  const desc = item.description ?? label;
+  const qty = Number(item.qty) || 0;
+  const total = itemTotal(item);
+  const rate = qty > 0 ? total / qty : 0;
+  return { id: item.id, type: "item", description: `${code}${desc}`, qty, unit: item.unit, rate, amount: total };
+}
+
+function buildLines(items: EstimateItem[], level: string, distinctLevels: string[]): QuoteLine[] {
+  if (level === "consolidated") {
+    // Group by finish_code; items without a code stay individual
+    const groups = new Map<string, EstimateItem[]>();
+    const order: string[] = [];
+    for (const item of items) {
+      const key = item.finish_code ?? `__solo_${item.id}`;
+      if (!groups.has(key)) { order.push(key); groups.set(key, []); }
+      groups.get(key)!.push(item);
+    }
+    return order.map((key) => {
+      const group = groups.get(key)!;
+      const first = group[0];
+      if (group.length === 1 || !first.finish_code) return toLine(first);
+      const totalQty = group.reduce((s, i) => s + (Number(i.qty) || 0), 0);
+      const totalAmount = group.reduce((s, i) => s + itemTotal(i), 0);
+      const rate = totalQty > 0 ? totalAmount / totalQty : 0;
+      const label = SCOPE_LABELS[first.scope_category] ?? first.scope_category;
+      const desc = first.description ?? label;
+      return { id: first.id, type: "item" as const, description: `${first.finish_code} — ${desc}`, qty: totalQty, unit: first.unit, rate, amount: totalAmount };
+    });
+  }
+  if (level !== "all") {
+    return items.filter((i) => i.level === level).map(toLine);
+  }
+  if (distinctLevels.length >= 2) {
+    const result: QuoteLine[] = [];
+    const assigned = new Set<string>();
+    for (const lvl of distinctLevels) {
+      const lvlItems = items.filter((i) => i.level === lvl);
+      if (lvlItems.length === 0) continue;
+      result.push({ id: `header-${lvl}`, type: "header", description: levelLabel(lvl), qty: 0, unit: "", rate: 0, amount: 0 });
+      lvlItems.forEach((i) => { assigned.add(i.id); result.push(toLine(i)); });
+    }
+    items.filter((i) => !assigned.has(i.id)).forEach((i) => result.push(toLine(i)));
+    return result;
+  }
+  return items.map(toLine);
 }
 
 // ── Input helpers ─────────────────────────────────────────────────────────────
 const docInput = "bg-transparent border-0 outline-none w-full text-[11px] text-gray-800 placeholder:text-gray-300 focus:bg-gray-50 focus:ring-1 focus:ring-gray-200 rounded px-1 py-0.5 transition-colors";
 const docInputSm = "bg-transparent border-0 outline-none w-full text-[11px] text-gray-800/80 placeholder:text-gray-300 focus:bg-gray-50 focus:ring-1 focus:ring-gray-200 rounded px-1 py-0.5 transition-colors";
 const docTextarea = "bg-transparent border-0 outline-none w-full text-[11px] text-gray-800/80 placeholder:text-gray-300 focus:bg-gray-50 focus:ring-1 focus:ring-gray-200 rounded px-1 py-0.5 resize-none transition-colors leading-relaxed print:overflow-visible";
+
+// ── Sortable row ──────────────────────────────────────────────────────────────
+function SortableQuoteLine({
+  line,
+  itemIdx,
+  onUpdate,
+  onRemove,
+}: {
+  line: QuoteLine;
+  itemIdx: number;
+  onUpdate: (id: string, field: keyof QuoteLine, value: string | number) => void;
+  onRemove: (id: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: line.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+
+  const grip = (
+    <td className="p-0 print:hidden w-6">
+      <span
+        {...listeners}
+        {...attributes}
+        className="cursor-grab flex items-center justify-center h-full w-6 py-1.5 text-gray-200 group-hover:text-gray-400 touch-none"
+      >
+        <GripVertical className="h-3 w-3" />
+      </span>
+    </td>
+  );
+
+  if (line.type === "header") {
+    return (
+      <tr ref={setNodeRef} style={style} className="bg-gray-100 border-b border-gray-200 group">
+        {grip}
+        <td colSpan={5} className="px-2 py-1.5">
+          <input
+            value={line.description}
+            onChange={(e) => onUpdate(line.id, "description", e.target.value)}
+            className="bg-transparent border-0 outline-none text-[10px] font-semibold text-gray-500 uppercase tracking-wide w-full focus:bg-gray-50 rounded px-1 py-0.5 transition-colors"
+            placeholder="Section label"
+          />
+        </td>
+        <td className="p-0 print:hidden">
+          <button
+            onClick={() => onRemove(line.id)}
+            className="opacity-0 group-hover:opacity-100 transition-opacity w-8 h-full flex items-center justify-center text-gray-300 hover:text-red-400"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "border-b border-gray-100 last:border-b-0 group",
+        itemIdx % 2 === 1 ? "bg-gray-50/40" : "bg-white"
+      )}
+    >
+      {grip}
+      <td className="p-0 border-r border-gray-100">
+        <input
+          value={line.description}
+          onChange={(e) => onUpdate(line.id, "description", e.target.value)}
+          className={cn(docInput, "px-2 py-1.5")}
+          placeholder="Description"
+        />
+      </td>
+      <td className="p-0 border-r border-gray-100">
+        <input
+          type="number"
+          value={line.qty}
+          onChange={(e) => onUpdate(line.id, "qty", parseFloat(e.target.value) || 0)}
+          className={cn(docInput, "text-right tabular-nums px-2 py-1.5")}
+        />
+      </td>
+      <td className="p-0 border-r border-gray-100">
+        <input
+          value={line.unit}
+          onChange={(e) => onUpdate(line.id, "unit", e.target.value)}
+          className={cn(docInput, "text-right px-2 py-1.5")}
+        />
+      </td>
+      <td className="p-0 border-r border-gray-100">
+        <input
+          type="number"
+          value={line.rate.toFixed(2)}
+          onChange={(e) => onUpdate(line.id, "rate", parseFloat(e.target.value) || 0)}
+          className={cn(docInput, "text-right tabular-nums px-2 py-1.5")}
+        />
+      </td>
+      <td className="p-0 border-r border-gray-100">
+        <input
+          type="number"
+          value={line.amount.toFixed(2)}
+          onChange={(e) => onUpdate(line.id, "amount", parseFloat(e.target.value) || 0)}
+          className={cn(docInput, "text-right tabular-nums font-medium px-2 py-1.5")}
+        />
+      </td>
+      <td className="p-0 print:hidden">
+        <button
+          onClick={() => onRemove(line.id)}
+          className="opacity-0 group-hover:opacity-100 transition-opacity w-8 h-full flex items-center justify-center text-gray-300 hover:text-red-400"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      </td>
+    </tr>
+  );
+}
 
 export function QuoteEditor({
   orgSlug,
@@ -78,6 +234,7 @@ export function QuoteEditor({
   clientName,
   estimateName,
   primaryItems,
+  levels,
   summary,
   quoteNumber,
   today,
@@ -107,6 +264,7 @@ export function QuoteEditor({
   clientName: string;
   estimateName: string;
   primaryItems: EstimateItem[];
+  levels: string[];
   summary: Summary;
   quoteNumber: string;
   today: string;
@@ -141,9 +299,34 @@ export function QuoteEditor({
   const [scopeText, setScopeText] = useState(initialScopeText ?? "");
   const [scopeLoading, setScopeLoading] = useState(false);
 
+  const [selectedLevel, setSelectedLevel] = useState<string>("consolidated");
+
   const [lines, setLines] = useState<QuoteLine[]>(() =>
-    initialLines && initialLines.length > 0 ? initialLines : buildLines(primaryItems)
+    initialLines && initialLines.length > 0 ? initialLines : buildLines(primaryItems, "consolidated", levels)
   );
+
+  function handleLevelChange(lvl: string) {
+    setSelectedLevel(lvl);
+    const newLines = buildLines(primaryItems, lvl, levels);
+    setLines(newLines);
+    const exGst = newLines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+    setTotalExGst(exGst);
+    setGst(exGst * 0.1);
+    setGrandTotal(exGst * 1.1);
+  }
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setLines((prev) => {
+      const oldIndex = prev.findIndex((l) => l.id === active.id);
+      const newIndex = prev.findIndex((l) => l.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+  }
 
   const [totalExGst, setTotalExGst] = useState(summary.totalExGst);
   const [gst, setGst] = useState(summary.gst);
@@ -290,7 +473,12 @@ export function QuoteEditor({
 
   function addLine() {
     const id = crypto.randomUUID();
-    setLines((prev) => [...prev, { id, description: "", qty: 1, unit: "m²", rate: 0, amount: 0 }]);
+    setLines((prev) => [...prev, { id, type: "item", description: "", qty: 1, unit: "m²", rate: 0, amount: 0 }]);
+  }
+
+  function addHeader() {
+    const id = crypto.randomUUID();
+    setLines((prev) => [...prev, { id, type: "header", description: "Section", qty: 0, unit: "", rate: 0, amount: 0 }]);
   }
 
   function removeLine(id: string) {
@@ -365,6 +553,26 @@ export function QuoteEditor({
         <p className="text-xs text-muted-foreground">
           Click any field to edit. Use &ldquo;Generate scope with AI&rdquo; to auto-populate the scope of works.
         </p>
+
+        {levels.length >= 2 && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Generate lines for:</span>
+            {(["consolidated", "all", ...levels] as string[]).map((lvl) => (
+              <button
+                key={lvl}
+                onClick={() => handleLevelChange(lvl)}
+                className={cn(
+                  "px-2.5 py-1 rounded text-xs border transition-colors",
+                  selectedLevel === lvl
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                )}
+              >
+                {lvl === "consolidated" ? "Consolidated" : lvl === "all" ? "All levels" : lvl}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Quote document ──────────────────────────────────────────────────── */}
@@ -544,6 +752,7 @@ export function QuoteEditor({
           <div className="border border-gray-200 rounded-sm overflow-hidden">
             <table className="w-full">
               <colgroup>
+                <col className="w-6 print:hidden" />
                 <col className="w-auto" />
                 <col className="w-20" />
                 <col className="w-16" />
@@ -553,6 +762,7 @@ export function QuoteEditor({
               </colgroup>
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="print:hidden" />
                   {["Description", "Qty", "Unit", "Rate (AUD)", "Amount (AUD)", ""].map((h, i) => (
                     <th
                       key={i}
@@ -567,76 +777,82 @@ export function QuoteEditor({
                   ))}
                 </tr>
               </thead>
-              <tbody>
-                {lines.map((line, idx) => (
-                  <tr
-                    key={line.id}
-                    className={cn(
-                      "border-b border-gray-100 last:border-b-0 group",
-                      idx % 2 === 1 ? "bg-gray-50/40" : "bg-white"
-                    )}
-                  >
-                    <td className="p-0 border-r border-gray-100">
-                      <input
-                        value={line.description}
-                        onChange={(e) => updateLine(line.id, "description", e.target.value)}
-                        className={cn(docInput, "px-2 py-1.5")}
-                        placeholder="Description"
-                      />
-                    </td>
-                    <td className="p-0 border-r border-gray-100">
-                      <input
-                        type="number"
-                        value={line.qty}
-                        onChange={(e) => updateLine(line.id, "qty", parseFloat(e.target.value) || 0)}
-                        className={cn(docInput, "text-right tabular-nums px-2 py-1.5")}
-                      />
-                    </td>
-                    <td className="p-0 border-r border-gray-100">
-                      <input
-                        value={line.unit}
-                        onChange={(e) => updateLine(line.id, "unit", e.target.value)}
-                        className={cn(docInput, "text-right px-2 py-1.5")}
-                      />
-                    </td>
-                    <td className="p-0 border-r border-gray-100">
-                      <input
-                        type="number"
-                        value={line.rate.toFixed(2)}
-                        onChange={(e) => updateLine(line.id, "rate", parseFloat(e.target.value) || 0)}
-                        className={cn(docInput, "text-right tabular-nums px-2 py-1.5")}
-                      />
-                    </td>
-                    <td className="p-0 border-r border-gray-100">
-                      <input
-                        type="number"
-                        value={line.amount.toFixed(2)}
-                        onChange={(e) => updateLine(line.id, "amount", parseFloat(e.target.value) || 0)}
-                        className={cn(docInput, "text-right tabular-nums font-medium px-2 py-1.5")}
-                      />
-                    </td>
-                    <td className="p-0 print:hidden">
-                      <button
-                        onClick={() => removeLine(line.id)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity w-8 h-full flex items-center justify-center text-gray-300 hover:text-red-400"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+              <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+                <SortableContext items={lines.map((l) => l.id)} strategy={verticalListSortingStrategy}>
+                  <tbody>
+                    {(() => {
+                      let itemIdx = 0;
+                      const hasHeaders = lines.some((l) => l.type === "header");
+                      const rows: React.ReactNode[] = [];
+                      let sectionLabel = "";
+                      let sectionTotal = 0;
+                      let inSection = false;
+
+                      lines.forEach((line, i) => {
+                        const isLast = i === lines.length - 1;
+                        const nextIsHeader = !isLast && lines[i + 1].type === "header";
+
+                        rows.push(
+                          <SortableQuoteLine
+                            key={line.id}
+                            line={line}
+                            itemIdx={line.type === "header" ? 0 : itemIdx++}
+                            onUpdate={updateLine}
+                            onRemove={removeLine}
+                          />
+                        );
+
+                        if (hasHeaders) {
+                          if (line.type === "header") {
+                            sectionLabel = line.description;
+                            sectionTotal = 0;
+                            inSection = true;
+                          } else {
+                            sectionTotal += Number(line.amount) || 0;
+                            if (inSection && (isLast || nextIsHeader)) {
+                              rows.push(
+                                <tr key={`sub-${line.id}`} className="bg-gray-50 border-b border-gray-200">
+                                  <td className="print:hidden" />
+                                  <td colSpan={4} className="px-2 py-1 text-right text-[10px] text-gray-400 italic">
+                                    {sectionLabel} subtotal
+                                  </td>
+                                  <td className="px-2 py-1 text-right text-[10px] font-semibold text-gray-600 tabular-nums font-mono border-r border-gray-100">
+                                    ${fmt(sectionTotal)}
+                                  </td>
+                                  <td className="print:hidden" />
+                                </tr>
+                              );
+                              sectionTotal = 0;
+                            }
+                          }
+                        }
+                      });
+
+                      return rows;
+                    })()}
+                  </tbody>
+                </SortableContext>
+              </DndContext>
             </table>
           </div>
 
-          {/* Add line */}
-          <button
-            onClick={addLine}
-            className="print:hidden mt-2 flex items-center gap-1 text-[11px] text-gray-400 hover:text-violet-500 transition-colors py-1"
-          >
-            <Plus className="h-3 w-3" />
-            Add line item
-          </button>
+          {/* Add line / Add section header */}
+          <div className="print:hidden mt-2 flex items-center gap-4">
+            <button
+              onClick={addLine}
+              className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-violet-500 transition-colors py-1"
+            >
+              <Plus className="h-3 w-3" />
+              Add line item
+            </button>
+            <button
+              onClick={addHeader}
+              className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-violet-500 transition-colors py-1"
+            >
+              <Plus className="h-3 w-3" />
+              Add section header
+            </button>
+          </div>
         </div>
 
         {/* Totals */}

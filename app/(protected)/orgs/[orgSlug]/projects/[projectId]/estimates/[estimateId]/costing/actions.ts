@@ -180,19 +180,10 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
         manufacturer: null, is_auto: true, level: null,
       };
 
-      // Glue — sheet and plank_glued only (not floating)
-      if (!isFloating(productType)) {
-        children.push({ ...base, sort_order: sortOrder++, description: "Glue Sheet/Plank", qty: ceil(floorArea / COVERAGE), unit: "drum", mat_rate: MAT.glueSheet, lab_rate: 0, coverage_m2: COVERAGE });
-      }
-
-      if (floorArea > 0) {
-        children.push({ ...base, sort_order: sortOrder++, description: "Feather Finish 20kg",   qty: ceil(floorArea / COVERAGE), unit: "bag", mat_rate: MAT.featherFinish, lab_rate: 0,                 coverage_m2: COVERAGE });
-        children.push({ ...base, sort_order: sortOrder++, description: "Feather Finish Labour",  qty: floorArea,                  unit: "m2",  mat_rate: 0,                 lab_rate: LAB.featherFinish, coverage_m2: null     });
-
-        // Weld rod — sheet only (planks are clicked/glued, not welded)
-        if (!isPlank(productType)) {
-          children.push({ ...base, sort_order: sortOrder++, description: "Weld Rod", qty: ceil(floorArea / 2), unit: "lm", mat_rate: MAT.weldRod, lab_rate: 0, coverage_m2: 2 });
-        }
+      // Weld rod — sheet only (planks are clicked/glued, not welded)
+      // Glue + Feather Finish are consolidated at section level via syncSectionConsumables
+      if (floorArea > 0 && !isPlank(productType)) {
+        children.push({ ...base, sort_order: sortOrder++, description: "Weld Rod", qty: ceil(floorArea / 2), unit: "lm", mat_rate: MAT.weldRod, lab_rate: 0, coverage_m2: 2 });
       }
 
       // Coving — sheet only (planks cannot cove)
@@ -268,6 +259,22 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
     }
   }
 
+  // Build section-level consumables (FF + Glue) for each vinyl scope
+  for (const sc of ["vinyl", "wall_vinyl"] as const) {
+    const { data: vp } = await supabase
+      .from("estimate_items")
+      .select("qty, product_type")
+      .eq("estimate_id", estimateId)
+      .eq("scope_category", sc)
+      .eq("type", "primary");
+    const rows = vp ?? [];
+    const totalArea   = rows.reduce((s, p) => s + (Number(p.qty) || 0), 0);
+    const gluableArea = rows.filter(p => !isFloating(p.product_type)).reduce((s, p) => s + (Number(p.qty) || 0), 0);
+    if (totalArea > 0 || gluableArea > 0) {
+      await syncSectionConsumables(estimateId, sc, totalArea, gluableArea);
+    }
+  }
+
   // Update estimate to record the source takeoff
   await supabase
     .from("estimates")
@@ -325,11 +332,7 @@ function buildAutoChildren(
   };
 
   if (scopeCategory === "vinyl" || scopeCategory === "wall_vinyl") {
-    if (!isFloating(productType)) {
-      children.push({ ...base, sort_order: order++, description: "Glue Sheet/Plank",     unit: "drum", mat_rate: MAT.glueSheet,     lab_rate: 0,                 coverage_m2: COVERAGE });
-    }
-    children.push({ ...base, sort_order: order++, description: "Feather Finish 20kg",  unit: "bag",  mat_rate: MAT.featherFinish, lab_rate: 0,                 coverage_m2: COVERAGE });
-    children.push({ ...base, sort_order: order++, description: "Feather Finish Labour", unit: "m2",  mat_rate: 0,                 lab_rate: LAB.featherFinish, coverage_m2: null    });
+    // Glue + Feather Finish are consolidated at section level via syncSectionConsumables
     if (!isPlank(productType)) {
       children.push({ ...base, sort_order: order++, description: "Weld Rod", unit: "lm", mat_rate: MAT.weldRod, lab_rate: 0, coverage_m2: 2 });
     }
@@ -519,6 +522,86 @@ export async function restoreAutoConsumables(
 
   const { data } = await supabase.from("estimate_items").insert(withQty).select(ESTIMATE_ITEMS_COLS);
   return (data ?? []) as EstimateItem[];
+}
+
+// ── Sync section-level consumables (FF + Glue) for a vinyl scope ─────────────
+// These rows have parent_item_id = null and are consolidated across all primary
+// items in the section. Called after any vinyl primary qty change, add, or delete.
+export async function syncSectionConsumables(
+  estimateId: string,
+  scopeCategory: string,
+  totalArea: number,
+  gluableArea: number
+): Promise<EstimateItem[]> {
+  await assertEstimateAccess(estimateId);
+  const { supabase } = await createAuthedClient();
+
+  const base = {
+    estimate_id: estimateId,
+    parent_item_id: null,
+    scope_category: scopeCategory,
+    type: "consumable" as const,
+    finish_code: null,
+    waste_pct: 0,
+    cov_lm: null, cov_area: null, cov_height_mm: null,
+    manufacturer: null,
+    is_auto: true,
+    level: null,
+    product_type: null,
+  };
+
+  // Build expected rows
+  const expected = new Map<string, { qty: number; sort_order: number; unit: string; mat_rate: number; lab_rate: number; coverage_m2: number | null }>();
+  if (gluableArea > 0) {
+    expected.set("Glue Sheet/Plank",     { qty: ceil(gluableArea / COVERAGE), sort_order: 9000, unit: "drum", mat_rate: MAT.glueSheet,     lab_rate: 0,                 coverage_m2: COVERAGE });
+  }
+  if (totalArea > 0) {
+    expected.set("Feather Finish 20kg",  { qty: ceil(totalArea  / COVERAGE), sort_order: 9001, unit: "bag",  mat_rate: MAT.featherFinish, lab_rate: 0,                 coverage_m2: COVERAGE });
+    expected.set("Feather Finish Labour", { qty: totalArea,                   sort_order: 9002, unit: "m2",  mat_rate: 0,                 lab_rate: LAB.featherFinish, coverage_m2: null     });
+  }
+
+  // Fetch existing section-level consumables for this scope
+  const { data: existing } = await supabase
+    .from("estimate_items")
+    .select(ESTIMATE_ITEMS_COLS)
+    .eq("estimate_id", estimateId)
+    .eq("scope_category", scopeCategory)
+    .eq("is_auto", true)
+    .is("parent_item_id", null);
+
+  const existingMap = new Map((existing ?? []).map((r) => [r.description as string, r as EstimateItem]));
+
+  const toInsert: Omit<EstimateItem, "id" | "created_at" | "updated_at">[] = [];
+  const toUpdate: { id: string; qty: number }[] = [];
+  const toDelete: string[] = [];
+
+  Array.from(expected.entries()).forEach(([desc, row]) => {
+    const ex = existingMap.get(desc);
+    if (ex) {
+      if (Number(ex.qty) !== row.qty) toUpdate.push({ id: ex.id, qty: row.qty });
+    } else {
+      toInsert.push({ ...base, description: desc, ...row });
+    }
+  });
+  Array.from(existingMap.entries()).forEach(([desc, ex]) => {
+    if (!expected.has(desc)) toDelete.push(ex.id);
+  });
+
+  await Promise.all([
+    ...toUpdate.map(({ id, qty }) => supabase.from("estimate_items").update({ qty }).eq("id", id)),
+    toDelete.length > 0 ? supabase.from("estimate_items").delete().in("id", toDelete) : Promise.resolve(),
+  ]);
+
+  let inserted: EstimateItem[] = [];
+  if (toInsert.length > 0) {
+    const { data } = await supabase.from("estimate_items").insert(toInsert).select(ESTIMATE_ITEMS_COLS);
+    inserted = (data ?? []) as EstimateItem[];
+  }
+
+  // Return all section consumables now in DB (updated existing + newly inserted)
+  const updatedExisting = toUpdate.map(({ id, qty }) => ({ ...(existingMap.get(Array.from(existingMap.keys()).find(k => existingMap.get(k)!.id === id)!)!), qty }));
+  const kept = Array.from(existingMap.values()).filter(r => !toDelete.includes(r.id) && !toUpdate.some(u => u.id === r.id));
+  return [...kept, ...updatedExisting, ...inserted];
 }
 
 // ── Wet area CRUD ─────────────────────────────────────────────────────────────

@@ -137,13 +137,13 @@ export default async function OrgProjectsPage({
           <table className="w-full">
             <thead>
               <tr className="border-b border-black/10 dark:border-white/10 bg-muted/40">
-                <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Project</th>
-                <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Location</th>
-                <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Client</th>
-                <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Brand</th>
-                <th className="text-right px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Estimates</th>
-                <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Status</th>
-                <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Updated</th>
+                <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Project</th>
+                <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Location</th>
+                <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Client</th>
+                <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Brand</th>
+                <th className="text-right px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Estimates</th>
+                <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</th>
+                <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Updated</th>
                 <th className="w-8 px-2" />
               </tr>
             </thead>
@@ -153,7 +153,7 @@ export default async function OrgProjectsPage({
                   (p.estimates as unknown as { count: number }[])[0]?.count ?? 0;
                 return (
                   <tr key={p.id} className="border-b border-black/10 dark:border-white/10 last:border-0 hover:bg-muted/10 transition-colors group">
-                    <td className="px-2 py-1.5 text-[11px]">
+                    <td className="px-2 py-1.5 text-xs">
                       <Link
                         href={`/orgs/${params.orgSlug}/projects/${p.id}`}
                         className="font-medium text-foreground/70 hover:text-primary transition-colors block"
@@ -161,16 +161,16 @@ export default async function OrgProjectsPage({
                         {p.name}
                       </Link>
                     </td>
-                    <td className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                    <td className="px-2 py-1.5 text-xs text-foreground/80">
                       {p.location || "—"}
                     </td>
-                    <td className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                    <td className="px-2 py-1.5 text-xs text-foreground/80">
                       {p.head_client || "—"}
                     </td>
-                    <td className="px-2 py-1.5 text-[11px] text-muted-foreground uppercase tracking-wide">
+                    <td className="px-2 py-1.5 text-xs text-foreground/80 uppercase tracking-wide">
                       {p.brand === "dfo" ? "DFO" : "SPM"}
                     </td>
-                    <td className="px-2 py-1.5 text-[11px] text-right tabular-nums text-foreground/70">
+                    <td className="px-2 py-1.5 text-xs text-right tabular-nums text-foreground/70">
                       {estimateCount}
                     </td>
                     <td className="px-2 py-1.5">
@@ -187,7 +187,7 @@ export default async function OrgProjectsPage({
                         <Badge variant="outline" className="text-muted-foreground text-[11px]">Archived</Badge>
                       )}
                     </td>
-                    <td className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                    <td className="px-2 py-1.5 text-xs text-foreground/80">
                       {formatDate(p.updated_at)}
                     </td>
                     <td className="px-2 py-1.5">
@@ -208,12 +208,12 @@ export default async function OrgProjectsPage({
 
           {/* Footer: count + pagination */}
           <div className="flex items-center justify-between px-3 py-2 border-t border-black/10 dark:border-white/10 bg-card/65">
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {total} project{total !== 1 ? "s" : ""}
               {q && <span className="ml-1 opacity-60">matching &ldquo;{q}&rdquo;</span>}
             </span>
             {totalPages > 1 && (
-              <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 <span>Page {page} of {totalPages}</span>
                 <div className="flex items-center gap-2">
                   {page > 1 ? (

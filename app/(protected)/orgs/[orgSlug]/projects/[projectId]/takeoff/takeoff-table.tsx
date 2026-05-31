@@ -21,12 +21,12 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/comp
 export type { TakeoffRow };
 
 const cell =
-  "h-full w-full px-2 py-1 text-[11px] bg-transparent border-0 outline-none " +
+  "h-full w-full px-2 py-1 text-xs bg-transparent border-0 outline-none " +
   "focus:ring-1 focus:ring-inset focus:ring-primary/40 " +
   "placeholder:text-muted-foreground/25 text-foreground/70";
 
 const selectCell =
-  "h-full w-full px-2 py-1 text-[11px] border-0 outline-none cursor-pointer " +
+  "h-full w-full px-2 py-1 text-xs border-0 outline-none cursor-pointer " +
   "appearance-none bg-card focus:ring-1 focus:ring-inset focus:ring-primary/40 " +
   "text-foreground/70";
 
@@ -155,7 +155,7 @@ function TakeoffRowComp({
               placeholder="A-01"
             />
           </TooltipTrigger>
-          {local.finish_code && <TooltipContent className="text-[11px] px-2 py-0.5">{local.finish_code}</TooltipContent>}
+          {local.finish_code && <TooltipContent className="text-xs px-2 py-0.5">{local.finish_code}</TooltipContent>}
         </Tooltip>
       </td>
 
@@ -172,7 +172,7 @@ function TakeoffRowComp({
               placeholder="Manufacturer / range"
             />
           </TooltipTrigger>
-          {local.manufacturer && <TooltipContent className="text-[11px] px-2 py-0.5">{local.manufacturer}</TooltipContent>}
+          {local.manufacturer && <TooltipContent className="text-xs px-2 py-0.5">{local.manufacturer}</TooltipContent>}
         </Tooltip>
       </td>
 
@@ -189,7 +189,7 @@ function TakeoffRowComp({
               placeholder="Product name"
             />
           </TooltipTrigger>
-          {local.description && <TooltipContent className="text-[11px] px-2 py-0.5">{local.description}</TooltipContent>}
+          {local.description && <TooltipContent className="text-xs px-2 py-0.5">{local.description}</TooltipContent>}
         </Tooltip>
       </td>
 
@@ -206,7 +206,7 @@ function TakeoffRowComp({
               placeholder="Colour / code"
             />
           </TooltipTrigger>
-          {local.colour && <TooltipContent className="text-[11px] px-2 py-0.5">{local.colour}</TooltipContent>}
+          {local.colour && <TooltipContent className="text-xs px-2 py-0.5">{local.colour}</TooltipContent>}
         </Tooltip>
       </td>
 
@@ -303,7 +303,7 @@ function TakeoffRowComp({
             placeholder="RF-01"
           />
         ) : (
-          <span className="block h-full w-full px-2 py-1 text-[11px] text-muted-foreground/20 select-none">—</span>
+          <span className="block h-full w-full px-2 py-1 text-xs text-muted-foreground/20 select-none">—</span>
         )}
       </td>
 
@@ -315,7 +315,7 @@ function TakeoffRowComp({
             onValueChange={(v) => handleSelectChange("product_type", v)}
             disabled={!canWrite}
           >
-            <SelectTrigger className="h-full w-full border-0 rounded-none shadow-none bg-transparent text-[11px] text-foreground/70 px-2 py-1 focus:ring-1 focus:ring-inset focus:ring-primary/40 hover:bg-muted/20 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-40 [&>svg]:shrink-0">
+            <SelectTrigger className="h-full w-full border-0 rounded-none shadow-none bg-transparent text-xs text-foreground/70 px-2 py-1 focus:ring-1 focus:ring-inset focus:ring-primary/40 hover:bg-muted/20 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-40 [&>svg]:shrink-0">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -330,7 +330,7 @@ function TakeoffRowComp({
             onValueChange={(v) => handleSelectChange("product_type", v)}
             disabled={!canWrite}
           >
-            <SelectTrigger className="h-full w-full border-0 rounded-none shadow-none bg-transparent text-[11px] text-foreground/70 px-2 py-1 focus:ring-1 focus:ring-inset focus:ring-primary/40 hover:bg-muted/20 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-40 [&>svg]:shrink-0">
+            <SelectTrigger className="h-full w-full border-0 rounded-none shadow-none bg-transparent text-xs text-foreground/70 px-2 py-1 focus:ring-1 focus:ring-inset focus:ring-primary/40 hover:bg-muted/20 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-40 [&>svg]:shrink-0">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -349,7 +349,7 @@ function TakeoffRowComp({
             }}
             disabled={!canWrite}
           >
-            <SelectTrigger className="h-full w-full border-0 rounded-none shadow-none bg-transparent text-[11px] text-foreground/70 px-2 py-1 focus:ring-1 focus:ring-inset focus:ring-primary/40 hover:bg-muted/20 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-40 [&>svg]:shrink-0">
+            <SelectTrigger className="h-full w-full border-0 rounded-none shadow-none bg-transparent text-xs text-foreground/70 px-2 py-1 focus:ring-1 focus:ring-inset focus:ring-primary/40 hover:bg-muted/20 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-40 [&>svg]:shrink-0">
               <SelectValue placeholder="—" />
             </SelectTrigger>
             <SelectContent>
@@ -360,7 +360,7 @@ function TakeoffRowComp({
             </SelectContent>
           </Select>
         ) : (
-          <span className="block h-full w-full px-2 py-1 text-[11px] text-muted-foreground/20 select-none">—</span>
+          <span className="block h-full w-full px-2 py-1 text-xs text-muted-foreground/20 select-none">—</span>
         )}
       </td>
 
@@ -377,7 +377,7 @@ function TakeoffRowComp({
               placeholder="Notes / DWG ref…"
             />
           </TooltipTrigger>
-          {local.notes && <TooltipContent className="text-[11px] px-2 py-0.5">{local.notes}</TooltipContent>}
+          {local.notes && <TooltipContent className="text-xs px-2 py-0.5">{local.notes}</TooltipContent>}
         </Tooltip>
       </td>
 
@@ -731,12 +731,12 @@ export function TakeoffTable({
                       <td colSpan={15} className="px-3 py-1">
                         <div className="flex items-center justify-between">
                           {/* Lighter in light mode, slightly muted in dark */}
-                          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                             {cat.label}
                           </span>
                           <div className="flex items-center gap-5">
                             {Object.entries(catTotals).map(([unit, net]) => (
-                              <div key={unit} className="flex items-center gap-1.5 text-[11px] tabular-nums">
+                              <div key={unit} className="flex items-center gap-1.5 text-xs tabular-nums">
                                 <span className="text-muted-foreground">net</span>
                                 <span className="text-foreground/70">{fmt(net)}</span>
                                 <span className="text-muted-foreground/50">→</span>
@@ -768,7 +768,7 @@ export function TakeoffTable({
                         <td colSpan={15} className="px-3 py-0.5 border-b border-border">
                           <button
                             onClick={() => addRow(cat.key)}
-                            className="flex items-center gap-1 text-[11px] text-primary/60 dark:text-primary hover:text-primary transition-colors py-0.5"
+                            className="flex items-center gap-1 text-xs text-primary/60 dark:text-primary hover:text-primary transition-colors py-0.5"
                           >
                             <Plus className="h-2.5 w-2.5" />
                             Add row
@@ -804,7 +804,7 @@ export function TakeoffTable({
             )}
             <button
               onClick={() => setAddSectionOpen((v) => !v)}
-              className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors py-0.5"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5"
             >
               <Plus className="h-3 w-3" />
               Add section
@@ -825,10 +825,10 @@ export function TakeoffTable({
             </span>
             {Object.entries(grandTotal).map(([unit, actual]) => (
               <div key={unit} className="flex items-baseline gap-1.5 whitespace-nowrap">
-                <span className="text-[11px] font-medium text-muted-foreground">{uLabel(unit)}</span>
-                <span className="text-[11px] tabular-nums text-foreground/70">{fmt(actual)}</span>
-                <span className="text-muted-foreground/50 text-[11px]">→</span>
-                <span className="text-[11px] font-semibold tabular-nums text-primary">{fmt(grandSupply[unit] ?? actual)}</span>
+                <span className="text-xs font-medium text-muted-foreground">{uLabel(unit)}</span>
+                <span className="text-xs tabular-nums text-foreground/70">{fmt(actual)}</span>
+                <span className="text-muted-foreground/50 text-xs">→</span>
+                <span className="text-xs font-semibold tabular-nums text-primary">{fmt(grandSupply[unit] ?? actual)}</span>
               </div>
             ))}
           </div>
@@ -845,7 +845,7 @@ export function TakeoffTable({
                 Saved
               </span>
             )}
-            <span className="text-[11px] text-muted-foreground/70">
+            <span className="text-xs text-muted-foreground/70">
               {rows.length} {rows.length === 1 ? "row" : "rows"}
             </span>
           </div>
@@ -915,43 +915,43 @@ export function TakeoffTable({
                     CATEGORIES.find((c) => c.key === entry.scope_category)?.label ?? entry.scope_category;
                   return (
                     <tr key={entry.finish_code} className="border-b border-border hover:bg-muted/10">
-                      <td className="px-2 py-1 text-[11px] font-mono font-medium text-foreground/70 border-r border-border">
+                      <td className="px-2 py-1 text-xs font-mono font-medium text-foreground/70 border-r border-border">
                         {entry.finish_code}
                       </td>
-                      <td className="px-2 py-1 text-[11px] text-muted-foreground border-r border-border">
+                      <td className="px-2 py-1 text-xs text-muted-foreground border-r border-border">
                         {catLabel}
                       </td>
-                      <td className="px-2 py-1 text-[11px] text-foreground/70 border-r border-border">
+                      <td className="px-2 py-1 text-xs text-foreground/70 border-r border-border">
                         {entry.description ?? <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-[11px] text-foreground/70 border-r border-border truncate max-w-0">
+                      <td className="px-2 py-1 text-xs text-foreground/70 border-r border-border truncate max-w-0">
                         {entry.manufacturer ?? <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-[11px] text-foreground/70 border-r border-border">
+                      <td className="px-2 py-1 text-xs text-foreground/70 border-r border-border">
                         {entry.colour ?? <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-[11px] text-right tabular-nums text-foreground/70 border-r border-border">
+                      <td className="px-2 py-1 text-xs text-right tabular-nums text-foreground/70 border-r border-border">
                         {entry.totals["m2"] ? fmt(entry.totals["m2"]) : <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-[11px] text-right tabular-nums font-medium text-primary border-r border-border">
+                      <td className="px-2 py-1 text-xs text-right tabular-nums font-medium text-primary border-r border-border">
                         {entry.supply["m2"] ? fmt(entry.supply["m2"]) : <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-[11px] text-right tabular-nums text-foreground/70 border-r border-border">
+                      <td className="px-2 py-1 text-xs text-right tabular-nums text-foreground/70 border-r border-border">
                         {entry.totals["lm"] ? fmt(entry.totals["lm"]) : <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-[11px] text-right tabular-nums font-medium text-primary border-r border-border">
+                      <td className="px-2 py-1 text-xs text-right tabular-nums font-medium text-primary border-r border-border">
                         {entry.supply["lm"] ? fmt(entry.supply["lm"]) : <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-[11px] text-right tabular-nums text-foreground/70 border-r border-border">
+                      <td className="px-2 py-1 text-xs text-right tabular-nums text-foreground/70 border-r border-border">
                         {entry.totals["blm"] ? fmt(entry.totals["blm"]) : <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-[11px] text-right tabular-nums font-medium text-primary border-r border-border">
+                      <td className="px-2 py-1 text-xs text-right tabular-nums font-medium text-primary border-r border-border">
                         {entry.supply["blm"] ? fmt(entry.supply["blm"]) : <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-[11px] text-right tabular-nums text-foreground/70 border-r border-border">
+                      <td className="px-2 py-1 text-xs text-right tabular-nums text-foreground/70 border-r border-border">
                         {entry.totals["ea"] ? entry.totals["ea"] : <span className="text-muted-foreground/40">—</span>}
                       </td>
-                      <td className="px-2 py-1 text-[11px] text-right tabular-nums text-foreground/70">
+                      <td className="px-2 py-1 text-xs text-right tabular-nums text-foreground/70">
                         {entry.locations.length}
                       </td>
                     </tr>

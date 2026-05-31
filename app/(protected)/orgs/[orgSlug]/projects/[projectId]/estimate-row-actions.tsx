@@ -19,24 +19,37 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { MoreHorizontal, Trash2, ShieldCheck } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { MoreHorizontal, Trash2, ShieldCheck, Pencil } from "lucide-react";
 import { toast } from "sonner";
-import { deleteEstimate } from "./actions";
+import { deleteEstimate, renameEstimate } from "./actions";
 
 export function EstimateRowActions({
   estimateId,
+  estimateName,
   projectId,
   orgSlug,
   canManageEstimates,
 }: {
   estimateId: string;
+  estimateName: string;
   projectId: string;
   orgSlug: string;
   canManageEstimates: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [nameValue, setNameValue] = useState(estimateName);
 
   async function handleDelete() {
     setPending(true);
@@ -46,6 +59,22 @@ export function EstimateRowActions({
       router.refresh();
     } catch {
       toast.error("Failed to delete estimate.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleRename() {
+    const trimmed = nameValue.trim();
+    if (!trimmed || trimmed === estimateName) { setRenameOpen(false); return; }
+    setPending(true);
+    try {
+      await renameEstimate(estimateId, projectId, orgSlug, trimmed);
+      toast.success("Estimate renamed.");
+      router.refresh();
+      setRenameOpen(false);
+    } catch {
+      toast.error("Failed to rename estimate.");
     } finally {
       setPending(false);
     }
@@ -76,20 +105,56 @@ export function EstimateRowActions({
             <ShieldCheck className="h-3.5 w-3.5" /> Open SWMS
           </DropdownMenuItem>
           {canManageEstimates && (
-            <DropdownMenuItem
-              className="gap-2 text-sm text-destructive cursor-pointer focus:text-destructive"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpen(true);
-              }}
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Delete
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuItem
+                className="gap-2 text-sm cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setNameValue(estimateName);
+                  setRenameOpen(true);
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" /> Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="gap-2 text-sm text-destructive cursor-pointer focus:text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteOpen(true);
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete
+              </DropdownMenuItem>
+            </>
           )}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <AlertDialog open={open} onOpenChange={setOpen}>
+      {/* Rename dialog */}
+      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+        <DialogContent className="sm:max-w-sm" onClick={(e) => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle>Rename estimate</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="estimate-name">Name</Label>
+            <Input
+              id="estimate-name"
+              value={nameValue}
+              onChange={(e) => setNameValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleRename(); }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameOpen(false)} disabled={pending}>Cancel</Button>
+            <Button onClick={handleRename} disabled={pending || !nameValue.trim()}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete dialog */}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete estimate?</AlertDialogTitle>

@@ -23,6 +23,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { COVERAGE_M2 } from "@/lib/default-rates";
 import {
   updateEstimateItem,
   deleteEstimateItem,
@@ -30,6 +31,7 @@ import {
   updateEstimateSettings,
   importTakeoff,
   syncAutoConsumables,
+  syncSectionConsumables,
   addCovingToItem,
   removeCovingFromItem,
   restoreAutoConsumables,
@@ -37,6 +39,23 @@ import {
 
 // Coving children are excluded from floor-area-based qty recalculation
 const COVING_DESCS = new Set(["Contact Brushable (Max Bond 102)", "Cove Fillet", "Coving Labour"]);
+
+const VINYL_SCOPES = new Set(["vinyl", "wall_vinyl"]);
+
+// Recompute section consumable qtys from a list of items (optimistic client update)
+function applySectionConsumableQtys(items: EstimateItem[], scope: string): EstimateItem[] {
+  const primaries = items.filter(i => i.scope_category === scope && i.type === "primary" && !i.parent_item_id);
+  const totalArea   = primaries.reduce((s, p) => s + (Number(p.qty) || 0), 0);
+  const gluableArea = primaries.filter(p => p.product_type !== "plank_floating").reduce((s, p) => s + (Number(p.qty) || 0), 0);
+  return items.map(i => {
+    if (!(i.scope_category === scope && i.is_auto && !i.parent_item_id && i.type === "consumable")) return i;
+    let qty = i.qty;
+    if (i.description === "Feather Finish 20kg")   qty = totalArea   > 0 ? Math.ceil(totalArea   / COVERAGE_M2) : 0;
+    if (i.description === "Feather Finish Labour")  qty = totalArea;
+    if (i.description === "Glue Sheet/Plank")       qty = gluableArea > 0 ? Math.ceil(gluableArea / COVERAGE_M2) : 0;
+    return { ...i, qty };
+  });
+}
 
 const FLOOR_PREP_DEFAULTS = {
   floor_prep_area: 0,
@@ -785,41 +804,76 @@ export function CostingTable({
     (id: string, patch: Partial<EstimateItem>) => {
       setItems((prev) => {
         const updated = prev.map((i) => (i.id === id ? { ...i, ...patch } : i));
-        // When qty changes on a primary row, recompute auto-consumable children locally
         if ("qty" in patch) {
           const item = prev.find((i) => i.id === id);
           if (item && !item.parent_item_id) {
             const newQty = patch.qty as number;
-            return updated.map((i) =>
+            // Recompute per-item auto children
+            const withChildren = updated.map((i) =>
               i.parent_item_id === id && i.is_auto ? { ...i, qty: calcAutoChildQty(i, newQty) } : i
             );
+            // Also recompute section consumables if this is a vinyl primary
+            if (VINYL_SCOPES.has(item.scope_category)) {
+              return applySectionConsumableQtys(withChildren, item.scope_category);
+            }
+            return withChildren;
           }
         }
         return updated;
       });
-      // Sync auto-consumable qtys to DB when qty changes on a primary row
+
       if ("qty" in patch) {
         const item = items.find((i) => i.id === id);
         if (item && !item.parent_item_id) {
           syncAutoConsumables(id, patch.qty as number).catch(() => {});
+          if (VINYL_SCOPES.has(item.scope_category)) {
+            const scope = item.scope_category;
+            const primaries = items
+              .map(i => i.id === id ? { ...i, qty: patch.qty as number } : i)
+              .filter(i => i.scope_category === scope && i.type === "primary" && !i.parent_item_id);
+            const totalArea   = primaries.reduce((s, p) => s + (Number(p.qty) || 0), 0);
+            const gluableArea = primaries.filter(p => p.product_type !== "plank_floating").reduce((s, p) => s + (Number(p.qty) || 0), 0);
+            // If section consumables don't exist yet, await and add to state
+            const hasSectionRows = items.some(i => i.scope_category === scope && i.is_auto && !i.parent_item_id && i.type === "consumable");
+            if (hasSectionRows) {
+              syncSectionConsumables(estimate.id, scope, totalArea, gluableArea).catch(() => {});
+            } else {
+              syncSectionConsumables(estimate.id, scope, totalArea, gluableArea)
+                .then(rows => { if (rows.length > 0) setItems(prev => [...prev, ...rows]); })
+                .catch(() => {});
+            }
+          }
         }
       }
       markSaving();
       updateEstimateItem(id, patch).then(markSaved).catch(() => toast.error("Save failed."));
     },
-    [items]
+    [items, estimate.id]
   );
 
   const deleteItem = useCallback((id: string) => {
-    // Remove item and all its children from local state
+    const deletedItem = items.find(i => i.id === id);
     setItems((prev) => {
       const toRemove = new Set<string>();
       toRemove.add(id);
       prev.forEach((i) => { if (i.parent_item_id && toRemove.has(i.parent_item_id)) toRemove.add(i.id); });
-      return prev.filter((i) => !toRemove.has(i.id));
+      const after = prev.filter((i) => !toRemove.has(i.id));
+      // Recompute section consumables optimistically if deleting a vinyl primary
+      if (deletedItem && !deletedItem.parent_item_id && VINYL_SCOPES.has(deletedItem.scope_category)) {
+        return applySectionConsumableQtys(after, deletedItem.scope_category);
+      }
+      return after;
     });
     deleteEstimateItem(id).catch(() => toast.error("Delete failed."));
-  }, []);
+    // Resync section consumables in DB
+    if (deletedItem && !deletedItem.parent_item_id && VINYL_SCOPES.has(deletedItem.scope_category)) {
+      const scope = deletedItem.scope_category;
+      const remaining = items.filter(i => i.id !== id && i.scope_category === scope && i.type === "primary" && !i.parent_item_id);
+      const totalArea   = remaining.reduce((s, p) => s + (Number(p.qty) || 0), 0);
+      const gluableArea = remaining.filter(p => p.product_type !== "plank_floating").reduce((s, p) => s + (Number(p.qty) || 0), 0);
+      syncSectionConsumables(estimate.id, scope, totalArea, gluableArea).catch(() => {});
+    }
+  }, [items, estimate.id]);
 
   const handleCovingAdded = useCallback((primaryId: string, newChildren: EstimateItem[], covLm: number, covArea: number, covHeightMm: number) => {
     setItems((prev) => {
@@ -847,6 +901,20 @@ export function CostingTable({
       try {
         const { primary, children } = await addEstimateItem(estimate.id, scopeCategory, nextOrder);
         setItems((prev) => [...prev, primary, ...children]);
+        // For vinyl, ensure section consumable rows exist (created on first non-zero qty, but scaffold them now)
+        if (VINYL_SCOPES.has(scopeCategory)) {
+          const allPrimaries = [...items, primary].filter(i => i.scope_category === scopeCategory && i.type === "primary" && !i.parent_item_id);
+          const totalArea   = allPrimaries.reduce((s, p) => s + (Number(p.qty) || 0), 0);
+          const gluableArea = allPrimaries.filter(p => p.product_type !== "plank_floating").reduce((s, p) => s + (Number(p.qty) || 0), 0);
+          const rows = await syncSectionConsumables(estimate.id, scopeCategory, totalArea, gluableArea);
+          if (rows.length > 0) {
+            setItems(prev => {
+              const existingIds = new Set(prev.map(i => i.id));
+              const newOnes = rows.filter(r => !existingIds.has(r.id));
+              return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+            });
+          }
+        }
       } catch {
         toast.error("Failed to add row.");
       }
@@ -899,29 +967,36 @@ export function CostingTable({
       items.filter(i => !i.parent_item_id && i.level === selectedLevel).map(i => i.id)
     );
     return items.filter(i =>
-      i.parent_item_id ? visibleIds.has(i.parent_item_id) : i.level === selectedLevel
+      i.parent_item_id
+        ? visibleIds.has(i.parent_item_id)
+        : i.level === selectedLevel || (!i.parent_item_id && i.is_auto && i.type === "consumable")
     );
   }, [items, selectedLevel, levels]);
 
-  // Group items: primary items with their children
+  // Group items: primaries, per-item children, and section-level consumables
   const grouped = useMemo(() => {
     const children = new Map<string, EstimateItem[]>();
+    const sectionConsumables = new Map<string, EstimateItem[]>();
     const primaries: EstimateItem[] = [];
     filteredItems.forEach((item) => {
       if (item.parent_item_id) {
         const arr = children.get(item.parent_item_id) ?? [];
         arr.push(item);
         children.set(item.parent_item_id, arr);
+      } else if (!item.parent_item_id && item.is_auto && item.type === "consumable") {
+        const arr = sectionConsumables.get(item.scope_category) ?? [];
+        arr.push(item);
+        sectionConsumables.set(item.scope_category, arr);
       } else {
         primaries.push(item);
       }
     });
-    return { primaries, children };
+    return { primaries, children, sectionConsumables };
   }, [filteredItems]);
 
   const summary = useMemo(() => computeSummary(filteredItems, settings, wetAreas), [filteredItems, settings, wetAreas]);
 
-  // Category totals (primary rows only, children excluded from section display)
+  // Category totals: primary rows + their children + section consumables
   const catTotals = useMemo(() => {
     const map: Record<string, { mat: number; lab: number; total: number }> = {};
     grouped.primaries.forEach((item) => {
@@ -929,10 +1004,15 @@ export function CostingTable({
       const mat = itemMatCost(item) + children.reduce((s, c) => s + itemMatCost(c), 0);
       const lab = itemLabCost(item) + children.reduce((s, c) => s + itemLabCost(c), 0);
       const entry = map[item.scope_category] ?? { mat: 0, lab: 0, total: 0 };
-      entry.mat += mat;
-      entry.lab += lab;
-      entry.total += mat + lab;
+      entry.mat += mat; entry.lab += lab; entry.total += mat + lab;
       map[item.scope_category] = entry;
+    });
+    grouped.sectionConsumables.forEach((scs, scope) => {
+      scs.forEach((sc) => {
+        const entry = map[scope] ?? { mat: 0, lab: 0, total: 0 };
+        entry.mat += itemMatCost(sc); entry.lab += itemLabCost(sc); entry.total += itemMatCost(sc) + itemLabCost(sc);
+        map[scope] = entry;
+      });
     });
     return map;
   }, [grouped]);
@@ -1126,6 +1206,9 @@ export function CostingTable({
                 if (catPrimaries.length === 0) return null;
 
                 const catTotal = catTotals[cat.key] ?? { mat: 0, lab: 0, total: 0 };
+                const netQty    = catPrimaries.reduce((s, i) => s + (Number(i.qty) || 0), 0);
+                const supplyQty = catPrimaries.reduce((s, i) => s + (itemMatQty(i) || 0), 0);
+                const catUnit   = catPrimaries.length > 0 ? uLabel(catPrimaries[0].unit) : "m²";
 
                 return (
                   <React.Fragment key={cat.key}>
@@ -1139,19 +1222,31 @@ export function CostingTable({
                               {cat.label}
                             </span>
                           </div>
-                          {catTotal.total > 0 && (
-                            <div className="flex items-center gap-3">
-                              <span className="text-[10px] tabular-nums text-muted-foreground/60">
-                                Mat <span className="text-foreground/50 font-medium">${fmt(catTotal.mat)}</span>
-                              </span>
-                              <span className="text-[10px] tabular-nums text-muted-foreground/60">
-                                Lab <span className="text-foreground/50 font-medium">${fmt(catTotal.lab)}</span>
-                              </span>
-                              <span className="text-[11px] tabular-nums text-foreground/55 font-semibold">
-                                ${fmt(catTotal.total)}
-                              </span>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-5">
+                            {netQty > 0 && (
+                              <div className="flex items-center gap-1.5 text-[11px] tabular-nums">
+                                <span className="text-muted-foreground">net</span>
+                                <span className="text-foreground/70">{fmt(netQty)}</span>
+                                <span className="text-muted-foreground/45">→</span>
+                                <span className="text-muted-foreground">supply</span>
+                                <span className="text-primary font-medium">{fmt(supplyQty)}</span>
+                                <span className="text-muted-foreground">{catUnit}</span>
+                              </div>
+                            )}
+                            {catTotal.total > 0 && (
+                              <div className="flex items-center gap-3">
+                                <span className="text-[10px] tabular-nums text-muted-foreground/60">
+                                  Mat <span className="text-foreground/55 font-medium">${fmt(catTotal.mat)}</span>
+                                </span>
+                                <span className="text-[10px] tabular-nums text-muted-foreground/60">
+                                  Lab <span className="text-foreground/55 font-medium">${fmt(catTotal.lab)}</span>
+                                </span>
+                                <span className="text-[11px] tabular-nums text-foreground/75 font-semibold">
+                                  ${fmt(catTotal.total)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -1189,6 +1284,38 @@ export function CostingTable({
                         </React.Fragment>
                       );
                     })}
+
+                    {/* Section-level consumables (FF + Glue consolidated across all items) */}
+                    {(() => {
+                      const sectionRows = (grouped.sectionConsumables.get(cat.key) ?? [])
+                        .sort((a, b) => a.sort_order - b.sort_order);
+                      if (sectionRows.length === 0) return null;
+                      return (
+                        <>
+                          <tr className="bg-muted/10 border-t border-black/10 dark:border-white/10">
+                            <td colSpan={13} className="px-3 py-1">
+                              <div className="flex items-center gap-2">
+                                <div className="w-px h-3 rounded-full bg-muted-foreground/30" />
+                                <span className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-widest select-none">
+                                  Section Prep
+                                </span>
+                                <span className="text-[9px] text-muted-foreground/45 select-none">
+                                  — consolidated across all {cat.label.toLowerCase()} items
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                          {sectionRows.map((child) => (
+                            <ConsumableRow
+                              key={child.id}
+                              item={child}
+                              onUpdate={updateItem}
+                              onDelete={deleteItem}
+                            />
+                          ))}
+                        </>
+                      );
+                    })()}
 
                     <tr>
                       <td colSpan={13} className="px-3 py-1">

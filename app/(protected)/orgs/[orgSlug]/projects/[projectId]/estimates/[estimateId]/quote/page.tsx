@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { EstimateItem, WetArea, Estimate } from "@/lib/estimate-types";
 import { computeSummary } from "@/lib/estimate-types";
+import { LEVELS } from "@/lib/takeoff-types";
 import { QuoteEditor } from "./quote-editor";
 
 export default async function QuotePage({
@@ -54,6 +55,9 @@ export default async function QuotePage({
   const wetAreas = (rawWetAreas ?? []) as WetArea[];
   const primaryItems = allItems.filter((i) => i.type === "primary");
 
+  const levelSet = new Set(primaryItems.filter((i) => i.level).map((i) => i.level as string));
+  const levels = LEVELS.filter((l) => levelSet.has(l));
+
   const summary = computeSummary(allItems, estimate as Estimate, wetAreas);
 
   const today = new Date().toLocaleDateString("en-AU", {
@@ -83,6 +87,7 @@ export default async function QuotePage({
       clientName={project.head_client ?? ""}
       estimateName={estimate.name}
       primaryItems={primaryItems}
+      levels={levels}
       summary={summary}
       quoteNumber={quoteNumber}
       today={today}

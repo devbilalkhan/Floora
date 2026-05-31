@@ -195,6 +195,24 @@ export async function deleteProjectDocument(
   revalidatePath(`/orgs/${orgSlug}/projects/${projectId}/takeoff`);
 }
 
+export async function renameEstimate(
+  estimateId: string,
+  projectId: string,
+  orgSlug: string,
+  name: string
+) {
+  await requireProjectManagerRole(projectId);
+  const { supabase } = await createAuthedClient();
+
+  const { error } = await supabase
+    .from("estimates")
+    .update({ name })
+    .eq("id", estimateId);
+
+  if (error) throw new Error(friendlyError(error.message));
+  revalidatePath(`/orgs/${orgSlug}/projects/${projectId}`);
+}
+
 export async function deleteEstimate(
   estimateId: string,
   projectId: string,

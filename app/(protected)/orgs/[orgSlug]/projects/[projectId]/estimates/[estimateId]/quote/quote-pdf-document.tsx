@@ -183,6 +183,30 @@ const s = StyleSheet.create({
     borderBottom: `0.5 solid ${G200}`,
     backgroundColor: "#fafafa",
   },
+  tableSectionRow: {
+    flexDirection: "row",
+    backgroundColor: G200,
+    borderBottom: `0.5 solid ${G200}`,
+    paddingVertical: 4,
+    paddingHorizontal: 5,
+  },
+  tableSectionLabel: {
+    fontSize: 7,
+    fontFamily: "Helvetica-Bold",
+    color: G500,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  subtotalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    backgroundColor: G100,
+    borderBottom: `0.5 solid ${G200}`,
+    paddingVertical: 4,
+    paddingHorizontal: 5,
+  },
+  subtotalLabel: { fontSize: 7, color: G400 },
+  subtotalValue: { fontSize: 8, fontFamily: "Helvetica-Bold", color: G700 },
 
   // Header cells
   thBase: {
@@ -247,6 +271,7 @@ const fmt = (n: number) =>
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type QuotePdfLine = {
   id: string;
+  type?: "item" | "header";
   description: string;
   qty: number;
   unit: string;
@@ -387,15 +412,53 @@ export function QuotePdfDocument({
               <Text style={s.thAmt}>Amount (AUD)</Text>
             </View>
             {/* Rows */}
-            {lines.map((line, i) => (
-              <View key={line.id} style={i % 2 === 1 ? s.tableRowAlt : s.tableRow} wrap={false}>
-                <Text style={s.tdDesc}>{line.description || "—"}</Text>
-                <Text style={s.tdQty}>{line.qty}</Text>
-                <Text style={s.tdUnit}>{line.unit}</Text>
-                <Text style={s.tdRate}>${fmt(line.rate)}</Text>
-                <Text style={s.tdAmt}>${fmt(line.amount)}</Text>
-              </View>
-            ))}
+            {(() => {
+              let itemIdx = 0;
+              const hasHeaders = lines.some((l) => l.type === "header");
+              const rows: React.ReactElement[] = [];
+              let sectionLabel = "";
+              let sectionTotal = 0;
+              let inSection = false;
+
+              lines.forEach((line, i) => {
+                const isLast = i === lines.length - 1;
+                const nextIsHeader = !isLast && lines[i + 1].type === "header";
+
+                if (line.type === "header") {
+                  rows.push(
+                    <View key={line.id} style={s.tableSectionRow} wrap={false}>
+                      <Text style={s.tableSectionLabel}>{line.description || "—"}</Text>
+                    </View>
+                  );
+                  sectionLabel = line.description;
+                  sectionTotal = 0;
+                  inSection = true;
+                } else {
+                  const idx = itemIdx++;
+                  sectionTotal += Number(line.amount) || 0;
+                  rows.push(
+                    <View key={line.id} style={idx % 2 === 1 ? s.tableRowAlt : s.tableRow} wrap={false}>
+                      <Text style={s.tdDesc}>{line.description || "—"}</Text>
+                      <Text style={s.tdQty}>{line.qty}</Text>
+                      <Text style={s.tdUnit}>{line.unit}</Text>
+                      <Text style={s.tdRate}>${fmt(line.rate)}</Text>
+                      <Text style={s.tdAmt}>${fmt(line.amount)}</Text>
+                    </View>
+                  );
+                  if (hasHeaders && inSection && (isLast || nextIsHeader)) {
+                    rows.push(
+                      <View key={`sub-${line.id}`} style={s.subtotalRow} wrap={false}>
+                        <Text style={s.subtotalLabel}>{sectionLabel} subtotal</Text>
+                        <Text style={s.subtotalValue}>${fmt(sectionTotal)}</Text>
+                      </View>
+                    );
+                    sectionTotal = 0;
+                  }
+                }
+              });
+
+              return rows;
+            })()}
           </View>
         </View>
 

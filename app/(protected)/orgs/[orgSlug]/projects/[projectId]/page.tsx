@@ -11,10 +11,11 @@ import { TakeoffListTable } from "./takeoff-list-table";
 import { ProjectNameHeader } from "./project-name-header";
 import { DeleteProjectZone } from "./delete-project-zone";
 import { EditProjectDetailsDialog } from "./edit-project-details-dialog";
+import { CopyProjectDetails } from "./copy-project-details";
 import { ProjectSummaryChart } from "./project-summary-chart";
 import { ProjectMarginChart } from "./project-margin-chart";
 import { computeSummary } from "@/lib/estimate-types";
-import type { EstimateItem, EstimateSettings } from "@/lib/estimate-types";
+import type { EstimateItem, EstimateSettings, WetArea } from "@/lib/estimate-types";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-AU", {
@@ -87,20 +88,33 @@ export default async function ProjectDetailPage({
 
   const estimates = rawEstimates ?? [];
 
-  // Fetch all estimate items for this project in one query, then compute summaries
+  // Fetch all estimate items and wet areas for this project in parallel, then compute summaries
   const estimateIds = estimates.map((e) => e.id);
-  const { data: allItems } = estimateIds.length
-    ? await supabase
-        .from("estimate_items")
-        .select("id, estimate_id, parent_item_id, sort_order, type, scope_category, finish_code, description, qty, unit, waste_pct, cov_lm, cov_area, cov_height_mm, mat_rate, lab_rate, coverage_m2, is_auto, manufacturer, level, product_type")
-        .in("estimate_id", estimateIds)
-    : { data: [] };
+  const [{ data: allItems }, { data: allWetAreas }] = estimateIds.length
+    ? await Promise.all([
+        supabase
+          .from("estimate_items")
+          .select("id, estimate_id, parent_item_id, sort_order, type, scope_category, finish_code, description, qty, unit, waste_pct, cov_lm, cov_area, cov_height_mm, mat_rate, lab_rate, coverage_m2, is_auto, manufacturer, level, product_type")
+          .in("estimate_id", estimateIds),
+        supabase
+          .from("estimate_wet_areas")
+          .select("id, estimate_id, sort_order, name, floor_sqm, wall_semi_sqm, wall_full_sqm, coving_lm, qty, charge")
+          .in("estimate_id", estimateIds),
+      ])
+    : [{ data: [] }, { data: [] }];
 
   const itemsByEstimate = new Map<string, EstimateItem[]>();
   for (const item of allItems ?? []) {
     const list = itemsByEstimate.get(item.estimate_id) ?? [];
     list.push(item as EstimateItem);
     itemsByEstimate.set(item.estimate_id, list);
+  }
+
+  const wetAreasByEstimate = new Map<string, typeof allWetAreas>();
+  for (const wa of allWetAreas ?? []) {
+    const list = wetAreasByEstimate.get(wa.estimate_id) ?? [];
+    list.push(wa);
+    wetAreasByEstimate.set(wa.estimate_id, list);
   }
 
   const estimateSummaries = new Map(
@@ -119,7 +133,7 @@ export default async function ProjectDetailPage({
         floor_prep_mat_per_bag: e.floor_prep_mat_per_bag ?? 33,
         floor_prep_lab_per_bag: e.floor_prep_lab_per_bag ?? 40,
       };
-      return [e.id, computeSummary(itemsByEstimate.get(e.id) ?? [], settings)];
+      return [e.id, computeSummary(itemsByEstimate.get(e.id) ?? [], settings, (wetAreasByEstimate.get(e.id) ?? []) as WetArea[])];
     })
   );
 
@@ -148,6 +162,9 @@ export default async function ProjectDetailPage({
     estimates.find(e => e.status === "submitted") ??
     estimates[0] ?? null;
   const chartSummary = chartEstimate ? estimateSummaries.get(chartEstimate.id) : null;
+
+  const hasEstimate = chartEstimate != null && chartSummary != null;
+  const hasActuals = totalActualIncome > 0 || totalActualCost > 0;
 
   const priceRequests = rawPriceRequests ?? [];
   const pendingReplies = priceRequests.filter((r) => r.status === "sent").length;
@@ -198,13 +215,13 @@ export default async function ProjectDetailPage({
                 {project.brand === "dfo" ? "DFO" : "SPM"}
               </Badge>
               {project.status === "completed" && (
-                <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-[11px]">Completed</Badge>
+                <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-xs">Completed</Badge>
               )}
               {project.status === "rejected" && (
-                <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-[11px]">Rejected</Badge>
+                <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-xs">Rejected</Badge>
               )}
               {project.status === "archived" && (
-                <Badge variant="outline" className="text-muted-foreground text-[11px]">Archived</Badge>
+                <Badge variant="outline" className="text-muted-foreground text-xs">Archived</Badge>
               )}
             </div>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -213,6 +230,11 @@ export default async function ProjectDetailPage({
                 <span className="text-border">·</span>
               )}
               {project.head_client && <span>{project.head_client}</span>}
+              <CopyProjectDetails
+                name={project.name}
+                location={project.location}
+                headClient={project.head_client}
+              />
               {canWrite && (
                 <EditProjectDetailsDialog
                   projectId={params.projectId}
@@ -275,23 +297,26 @@ export default async function ProjectDetailPage({
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-black/10 dark:border-white/10 bg-muted/40">
-                    <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                    <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       Name
                     </th>
-                    <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                    <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       Status
                     </th>
-                    <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                    <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       Updated
                     </th>
-                    <th className="text-right px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                    <th className="text-right px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       Value ex-GST
                     </th>
-                    <th className="text-center px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                    <th className="text-center px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       GP
                     </th>
-                    <th className="text-right px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                      Margin
+                    <th className="text-center px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Markup %
+                    </th>
+                    <th className="text-right px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Markup
                     </th>
                     <th className="w-8 px-2" />
                   </tr>
@@ -346,13 +371,13 @@ export default async function ProjectDetailPage({
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-black/10 dark:border-white/10 bg-muted/40">
-                    <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Quote #</th>
-                    <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">To</th>
-                    <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Site / Ref</th>
-                    <th className="text-left px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Date</th>
-                    <th className="text-right px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Total ex GST</th>
-                    <th className="text-right px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Inc GST</th>
-                    <th className="text-center px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Status</th>
+                    <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Quote #</th>
+                    <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">To</th>
+                    <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Site / Ref</th>
+                    <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Date</th>
+                    <th className="text-right px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Total ex GST</th>
+                    <th className="text-right px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Inc GST</th>
+                    <th className="text-center px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</th>
                     <th className="w-8 px-2" />
                   </tr>
                 </thead>
@@ -421,40 +446,43 @@ export default async function ProjectDetailPage({
       {canManageEstimates && (
         <div className="space-y-3">
           <h2 className="text-base font-semibold">Actuals</h2>
-          {chartEstimate && chartSummary ? (
+          {!hasEstimate && !hasActuals ? (
+            <div className="rounded-xl border border-dashed border-border flex items-center justify-center h-24">
+              <p className="text-sm text-muted-foreground">No estimate or actuals yet — add an estimate or record income and expenses to get started.</p>
+            </div>
+          ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <ProjectSummaryChart
-                estimateLabel={chartEstimate.name}
-                estimateValue={chartSummary.totalExGst}
+                estimateLabel={hasEstimate ? chartEstimate!.name : undefined}
+                estimateValue={hasEstimate ? chartSummary!.totalExGst : undefined}
                 actualsItems={actualsItems}
                 href={`/orgs/${params.orgSlug}/projects/${params.projectId}/actuals`}
               />
               <ProjectMarginChart
-                estimateGpPct={chartSummary.grossMarginPct}
-                estimateGp={chartSummary.totalExGst * chartSummary.grossMarginPct}
-                estimateValue={chartSummary.totalExGst}
+                estimateGpPct={hasEstimate ? chartSummary!.grossMarginPct : undefined}
+                estimateGp={hasEstimate ? chartSummary!.totalExGst * chartSummary!.grossMarginPct : undefined}
+                estimateValue={hasEstimate ? chartSummary!.totalExGst : undefined}
                 actualGpPct={actualGpPct}
                 actualGp={actualGp}
                 actualIncome={totalActualIncome}
                 href={`/orgs/${params.orgSlug}/projects/${params.projectId}/actuals`}
               />
             </div>
-          ) : (
-            <Link
-              href={`/orgs/${params.orgSlug}/projects/${params.projectId}/actuals`}
-              className="group flex items-center gap-3 rounded-xl border border-border bg-card/65 backdrop-blur-xl px-4 py-3 hover:border-primary/40 transition-colors"
-            >
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium group-hover:text-primary transition-colors">
-                  Income, Expenses &amp; Margin
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Track real revenue and costs against the estimate
-                </p>
-              </div>
-              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-primary/60 transition-colors" />
-            </Link>
           )}
+          <Link
+            href={`/orgs/${params.orgSlug}/projects/${params.projectId}/actuals`}
+            className="group flex items-center gap-3 rounded-xl border border-border bg-card/65 backdrop-blur-xl px-4 py-3 hover:border-primary/40 transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium group-hover:text-primary transition-colors">
+                Income, Expenses &amp; Margin
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Track real revenue and costs against the estimate
+              </p>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-primary/60 transition-colors" />
+          </Link>
         </div>
       )}
 

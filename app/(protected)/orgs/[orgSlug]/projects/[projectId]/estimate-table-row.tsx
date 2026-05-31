@@ -19,6 +19,13 @@ function gpBadgeStyle(pct: number, hasItems: boolean): string {
   return "bg-destructive/15 text-destructive border-destructive/30";
 }
 
+function markupBadgeStyle(pct: number | null): string {
+  if (pct == null) return "bg-muted/50 text-muted-foreground border-black/10 dark:border-white/10";
+  if (pct >= 0.333) return "bg-success/15 text-success border-success/30";   // ≈ 25% GP
+  if (pct >= 0.176) return "bg-warning/15 text-warning border-warning/30";   // ≈ 15% GP
+  return "bg-destructive/15 text-destructive border-destructive/30";
+}
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-AU", {
     day: "2-digit",
@@ -37,7 +44,7 @@ export function EstimateTableRow({
   summary,
   canManageEstimates,
 }: {
-  estimate: { id: string; name: string; status: string; updated_at: string };
+  estimate: { id: string; name: string; status: string; updated_at: string; net_markup_pct: number | null };
   orgSlug: string;
   projectId: string;
   summary: Summary;
@@ -52,7 +59,7 @@ export function EstimateTableRow({
       className={`group border-b border-black/10 dark:border-white/10 hover:bg-muted/10 transition-colors last:border-0 ${canManageEstimates ? "cursor-pointer" : "cursor-default"}`}
       onClick={canManageEstimates ? () => router.push(href) : undefined}
     >
-      <td className="px-3 py-1.5 text-[11px] font-medium text-foreground/70 group-hover:text-primary transition-colors">
+      <td className="px-3 py-1.5 text-xs font-medium text-foreground/70 group-hover:text-primary transition-colors">
         {estimate.name}
       </td>
       <td className="px-2 py-1.5">
@@ -60,10 +67,10 @@ export function EstimateTableRow({
           {estimate.status}
         </Badge>
       </td>
-      <td className="px-2 py-1.5 text-[11px] text-muted-foreground">
+      <td className="px-2 py-1.5 text-xs text-muted-foreground">
         {formatDate(estimate.updated_at)}
       </td>
-      <td className="px-2 py-1.5 text-[11px] text-right tabular-nums text-foreground/70">
+      <td className="px-2 py-1.5 text-xs text-right tabular-nums text-foreground/70">
         {hasItems ? `$${fmt(summary.totalExGst)}` : "—"}
       </td>
       <td className="px-2 py-1.5 text-center">
@@ -71,7 +78,12 @@ export function EstimateTableRow({
           {hasItems ? `${(summary.grossMarginPct * 100).toFixed(1)}%` : "—"}
         </Badge>
       </td>
-      <td className="px-2 py-1.5 text-[11px] text-right tabular-nums text-foreground/70">
+      <td className="px-2 py-1.5 text-center">
+        <Badge className={`text-[10px] ${markupBadgeStyle(estimate.net_markup_pct)}`}>
+          {estimate.net_markup_pct != null ? `${(estimate.net_markup_pct * 100).toFixed(1)}%` : "—"}
+        </Badge>
+      </td>
+      <td className="px-2 py-1.5 text-xs text-right tabular-nums text-foreground/70">
         {hasItems ? `$${fmt(summary.markupAmount)}` : "—"}
       </td>
       <td
@@ -81,6 +93,7 @@ export function EstimateTableRow({
         <div className="opacity-0 group-hover:opacity-100 transition-opacity">
           <EstimateRowActions
             estimateId={estimate.id}
+            estimateName={estimate.name}
             projectId={projectId}
             orgSlug={orgSlug}
             canManageEstimates={canManageEstimates}
