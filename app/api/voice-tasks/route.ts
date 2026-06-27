@@ -64,13 +64,9 @@ export async function POST(req: NextRequest) {
   const openai = new OpenAI();
   const anthropic = new Anthropic();
 
-  // ── 1. Parse JSON body ───────────────────────────────────────────────────────
-  let body: { audio?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return plain("Invalid request.", 400);
-  }
+  // ── 1. Parse body (multipart or JSON+base64) ─────────────────────────────────
+  let audioBuffer: Buffer;
+  const contentType = req.headers.get("content-type") ?? "";
 
   // ── 2. Token auth ────────────────────────────────────────────────────────────
   const authHeader = req.headers.get("authorization") ?? "";
@@ -81,16 +77,27 @@ export async function POST(req: NextRequest) {
   const tokenHash = createHash("sha256").update(rawToken).digest("hex");
 
   // ── 3. Audio validation ──────────────────────────────────────────────────────
-  const audioBase64 = body.audio;
-  if (!audioBase64 || typeof audioBase64 !== "string" || audioBase64.length === 0) {
-    return plain("No audio received.", 400);
-  }
-  const audioBuffer = Buffer.from(audioBase64, "base64");
-  if (audioBuffer.length === 0) {
-    return plain("No audio received.", 400);
-  }
-  if (audioBuffer.length > 25 * 1024 * 1024) {
-    return plain("Recording too long. Try a shorter memo.", 413);
+  try {
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await req.formData();
+      const audio = formData.get("audio");
+      if (!audio || !(audio instanceof File) || audio.size === 0)
+        return plain("No audio received.", 400);
+      if (audio.size > 25 * 1024 * 1024)
+        return plain("Recording too long. Try a shorter memo.", 413);
+      audioBuffer = Buffer.from(await audio.arrayBuffer());
+    } else {
+      const body = await req.json() as { audio?: string };
+      if (!body.audio || typeof body.audio !== "string")
+        return plain("No audio received.", 400);
+      audioBuffer = Buffer.from(body.audio, "base64");
+      if (audioBuffer.length === 0)
+        return plain("No audio received.", 400);
+      if (audioBuffer.length > 25 * 1024 * 1024)
+        return plain("Recording too long. Try a shorter memo.", 413);
+    }
+  } catch {
+    return plain("Invalid request.", 400);
   }
 
   // ── 4. Look up token ─────────────────────────────────────────────────────────
@@ -154,7 +161,7 @@ export async function POST(req: NextRequest) {
   // ── 7. Whisper transcription ─────────────────────────────────────────────────
   let transcript: string;
   try {
-    const audioFile = new File([audioBuffer], "recording.m4a", { type: "audio/mp4" });
+    const audioFile = new File([new Uint8Array(audioBuffer)], "recording.m4a", { type: "audio/mp4" });
 
     transcript = await withTimeout(
       openai.audio.transcriptions.create({
