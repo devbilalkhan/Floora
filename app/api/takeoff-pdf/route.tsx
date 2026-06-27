@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
     }) as React.ReactElement<any>
   );
 
-  return new Response(new Uint8Array(buffer), {
+  return new Response(Uint8Array.from(buffer), {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `inline; filename="takeoff.pdf"`,
