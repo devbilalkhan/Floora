@@ -4,9 +4,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createHash } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 
-const openai = new OpenAI();
-const anthropic = new Anthropic();
-
 // In-memory rate limiter (per token hash, 10 req/min)
 const rateLimits = new Map<string, { count: number; windowStart: number }>();
 
@@ -70,6 +67,9 @@ interface ExtractedTask {
 }
 
 export async function POST(req: NextRequest) {
+  const openai = new OpenAI();
+  const anthropic = new Anthropic();
+
   // ── 1. Parse multipart form ─────────────────────────────────────────────────
   let formData: FormData;
   try {
