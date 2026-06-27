@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
       packDate,
       preparedBy: profile?.display_name ?? user.email ?? "",
       rows: (rawRows ?? []) as TakeoffRow[],
-    })
+    }) as React.ReactElement<any>
   );
 
   return new Response(buffer, {
