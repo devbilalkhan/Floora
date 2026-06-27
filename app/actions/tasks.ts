@@ -46,6 +46,7 @@ export async function getTasksData(orgSlug: string) {
   const pinnedIds = new Set((pins ?? []).map((p: any) => p.task_id as string));
 
   return {
+    orgId: org.id,
     currentUserId: user.id,
     currentUserRole: (roleData ?? "estimator") as string,
     tasks: (tasks ?? []).map((t: any) => ({

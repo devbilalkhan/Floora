@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useTaskPanel } from "@/components/tasks/task-provider";
 import { getTasksData, updateTask, deleteTask, createTask, updateProjectDates, addChecklistItem, toggleChecklistItem, deleteChecklistItem, pinTask, unpinTask } from "@/app/actions/tasks";
+import { createClient } from "@/lib/supabase/client";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import type { Task, TaskPriority, TaskStatus, ChecklistItem } from "@/lib/task-types";
@@ -1098,6 +1099,7 @@ function TodayTomorrowCard({
 
 export function PlannerView({
   orgSlug,
+  orgId,
   initialTasks,
   projects,
   members,
@@ -1106,6 +1108,7 @@ export function PlannerView({
   initialView,
 }: {
   orgSlug: string;
+  orgId: string;
   initialTasks: Task[];
   projects: ProjectWithDates[];
   members: Member[];
@@ -1133,6 +1136,19 @@ export function PlannerView({
     window.addEventListener("floora:tasks-changed", handler);
     return () => window.removeEventListener("floora:tasks-changed", handler);
   }, [loadTasks]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`tasks-insert-${orgId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "tasks", filter: `org_id=eq.${orgId}` },
+        () => loadTasks()
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [orgId, loadTasks]);
 
   // Filters
   const [search, setSearch]               = useState("");

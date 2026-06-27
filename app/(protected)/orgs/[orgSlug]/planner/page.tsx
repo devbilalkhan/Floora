@@ -32,6 +32,7 @@ export default async function PlannerPage({
 
       <PlannerView
         orgSlug={params.orgSlug}
+        orgId={data.orgId}
         initialTasks={data.tasks as Task[]}
         projects={data.projects}
         members={data.members}
