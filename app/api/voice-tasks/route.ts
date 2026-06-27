@@ -9,14 +9,6 @@ export const maxDuration = 300; // seconds — Vercel Pro
 // In-memory rate limiter (per token hash, 10 req/min)
 const rateLimits = new Map<string, { count: number; windowStart: number }>();
 
-const ALLOWED_AUDIO_TYPES = new Set([
-  "audio/mp4",
-  "audio/m4a",
-  "audio/x-m4a",
-  "audio/mpeg",
-  "audio/wav",
-  "audio/webm",
-]);
 
 const VALID_PRIORITIES = new Set(["low", "medium", "high", "urgent"]);
 
@@ -72,10 +64,10 @@ export async function POST(req: NextRequest) {
   const openai = new OpenAI();
   const anthropic = new Anthropic();
 
-  // ── 1. Parse multipart form ─────────────────────────────────────────────────
-  let formData: FormData;
+  // ── 1. Parse JSON body ───────────────────────────────────────────────────────
+  let body: { audio?: string };
   try {
-    formData = await req.formData();
+    body = await req.json();
   } catch {
     return plain("Invalid request.", 400);
   }
@@ -89,16 +81,16 @@ export async function POST(req: NextRequest) {
   const tokenHash = createHash("sha256").update(rawToken).digest("hex");
 
   // ── 3. Audio validation ──────────────────────────────────────────────────────
-  const audio = formData.get("audio");
-  if (!audio || !(audio instanceof File) || audio.size === 0) {
+  const audioBase64 = body.audio;
+  if (!audioBase64 || typeof audioBase64 !== "string" || audioBase64.length === 0) {
     return plain("No audio received.", 400);
   }
-  if (audio.size > 25 * 1024 * 1024) {
-    return plain("Recording too long. Try a shorter memo.", 413);
+  const audioBuffer = Buffer.from(audioBase64, "base64");
+  if (audioBuffer.length === 0) {
+    return plain("No audio received.", 400);
   }
-  const audioType = audio.type || "audio/mp4";
-  if (!ALLOWED_AUDIO_TYPES.has(audioType)) {
-    return plain("Unsupported audio format. Record as m4a or mp3.", 415);
+  if (audioBuffer.length > 25 * 1024 * 1024) {
+    return plain("Recording too long. Try a shorter memo.", 413);
   }
 
   // ── 4. Look up token ─────────────────────────────────────────────────────────
@@ -162,8 +154,7 @@ export async function POST(req: NextRequest) {
   // ── 7. Whisper transcription ─────────────────────────────────────────────────
   let transcript: string;
   try {
-    const audioBuffer = Buffer.from(await audio.arrayBuffer());
-    const audioFile = new File([audioBuffer], audio.name || "recording.m4a", { type: audioType });
+    const audioFile = new File([audioBuffer], "recording.m4a", { type: "audio/mp4" });
 
     transcript = await withTimeout(
       openai.audio.transcriptions.create({
