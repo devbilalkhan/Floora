@@ -4,6 +4,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createHash } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 
+export const maxDuration = 60; // seconds — requires Vercel Pro or higher
+
 // In-memory rate limiter (per token hash, 10 req/min)
 const rateLimits = new Map<string, { count: number; windowStart: number }>();
 
