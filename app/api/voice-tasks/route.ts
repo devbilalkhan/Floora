@@ -230,7 +230,7 @@ Never return prose. Return only the JSON array.${transcript.length > 4000 ? "\nN
   }
 
   if (extractedTasks.length === 0) {
-    return plain("No tasks found in your recording.");
+    return plain(`No tasks found in your recording.\n\nWhisper heard: "${transcript.trim()}"`);
   }
 
   // ── 9. Validate, fuzzy-match, build rows ─────────────────────────────────────
