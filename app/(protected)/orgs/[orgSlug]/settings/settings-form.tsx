@@ -14,6 +14,9 @@ import {
   Check,
   ImageIcon,
   Upload,
+  Mic,
+  Copy,
+  KeyRound,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -24,10 +27,14 @@ import {
   saveEmailSettings,
   saveOrgDetails,
   saveOrgLogo,
+  saveDefaultRates,
   addOrgWorker,
   updateOrgWorker,
   deleteOrgWorker,
+  generateVoiceToken,
+  revokeVoiceToken,
 } from "./actions";
+import { MAT, LAB } from "@/lib/default-rates";
 import { MembersTab } from "./members-tab";
 import type { OrgWorker } from "@/lib/swms-types";
 
@@ -40,14 +47,16 @@ E: bilal.khan@spmprotect.com
 W: DFO Flooring - www.dfoflooring.au
 W: SPM - www.dfoflooring.au/spm-specialised-preventative-maintenance`;
 
-type Tab = "general" | "members" | "email" | "team" | "shortcuts";
+type Tab = "general" | "members" | "email" | "team" | "shortcuts" | "rates" | "voice";
 
-const TABS: { id: Tab; label: string }[] = [
+const BASE_TABS: { id: Tab; label: string }[] = [
   { id: "general", label: "General" },
   { id: "members", label: "Members" },
   { id: "email", label: "Email" },
   { id: "team", label: "Team" },
   { id: "shortcuts", label: "Shortcuts" },
+  { id: "rates", label: "Default Rates" },
+  { id: "voice", label: "Voice" },
 ];
 
 const inputCls =
@@ -65,20 +74,27 @@ type InitialData = {
   logo_url: string | null;
   quote_terms: string;
   quote_notes: string;
+  quote_prefix: string;
+  quote_number_seq: number;
   price_request_template: string | null;
   price_request_signature: string | null;
+  default_rates: { mat?: Record<string, number>; lab?: Record<string, number> };
 };
 
 export function SettingsForm({
   params,
   orgId,
   currentUserId,
+  userRole,
+  voiceTokenMeta,
   initialData,
   initialWorkers,
 }: {
   params: { orgSlug: string };
   orgId: string;
   currentUserId: string;
+  userRole: string;
+  voiceTokenMeta: { id: string; label: string | null; last_used: string | null; created_at: string } | null;
   initialData: InitialData;
   initialWorkers: OrgWorker[];
 }) {
@@ -100,6 +116,8 @@ export function SettingsForm({
   // Quote settings
   const [quoteTerms, setQuoteTerms] = useState(initialData.quote_terms);
   const [quoteNotes, setQuoteNotes] = useState(initialData.quote_notes);
+  const [quotePrefix, setQuotePrefix] = useState(initialData.quote_prefix);
+  const [quoteNumberSeq, setQuoteNumberSeq] = useState(initialData.quote_number_seq);
 
   // Logo
   const [logoUrl, setLogoUrl] = useState<string | null>(initialData.logo_url);
@@ -110,6 +128,14 @@ export function SettingsForm({
   const [template, setTemplate] = useState(initialData.price_request_template ?? DEFAULT_TEMPLATE);
   const [signature, setSignature] = useState(initialData.price_request_signature ?? DEFAULT_SIGNATURE);
 
+  // Rates tab — merged with hardcoded defaults so all keys are always present
+  const [matRates, setMatRates] = useState<Record<string, number>>({
+    ...MAT, ...(initialData.default_rates.mat ?? {}),
+  });
+  const [labRates, setLabRates] = useState<Record<string, number>>({
+    ...LAB, ...(initialData.default_rates.lab ?? {}),
+  });
+
   // Team tab
   const [workers, setWorkers] = useState<OrgWorker[]>(initialWorkers);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -117,9 +143,50 @@ export function SettingsForm({
   const [addingNew, setAddingNew] = useState(false);
   const [newBuf, setNewBuf] = useState({ name: "", role: "", phone: "", email: "" });
 
+  // Voice tab
+  const canUseVoice = userRole === "admin" || userRole === "project_manager";
+  const [voiceRawToken, setVoiceRawToken] = useState<string | null>(null);
+  const [hasToken, setHasToken] = useState(!!voiceTokenMeta);
+  const [tokenCreatedAt, setTokenCreatedAt] = useState(voiceTokenMeta?.created_at ?? null);
+  const [tokenLastUsed, setTokenLastUsed] = useState(voiceTokenMeta?.last_used ?? null);
+  const [voicePending, setVoicePending] = useState(false);
+
+  const TABS = canUseVoice ? BASE_TABS : BASE_TABS.filter((t) => t.id !== "voice");
+
   function flash() {
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+  }
+
+  async function handleGenerateVoiceToken() {
+    setVoicePending(true);
+    try {
+      const raw = await generateVoiceToken(params.orgSlug, orgId);
+      setVoiceRawToken(raw);
+      setHasToken(true);
+      setTokenCreatedAt(new Date().toISOString());
+      setTokenLastUsed(null);
+      toast.success("Token generated. Copy it now — it won't be shown again.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate token.");
+    } finally {
+      setVoicePending(false);
+    }
+  }
+
+  async function handleRevokeVoiceToken() {
+    setVoicePending(true);
+    try {
+      await revokeVoiceToken(params.orgSlug, orgId);
+      setHasToken(false);
+      setVoiceRawToken(null);
+      setTokenCreatedAt(null);
+      toast.success("Token revoked.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to revoke token.");
+    } finally {
+      setVoicePending(false);
+    }
   }
 
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -167,7 +234,7 @@ export function SettingsForm({
     setError("");
     startTransition(async () => {
       try {
-        await saveOrgDetails(params.orgSlug, orgId, { org_code: orgCode, abn, address, phone, org_email: orgEmail, quote_terms: quoteTerms, quote_notes: quoteNotes });
+        await saveOrgDetails(params.orgSlug, orgId, { org_code: orgCode, abn, address, phone, org_email: orgEmail, quote_terms: quoteTerms, quote_notes: quoteNotes, quote_prefix: quotePrefix, quote_number_seq: quoteNumberSeq });
         flash();
         toast.success("Details saved.");
       } catch (err) {
@@ -189,6 +256,25 @@ export function SettingsForm({
         setError(err instanceof Error ? err.message : "Failed to save.");
       }
     });
+  }
+
+  function handleSaveRates() {
+    setError("");
+    startTransition(async () => {
+      try {
+        await saveDefaultRates(params.orgSlug, orgId, { mat: matRates, lab: labRates });
+        flash();
+        toast.success("Default rates saved.");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to save.");
+        setError(err instanceof Error ? err.message : "Failed to save.");
+      }
+    });
+  }
+
+  function handleResetRates() {
+    setMatRates({ ...MAT });
+    setLabRates({ ...LAB });
   }
 
   function startEdit(w: OrgWorker) {
@@ -400,6 +486,33 @@ export function SettingsForm({
             <p className="text-sm text-muted-foreground mt-0.5">
               Pre-populated on every new quote. Editable per-quote before printing.
             </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Quote number prefix</label>
+              <input
+                value={quotePrefix}
+                onChange={(e) => setQuotePrefix(e.target.value.toUpperCase().slice(0, 10))}
+                placeholder="e.g. SPM"
+                className={inputCls}
+              />
+              <p className="text-[10px] text-muted-foreground/60">
+                Prefix for sequential quote numbers (e.g. <span className="font-mono">SPM-0100</span>)
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Last quote number</label>
+              <input
+                type="number"
+                value={quoteNumberSeq}
+                onChange={(e) => setQuoteNumberSeq(Math.max(0, parseInt(e.target.value) || 0))}
+                className={inputCls}
+              />
+              <p className="text-[10px] text-muted-foreground/60">
+                Next quote will be <span className="font-mono">{quotePrefix}-{String(quoteNumberSeq + 1).padStart(4, "0")}</span>
+              </p>
+            </div>
           </div>
 
           <div className="space-y-1.5">
@@ -692,6 +805,227 @@ export function SettingsForm({
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Voice tab ─────────────────────────────────────────────────────────── */}
+      {activeTab === "voice" && (
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-base font-semibold">Voice Task Assistant</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Record a voice memo on your iPhone and create tasks automatically via iOS Shortcuts.
+            </p>
+          </div>
+
+          {/* Token management */}
+          <div className="bg-card/65 backdrop-blur-xl border border-border rounded-xl divide-y divide-border overflow-hidden">
+            <div className="px-4 py-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <KeyRound className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Voice Token</span>
+              </div>
+
+              {voiceRawToken ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-amber-400">Copy this token now — it won't be shown again.</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 rounded-lg bg-muted/60 border border-border px-3 py-2 text-xs font-mono text-foreground/80 break-all select-all">
+                      {voiceRawToken}
+                    </code>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(voiceRawToken); toast.success("Copied!"); }}
+                      className="flex-shrink-0 rounded-lg border border-border bg-muted/40 hover:bg-muted/70 p-2 transition-colors"
+                      title="Copy token"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ) : hasToken ? (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    An active token exists. Token value is hidden for security.
+                  </p>
+                  {tokenCreatedAt && (
+                    <p className="text-xs text-muted-foreground/60">
+                      Created {new Date(tokenCreatedAt).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}
+                      {tokenLastUsed && ` · Last used ${new Date(tokenLastUsed).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}`}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No token yet. Generate one to set up your Shortcut.</p>
+              )}
+
+              <div className="flex items-center gap-2 pt-1">
+                <Button
+                  size="sm"
+                  onClick={handleGenerateVoiceToken}
+                  disabled={voicePending}
+                  className="gap-1.5"
+                >
+                  <Mic className="h-3.5 w-3.5" />
+                  {voicePending ? "Working…" : hasToken ? "Regenerate Token" : "Generate Token"}
+                </Button>
+                {hasToken && !voiceRawToken && (
+                  <button
+                    onClick={handleRevokeVoiceToken}
+                    disabled={voicePending}
+                    className="text-xs text-destructive hover:text-destructive/80 transition-colors"
+                  >
+                    Revoke
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Setup guide */}
+            <div className="px-4 py-4 space-y-3">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">iOS Shortcut Setup</span>
+              <ol className="space-y-2 text-sm text-muted-foreground list-decimal list-inside">
+                <li>Open the <strong className="text-foreground/80">Shortcuts</strong> app on your iPhone.</li>
+                <li>Create a new Shortcut and add a <strong className="text-foreground/80">Record Audio</strong> action.</li>
+                <li>Add a <strong className="text-foreground/80">Get Contents of URL</strong> action:
+                  <ul className="mt-1.5 ml-4 space-y-1 text-xs list-disc list-inside">
+                    <li>URL: <code className="bg-muted/50 px-1 rounded text-foreground/70">{typeof window !== "undefined" ? window.location.origin : "https://your-app.vercel.app"}/api/voice-tasks</code></li>
+                    <li>Method: <code className="bg-muted/50 px-1 rounded text-foreground/70">POST</code></li>
+                    <li>Header — <code className="bg-muted/50 px-1 rounded text-foreground/70">Authorization</code>: <code className="bg-muted/50 px-1 rounded text-foreground/70">Bearer &lt;your token&gt;</code></li>
+                    <li>Header — <code className="bg-muted/50 px-1 rounded text-foreground/70">X-Org-Slug</code>: <code className="bg-muted/50 px-1 rounded text-foreground/70">{params.orgSlug}</code></li>
+                    <li>Body: multipart/form-data, field <code className="bg-muted/50 px-1 rounded text-foreground/70">audio</code> = the recorded file</li>
+                  </ul>
+                </li>
+                <li>Add a <strong className="text-foreground/80">Show Notification</strong> action using the URL result as the message.</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Rates tab ─────────────────────────────────────────────────────────── */}
+      {activeTab === "rates" && (
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-base font-semibold">Default Rates</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              These rates are applied automatically when new estimate rows are created. Changing them does not affect any existing estimates.
+            </p>
+          </div>
+
+          {/* Labour rates */}
+          <div className="space-y-2">
+            <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Labour Rates</h3>
+            <div className="border border-black/10 dark:border-white/10 rounded-sm overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-muted/40 border-b border-black/10 dark:border-white/10">
+                    <th className="text-left px-3 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Scope</th>
+                    <th className="text-left px-3 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Unit</th>
+                    <th className="text-right px-3 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide w-32">Rate ($)</th>
+                    <th className="text-right px-3 py-1.5 text-[11px] font-medium text-muted-foreground/45 uppercase tracking-wide w-24">Default</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {([
+                    ["vinyl",          "Vinyl Flooring",                    "$/m²"],
+                    ["wallVinyl",      "Wall Vinyl",                        "$/m²"],
+                    ["carpet",         "Carpet (m²)",                       "$/m²"],
+                    ["carpetBlm",      "Carpet (broadloom lm)",             "$/blm"],
+                    ["coving",         "Coving / Coved Skirting",           "$/lm"],
+                    ["vinylSkirting",  "Vinyl Skirting (flat)",             "$/lm"],
+                    ["featherFinish",  "Feather Finish Labour",             "$/m²"],
+                    ["stairs",         "Stairs & Nosings",                  "$/ea"],
+                    ["transition",     "Floor Transitions",                 "$/lm"],
+                    ["wallVinylSemi",  "Wet Area Wall Vinyl (≤1500mm)",     "$/m²"],
+                    ["wallVinylFull",  "Wet Area Wall Vinyl (2000mm)",      "$/m²"],
+                    ["wallVinylAbove", "Wet Area Wall Vinyl (>2000mm)",     "$/m²"],
+                  ] as [string, string, string][]).map(([key, label, unit]) => (
+                    <tr key={key} className="border-b border-black/10 dark:border-white/10 last:border-0 hover:bg-muted/10">
+                      <td className="px-3 py-1.5 text-[11px] text-foreground/70">{label}</td>
+                      <td className="px-3 py-1.5 text-[11px] text-muted-foreground">{unit}</td>
+                      <td className="px-3 py-1.5">
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={labRates[key] ?? 0}
+                          onChange={(e) => setLabRates((prev) => ({ ...prev, [key]: parseFloat(e.target.value) || 0 }))}
+                          className="w-full text-xs text-right tabular-nums bg-input border border-black/10 dark:border-white/10 rounded px-2 py-1 text-foreground/70 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                        />
+                      </td>
+                      <td className="px-3 py-1.5 text-right text-[11px] text-muted-foreground/45 tabular-nums">
+                        {(LAB as Record<string, number>)[key]?.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Material (consumable) rates */}
+          <div className="space-y-2">
+            <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Material / Consumable Rates</h3>
+            <div className="border border-black/10 dark:border-white/10 rounded-sm overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-muted/40 border-b border-black/10 dark:border-white/10">
+                    <th className="text-left px-3 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Consumable</th>
+                    <th className="text-left px-3 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Unit</th>
+                    <th className="text-right px-3 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide w-32">Rate ($)</th>
+                    <th className="text-right px-3 py-1.5 text-[11px] font-medium text-muted-foreground/45 uppercase tracking-wide w-24">Default</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {([
+                    ["glueSheet",        "Glue Sheet/Plank (Vinyl Adhesive)",    "$/drum"],
+                    ["glueCarpet",       "Glue Carpet (Carpet Adhesive)",        "$/drum"],
+                    ["featherFinish",    "Feather Finish 20kg",                  "$/bag"],
+                    ["contactBrushable", "Contact Brushable (Max Bond 102)",     "$/drum"],
+                    ["coveFillet",       "Cove Fillet",                          "$/coil"],
+                    ["vinylSkirting",    "Vinyl Skirting (default mat rate)",    "$/lm"],
+                    ["trims",            "Floor Trims / Transitions (default)",  "$/ea"],
+                    ["weldRod",          "Weld Rod",                             "$/lm"],
+                    ["underlay",         "Carpet Underlay",                      "$/m²"],
+                  ] as [string, string, string][]).map(([key, label, unit]) => (
+                    <tr key={key} className="border-b border-black/10 dark:border-white/10 last:border-0 hover:bg-muted/10">
+                      <td className="px-3 py-1.5 text-[11px] text-foreground/70">{label}</td>
+                      <td className="px-3 py-1.5 text-[11px] text-muted-foreground">{unit}</td>
+                      <td className="px-3 py-1.5">
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={matRates[key] ?? 0}
+                          onChange={(e) => setMatRates((prev) => ({ ...prev, [key]: parseFloat(e.target.value) || 0 }))}
+                          className="w-full text-xs text-right tabular-nums bg-input border border-black/10 dark:border-white/10 rounded px-2 py-1 text-foreground/70 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                        />
+                      </td>
+                      <td className="px-3 py-1.5 text-right text-[11px] text-muted-foreground/45 tabular-nums">
+                        {(MAT as Record<string, number>)[key]?.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button onClick={handleSaveRates} disabled={isPending} size="sm">
+              <Save className="h-3.5 w-3.5 mr-1.5" />
+              {isPending ? "Saving…" : "Save Rates"}
+            </Button>
+            <button
+              onClick={handleResetRates}
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Reset to defaults
+            </button>
+            {saved && <span className="text-xs text-green-500 flex items-center gap-1"><CheckSquare2 className="h-3.5 w-3.5" /> Saved</span>}
           </div>
         </div>
       )}

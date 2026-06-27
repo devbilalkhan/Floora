@@ -238,16 +238,24 @@ function TaskCard({
             className="w-full resize-none text-[11px] bg-muted/40 rounded-md px-2 py-1 border border-white/[0.12] focus:outline-none focus:border-primary/50 transition-colors"
           />
         ) : (
-          <p
-            onClick={startEdit}
-            title="Click to edit"
-            className={cn(
-              "text-[11px] leading-snug text-foreground/80 cursor-text",
-              done && "line-through text-muted-foreground"
+          <div className="flex items-start gap-1">
+            <p
+              onClick={startEdit}
+              title="Click to edit"
+              className={cn(
+                "text-[11px] leading-snug text-foreground/80 cursor-text flex-1",
+                done && "line-through text-muted-foreground"
+              )}
+            >
+              {renderTitle(task.title)}
+            </p>
+            {task.tags.includes("needs-review") && (
+              <span
+                title="Claude wasn't confident about all fields — click to review and edit"
+                className="flex-shrink-0 h-1.5 w-1.5 rounded-full bg-amber-400 mt-1.5"
+              />
             )}
-          >
-            {renderTitle(task.title)}
-          </p>
+          </div>
         )}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Priority (click to cycle) */}
@@ -620,11 +628,14 @@ export function TaskPanel() {
 
   async function handlePriority(task: Task, p: TaskPriority) {
     if (!orgSlug) return;
+    const newTags = task.tags.filter((t) => t !== "needs-review");
     setData((d) =>
-      d ? { ...d, tasks: d.tasks.map((t) => t.id === task.id ? { ...t, priority: p } : t) } : d
+      d ? { ...d, tasks: d.tasks.map((t) => t.id === task.id ? { ...t, priority: p, tags: newTags } : t) } : d
     );
     try {
-      await updateTask(task.id, { priority: p }, orgSlug);
+      const updates: Parameters<typeof updateTask>[1] = { priority: p };
+      if (task.tags.includes("needs-review")) updates.tags = newTags;
+      await updateTask(task.id, updates, orgSlug);
       notify();
     } catch {
       await load();
@@ -634,11 +645,14 @@ export function TaskPanel() {
   async function handlePrivacyToggle(task: Task) {
     if (!orgSlug) return;
     const next = !task.is_private;
+    const newTags = task.tags.filter((t) => t !== "needs-review");
     setData((d) =>
-      d ? { ...d, tasks: d.tasks.map((t) => t.id === task.id ? { ...t, is_private: next } : t) } : d
+      d ? { ...d, tasks: d.tasks.map((t) => t.id === task.id ? { ...t, is_private: next, tags: newTags } : t) } : d
     );
     try {
-      await updateTask(task.id, { is_private: next }, orgSlug);
+      const updates: Parameters<typeof updateTask>[1] = { is_private: next };
+      if (task.tags.includes("needs-review")) updates.tags = newTags;
+      await updateTask(task.id, updates, orgSlug);
       notify();
     } catch {
       await load();
@@ -647,11 +661,14 @@ export function TaskPanel() {
 
   async function handleDateUpdate(task: Task, date: string | null) {
     if (!orgSlug) return;
+    const newTags = task.tags.filter((t) => t !== "needs-review");
     setData((d) =>
-      d ? { ...d, tasks: d.tasks.map((t) => t.id === task.id ? { ...t, due_date: date } : t) } : d
+      d ? { ...d, tasks: d.tasks.map((t) => t.id === task.id ? { ...t, due_date: date, tags: newTags } : t) } : d
     );
     try {
-      await updateTask(task.id, { due_date: date }, orgSlug);
+      const updates: Parameters<typeof updateTask>[1] = { due_date: date };
+      if (task.tags.includes("needs-review")) updates.tags = newTags;
+      await updateTask(task.id, updates, orgSlug);
       notify();
     } catch {
       toast.error("Failed to update date.");

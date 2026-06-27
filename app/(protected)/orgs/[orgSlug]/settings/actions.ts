@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { randomBytes, createHash } from "crypto";
 import { createClient as createAdminSupabase } from "@supabase/supabase-js";
 import { createClient, createAuthedClient } from "@/lib/supabase/server";
 
@@ -71,6 +72,8 @@ export async function saveOrgDetails(
     org_email: string;
     quote_terms?: string;
     quote_notes?: string;
+    quote_prefix?: string;
+    quote_number_seq?: number;
   }
 ) {
   await requireOrgAdmin(orgId);
@@ -86,11 +89,28 @@ export async function saveOrgDetails(
       org_email: details.org_email || null,
       quote_terms: details.quote_terms ?? null,
       quote_notes: details.quote_notes ?? null,
+      quote_prefix: details.quote_prefix || "SPM",
+      quote_number_seq: details.quote_number_seq ?? 99,
     })
     .eq("id", orgId);
 
   if (error) throw new Error(error.message);
 
+  revalidatePath(`/orgs/${orgSlug}/settings`);
+}
+
+export async function saveDefaultRates(
+  orgSlug: string,
+  orgId: string,
+  rates: { mat: Record<string, number>; lab: Record<string, number> }
+) {
+  await requireOrgAdmin(orgId);
+  const { supabase } = await createAuthedClient();
+  const { error } = await supabase
+    .from("organizations")
+    .update({ default_rates: rates })
+    .eq("id", orgId);
+  if (error) throw new Error(error.message);
   revalidatePath(`/orgs/${orgSlug}/settings`);
 }
 
@@ -293,6 +313,63 @@ export async function removeMember(orgSlug: string, orgId: string, memberId: str
     .eq("user_id", memberId);
 
   if (error) throw new Error(error.message);
+  revalidatePath(`/orgs/${orgSlug}/settings`);
+}
+
+// ── Voice token management ─────────────────────────────────────────────────────
+
+async function requireVoiceRole(orgId: string) {
+  const userDb = createClient();
+  const { data: role } = await userDb.rpc("user_org_role", { org_id: orgId });
+  if (role !== "admin" && role !== "project_manager")
+    throw new Error("Access denied.");
+}
+
+export async function generateVoiceToken(orgSlug: string, orgId: string) {
+  const userDb = createClient();
+  const { data: { user } } = await userDb.auth.getUser();
+  if (!user) throw new Error("Unauthenticated");
+  await requireVoiceRole(orgId);
+
+  const rawToken = randomBytes(32).toString("hex");
+  const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+
+  const { supabase } = await createAuthedClient();
+
+  // Soft-revoke all active tokens for this user + org
+  await supabase
+    .from("voice_tokens")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .eq("org_id", orgId)
+    .is("revoked_at", null);
+
+  const { error } = await supabase.from("voice_tokens").insert({
+    user_id: user.id,
+    org_id: orgId,
+    token_hash: tokenHash,
+    label: "My Shortcut",
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/orgs/${orgSlug}/settings`);
+  return rawToken; // returned once; never stored in DB
+}
+
+export async function revokeVoiceToken(orgSlug: string, orgId: string) {
+  const userDb = createClient();
+  const { data: { user } } = await userDb.auth.getUser();
+  if (!user) throw new Error("Unauthenticated");
+  await requireVoiceRole(orgId);
+
+  const { supabase } = await createAuthedClient();
+  await supabase
+    .from("voice_tokens")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .eq("org_id", orgId)
+    .is("revoked_at", null);
+
   revalidatePath(`/orgs/${orgSlug}/settings`);
 }
 

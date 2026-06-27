@@ -112,12 +112,16 @@ export async function updateTask(
     priority: TaskPriority;
     due_date: string | null;
     is_private: boolean;
+    tags: string[];
   }>,
   orgSlug: string
 ) {
   const supabase = createClient();
   const payload: Record<string, unknown> = { ...updates };
-  if (updates.title !== undefined) payload.tags = parseTags(updates.title);
+  // Auto-compute tags from title only when no explicit tags provided
+  if (updates.title !== undefined && updates.tags === undefined) {
+    payload.tags = parseTags(updates.title);
+  }
 
   const { error } = await supabase.from("tasks").update(payload).eq("id", id);
   if (error) throw new Error(error.message);
