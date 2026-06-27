@@ -132,6 +132,50 @@ const s = StyleSheet.create({
   spacer: { height: 12 },
   spacerSm: { height: 6 },
   signOff: { fontSize: 10, marginBottom: 4 },
+
+  // ── Reference table ───────────────────────────────────────────────────────
+  refSection: { marginBottom: 12 },
+  refHeading: { fontSize: 10, fontFamily: "Helvetica-Bold", marginBottom: 5 },
+  refTableOuter: { borderWidth: 0.5, borderColor: "#cccccc", borderStyle: "solid" },
+  refHeaderRow: {
+    flexDirection: "row",
+    backgroundColor: "#f0f0f0",
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#cccccc",
+    borderBottomStyle: "solid",
+  },
+  refRow: {
+    flexDirection: "row",
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#eeeeee",
+    borderBottomStyle: "solid",
+  },
+  refRowLast: { flexDirection: "row" },
+  refCellType: { width: "20%", padding: 5, paddingHorizontal: 7, fontSize: 9 },
+  refCellRef: {
+    width: "35%",
+    padding: 5,
+    paddingHorizontal: 7,
+    fontSize: 9,
+    borderLeftWidth: 0.5,
+    borderLeftColor: "#eeeeee",
+    borderLeftStyle: "solid",
+  },
+  refCellNote: {
+    flex: 1,
+    padding: 5,
+    paddingHorizontal: 7,
+    fontSize: 9,
+    borderLeftWidth: 0.5,
+    borderLeftColor: "#eeeeee",
+    borderLeftStyle: "solid",
+  },
+  refHeaderText: {
+    fontSize: 8,
+    fontFamily: "Helvetica-Bold",
+    color: "#555555",
+    letterSpacing: 0.3,
+  },
   signatoryName: {
     fontSize: 10,
     fontFamily: "Helvetica-Bold",
@@ -200,7 +244,6 @@ function parseHtml(html: string): RichBlock[] {
   return blocks;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyStyle = any;
 
 function RichText({ inlines, style }: { inlines: RichInline[]; style: AnyStyle }) {
@@ -255,6 +298,21 @@ function RichBlocks({
   );
 }
 
+export type RefNote = {
+  type: "drawing" | "min_order" | "other";
+  reference: string;
+  note: string;
+};
+
+export type QuotePricingLine = {
+  quoteNumber: string;
+  site: string;
+  totalExGst: number;
+  grandTotal: number;
+  quoteType: "conforming" | "non-conforming";
+  quoteLevel: string;
+};
+
 export type CoverLetterDocProps = {
   orgLogoUrl: string | null;
   orgName: string;
@@ -267,7 +325,8 @@ export type CoverLetterDocProps = {
   contactTitle: string;
   clientCompany: string;
   reSubject: string;
-  refNotes: string;
+  refNotes: RefNote[];
+  quotePricing?: QuotePricingLine[];
   capabilitiesText: string;
   approachIntro: string;
   approachPoints: string[];
@@ -278,6 +337,9 @@ export type CoverLetterDocProps = {
   signatoryPhone: string;
   signatoryEmail: string;
 };
+
+const fmtMoney = (n: number) =>
+  n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function CoverLetterDoc({
   orgLogoUrl,
@@ -292,6 +354,7 @@ export function CoverLetterDoc({
   clientCompany,
   reSubject,
   refNotes,
+  quotePricing,
   capabilitiesText,
   approachIntro,
   approachPoints,
@@ -357,7 +420,75 @@ export function CoverLetterDoc({
         <Text style={s.heading}>Quotation Summary</Text>
         <Text style={s.para}>{quoteSummary}</Text>
 
-        {refNotes.trim() ? <Text style={s.para}>{refNotes.trim()}</Text> : null}
+        {/* Pricing lines */}
+        {quotePricing && quotePricing.length === 1 && (
+          <Text style={s.para}>
+            {`Our total ${quotePricing[0].quoteType} quotation price for ${quotePricing[0].quoteLevel ? `${quotePricing[0].quoteLevel} of ` : ""}this project is `}
+            <Text style={{ fontFamily: "Helvetica-Bold" }}>
+              ${fmtMoney(quotePricing[0].totalExGst)} ex GST.
+            </Text>
+          </Text>
+        )}
+        {quotePricing && quotePricing.length > 1 && (
+          <>
+            <Text style={s.para}>Our total quotation pricing for this submission is as follows:</Text>
+            {quotePricing.map((q, i) => (
+              <View key={i} style={s.bullet}>
+                <Text style={s.bulletDot}>•</Text>
+                <Text style={s.bulletText}>
+                  {q.quoteType === "non-conforming" ? "Non-conforming quote" : "Conforming quote"}
+                  {` ${q.quoteNumber}`}
+                  {q.site ? ` — ${q.site}` : ""}
+                  {q.quoteLevel ? ` — ${q.quoteLevel}` : ""}
+                  {`: $${fmtMoney(q.totalExGst)} ex GST`}
+                </Text>
+              </View>
+            ))}
+            {(() => {
+              const types = new Set(quotePricing.map((q) => q.quoteType));
+              if (types.size > 1) return null;
+              const label =
+                quotePricing[0].quoteType === "non-conforming"
+                  ? "Combined non-conforming total"
+                  : "Combined conforming total";
+              return (
+                <Text style={{ ...s.para, marginTop: 6 }}>
+                  {`${label}: `}
+                  <Text style={{ fontFamily: "Helvetica-Bold" }}>
+                    ${fmtMoney(quotePricing.reduce((acc, q) => acc + q.totalExGst, 0))} ex GST.
+                  </Text>
+                </Text>
+              );
+            })()}
+          </>
+        )}
+
+        {refNotes.length > 0 && (
+          <View style={s.refSection}>
+            <Text style={s.refHeading}>Reference Documents</Text>
+            <View style={s.refTableOuter}>
+              <View style={s.refHeaderRow}>
+                <Text style={[s.refCellType, s.refHeaderText]}>TYPE</Text>
+                <Text style={[s.refCellRef, s.refHeaderText]}>REFERENCE / DRAWING NO.</Text>
+                <Text style={[s.refCellNote, s.refHeaderText]}>NOTE / DESCRIPTION</Text>
+              </View>
+              {refNotes.map((row, i) => {
+                const typeLabel =
+                  row.type === "drawing" ? "Drawing" :
+                  row.type === "min_order" ? "Min Order" :
+                  "Note";
+                const isLast = i === refNotes.length - 1;
+                return (
+                  <View key={i} style={isLast ? s.refRowLast : s.refRow}>
+                    <Text style={s.refCellType}>{typeLabel}</Text>
+                    <Text style={s.refCellRef}>{row.reference}</Text>
+                    <Text style={s.refCellNote}>{row.note}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         {/* Capabilities */}
         {capabilitiesText.trim() ? (

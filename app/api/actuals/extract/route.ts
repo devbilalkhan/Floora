@@ -216,7 +216,6 @@ export async function POST(req: NextRequest) {
 
       // Use `any` for the content block — the PDF document block type is not yet
       // exported in all SDK versions, but the API accepts it at runtime.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const contentBlock: any =
         file_mime_type === "application/pdf"
           ? {

@@ -18,7 +18,7 @@ export default function ProtectedNotFound() {
             Not found
           </h1>
           <p className="text-sm text-muted-foreground">
-            This org, project, or estimate doesn't exist or you don't have access.
+            This org, project, or estimate doesn&apos;t exist or you don&apos;t have access.
           </p>
         </div>
 

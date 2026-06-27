@@ -27,7 +27,7 @@ export default async function QuotesListPage({
     supabase.from("projects").select("id, name").eq("id", params.projectId).single(),
     supabase
       .from("quotes")
-      .select("id, quote_number, quote_date, to_name, project_ref, total_ex_gst, grand_total, status, estimate_id, created_at")
+      .select("id, name, quote_number, quote_date, to_name, project_ref, total_ex_gst, grand_total, status, estimate_id, created_at")
       .eq("project_id", params.projectId)
       .order("created_at", { ascending: false }),
   ]);
@@ -102,6 +102,9 @@ export default async function QuotesListPage({
                     >
                       {q.quote_number}
                     </Link>
+                    {q.name && (
+                      <div className="text-[10px] text-muted-foreground mt-0.5">{q.name}</div>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-[11px] text-foreground/70">{q.quote_date}</td>
                   <td className="px-3 py-2 text-[11px] text-foreground/70">{q.to_name || "—"}</td>
@@ -119,6 +122,7 @@ export default async function QuotesListPage({
                       orgSlug={params.orgSlug}
                       projectId={params.projectId}
                       currentStatus={q.status}
+                      currentName={q.name ?? ""}
                     />
                   </td>
                 </tr>

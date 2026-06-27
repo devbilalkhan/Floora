@@ -36,8 +36,10 @@ export default async function SubmissionPackPage({
       .order("created_at", { ascending: true }),
     supabase
       .from("takeoffs")
-      .select("id")
-      .eq("project_id", params.projectId),
+      .select("id, name, sort_order")
+      .eq("project_id", params.projectId)
+      .order("sort_order")
+      .order("created_at"),
     supabase.auth.getUser(),
   ]);
 
@@ -54,8 +56,10 @@ export default async function SubmissionPackPage({
         .single()
     : { data: null };
 
+  const takeoffs = (takeoffList ?? []) as { id: string; name: string; sort_order: number }[];
+
   // Fetch all takeoff rows for this project
-  const takeoffIds = (takeoffList ?? []).map((t) => t.id as string);
+  const takeoffIds = takeoffs.map((t) => t.id);
   const { data: rawRows } =
     takeoffIds.length > 0
       ? await supabase
@@ -78,6 +82,7 @@ export default async function SubmissionPackPage({
       project={project}
       org={org}
       quotes={quotes ?? []}
+      takeoffs={takeoffs}
       takeoffRows={(rawRows ?? []) as TakeoffRow[]}
       today={today}
       draft={project.submission_pack_draft ?? null}

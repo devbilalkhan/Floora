@@ -27,6 +27,7 @@ export default async function CostingPage({
     { data: takeoffs },
     { data: rawWetAreas },
     { data: allEstimates },
+    { data: rawPriceRequests },
   ] = await Promise.all([
     supabase
       .from("estimates")
@@ -58,9 +59,26 @@ export default async function CostingPage({
       .select("id, name")
       .eq("project_id", params.projectId)
       .order("created_at"),
+    supabase
+      .from("price_requests")
+      .select("products")
+      .eq("project_id", params.projectId)
+      .eq("status", "received"),
   ]);
 
   if (!estimate || !project) notFound();
+
+  const confirmedPrices: Record<string, number> = {};
+  for (const req of rawPriceRequests ?? []) {
+    const products = Array.isArray(req.products)
+      ? (req.products as Array<{ finish_code?: string; confirmed_price?: number | null }>)
+      : [];
+    for (const p of products) {
+      if (p.finish_code && p.confirmed_price != null && p.confirmed_price > 0) {
+        confirmedPrices[p.finish_code] = p.confirmed_price;
+      }
+    }
+  }
 
   return (
     <div className="max-w-[1440px] mx-auto py-6 px-4 space-y-4">
@@ -148,6 +166,7 @@ export default async function CostingPage({
         takeoffs={(takeoffs ?? []) as { id: string; name: string }[]}
         orgSlug={params.orgSlug}
         projectId={params.projectId}
+        confirmedPrices={confirmedPrices}
       />
     </div>
   );

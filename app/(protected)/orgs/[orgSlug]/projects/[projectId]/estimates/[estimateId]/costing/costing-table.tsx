@@ -125,6 +125,7 @@ function PrimaryRow({
   onCovingRemoved,
   hasWeldRod,
   onConsumableAdded,
+  confirmedPrice,
 }: {
   item: EstimateItem;
   index: number;
@@ -135,6 +136,7 @@ function PrimaryRow({
   onCovingRemoved: (primaryId: string) => void;
   hasWeldRod: boolean;
   onConsumableAdded: (items: EstimateItem[]) => void;
+  confirmedPrice?: number;
 }) {
   const [local, setLocal] = useState(item);
   const pending = useRef<Partial<EstimateItem>>({});
@@ -445,6 +447,15 @@ function PrimaryRow({
           min={0}
           step={0.01}
         />
+        {confirmedPrice != null && confirmedPrice !== r2(local.mat_rate) && (
+          <button
+            onClick={() => { set("mat_rate", confirmedPrice); flush({ mat_rate: confirmedPrice }); }}
+            title="Apply confirmed supplier price"
+            className="block w-full text-[9px] tabular-nums py-0.5 pr-2 text-right bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/20 transition-colors leading-none"
+          >
+            ↑ ${confirmedPrice.toFixed(2)}
+          </button>
+        )}
       </td>
 
       <td className="border-r border-border p-0">
@@ -720,6 +731,7 @@ export function CostingTable({
   takeoffs,
   orgSlug,
   projectId,
+  confirmedPrices = {},
 }: {
   estimate: Estimate;
   initialItems: EstimateItem[];
@@ -727,6 +739,7 @@ export function CostingTable({
   takeoffs: { id: string; name: string }[];
   orgSlug: string;
   projectId: string;
+  confirmedPrices?: Record<string, number>;
 }) {
   const [items, setItems] = useState<EstimateItem[]>(initialItems);
   const [wetAreas, setWetAreas] = useState<WetArea[]>(initialWetAreas);
@@ -1269,6 +1282,7 @@ export function CostingTable({
                             onCovingRemoved={handleCovingRemoved}
                             hasWeldRod={hasWeldRod}
                             onConsumableAdded={(newItems) => setItems((prev) => [...prev, ...newItems])}
+                            confirmedPrice={item.finish_code ? confirmedPrices[item.finish_code] : undefined}
                           />
                           {itemChildren.map((child) => (
                             <ConsumableRow

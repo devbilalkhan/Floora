@@ -4,7 +4,8 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { FileSpreadsheet, Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, FileSpreadsheet, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { NewTakeoffDialog } from "./takeoff/new-takeoff-dialog";
 import { ImportExcelDialog } from "./takeoff/import-excel-dialog";
@@ -44,6 +45,7 @@ export function TakeoffListTable({
   const [editName, setEditName] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -77,6 +79,47 @@ export function TakeoffListTable({
     setDeletingId(null);
     setConfirmDeleteId(null);
     router.refresh();
+  };
+
+  const handleDuplicate = async (id: string, name: string) => {
+    setDuplicatingId(id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data: newTakeoff, error: takeoffErr } = await supabase
+        .from("takeoffs")
+        .insert({ project_id: projectId, name: `Copy of ${name}`, sort_order: items.length, created_by: user.id })
+        .select("id")
+        .single();
+      if (takeoffErr || !newTakeoff) throw takeoffErr ?? new Error("Insert failed");
+
+      const { data: rows, error: rowsErr } = await supabase
+        .from("project_takeoff")
+        .select("sort_order, scope_category, finish_code, description, manufacturer, colour, location, level, product_type, qty, unit, waste_pct, notes, parent_finish_code, cove_height_mm")
+        .eq("takeoff_id", id);
+      if (rowsErr) throw rowsErr;
+
+      if (rows && rows.length > 0) {
+        const { error: insertErr } = await supabase
+          .from("project_takeoff")
+          .insert(rows.map((r) => ({ ...r, takeoff_id: newTakeoff.id, created_by: user.id })));
+        if (insertErr) throw insertErr;
+      }
+
+      setItems((prev) => [...prev, {
+        id: newTakeoff.id,
+        name: `Copy of ${name}`,
+        row_count: rows?.length ?? 0,
+        created_at: new Date().toISOString(),
+      }]);
+      toast.success("Takeoff duplicated.");
+      router.refresh();
+    } catch {
+      toast.error("Failed to duplicate takeoff.");
+    } finally {
+      setDuplicatingId(null);
+    }
   };
 
   return (
@@ -201,7 +244,17 @@ export function TakeoffListTable({
                     </td>
                     <td className="px-4 py-2.5">
                       {canWrite && (
-                        <div className="flex justify-end">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => handleDuplicate(t.id, t.name)}
+                            disabled={duplicatingId === t.id}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-sm text-muted-foreground hover:text-foreground transition-all disabled:opacity-50"
+                            title="Duplicate takeoff"
+                          >
+                            {duplicatingId === t.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <Copy className="h-3 w-3" />}
+                          </button>
                           <button
                             onClick={() => { setEditingId(null); setConfirmDeleteId(t.id); }}
                             className="opacity-0 group-hover:opacity-100 p-1 rounded-sm text-muted-foreground hover:text-destructive transition-all"

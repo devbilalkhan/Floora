@@ -34,7 +34,7 @@ function DeleteDialog({
           <h2 className="text-base font-semibold text-foreground/90">Delete organization</h2>
           <p className="text-sm text-muted-foreground">
             This will permanently delete{" "}
-            <span className="font-medium text-primary">"{orgName}"</span>{" "}
+            <span className="font-medium text-primary">&quot;{orgName}&quot;</span>{" "}
             and all its projects, estimates, takeoffs, price requests, and data. This cannot be undone.
           </p>
         </div>

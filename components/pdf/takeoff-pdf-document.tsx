@@ -1,7 +1,6 @@
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import { CATEGORIES, type TakeoffRow } from "@/lib/takeoff-types";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type S = any;
 
 const HEADER_BG   = "#0f172a";
@@ -127,12 +126,10 @@ function ColHeader({ w, align = "flex-start", flex, children }: {
   w?: number; align?: string; flex?: number; children: string;
 }) {
   return (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     <View style={[
       flex !== undefined ? { flex } : { width: w },
       { paddingHorizontal: 3, paddingVertical: 4, borderRight: `0.5 solid #334155` },
     ] as S}>
-      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       <Text style={[s.th, { textAlign: align as S }]}>{children}</Text>
     </View>
   );
@@ -143,12 +140,10 @@ function Cell({ w, flex, align, style, children }: {
   w?: number; flex?: number; align?: string; style?: S; children?: string | null;
 }) {
   return (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     <View style={[
       flex !== undefined ? { flex } : { width: w },
       { paddingHorizontal: 3, paddingVertical: 2, borderRight: `0.5 solid ${BORDER}` },
     ] as S}>
-      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       <Text style={[style, align ? { textAlign: align as S } : {}] as S}>{children ?? ""}</Text>
     </View>
   );
@@ -297,7 +292,6 @@ export function TakeoffPdfDocument({
         <View style={s.grandTotalRow}>
           <Text style={s.grandTotalLabel}>GRAND TOTAL</Text>
           {Object.entries(grandTotal).map(([unit, total]) => (
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             <View key={unit} style={{ flexDirection: "row", marginLeft: 12 } as S}>
               <Text style={s.grandTotalValue}>{fmt(total)}</Text>
               <Text style={s.grandTotalUnit}> {uLabel(unit)}</Text>
@@ -308,7 +302,6 @@ export function TakeoffPdfDocument({
         {/* Code Summary */}
         {codeSummary.length > 0 && (
           <View>
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
             <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" } as S}>
               <Text style={s.sectionTitle}>CODE SUMMARY</Text>
               <Text style={[s.sectionNote, { marginTop: 10, marginBottom: 4 }]}>

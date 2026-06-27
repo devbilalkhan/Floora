@@ -146,7 +146,7 @@ export default async function TakeoffPage({
             </Link>
           )}
           <Link
-            href={`/orgs/${params.orgSlug}/projects/${params.projectId}/takeoff/print`}
+            href={`/orgs/${params.orgSlug}/projects/${params.projectId}/takeoff/print${selectedId ? `?takeoffId=${selectedId}` : ""}`}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-sm hover:bg-muted/40 transition-colors shrink-0"
           >
             <Printer className="h-3.5 w-3.5" />

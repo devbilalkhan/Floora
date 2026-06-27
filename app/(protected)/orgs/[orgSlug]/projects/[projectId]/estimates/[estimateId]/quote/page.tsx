@@ -49,6 +49,11 @@ export default async function QuotePage({
       .single(),
   ]);
 
+  // Generate a sequential quote number for new quotes
+  const { data: nextNumber } = org?.id
+    ? await supabase.rpc("next_quote_number", { org_id: org.id })
+    : { data: null };
+
   if (!estimate || !project) notFound();
 
   const allItems = (rawItems ?? []) as EstimateItem[];
@@ -66,7 +71,7 @@ export default async function QuotePage({
     year: "numeric",
   });
 
-  const quoteNumber = `Q-${params.estimateId.slice(0, 8).toUpperCase()}`;
+  const quoteNumber = (nextNumber as string | null) ?? `Q-${params.estimateId.slice(0, 8).toUpperCase()}`;
 
   return (
     <QuoteEditor

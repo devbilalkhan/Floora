@@ -91,7 +91,7 @@ export function TakeoffSelector({
                     {confirmingId === t.id ? (
                       /* Inline delete confirmation */
                       <div className="flex items-center gap-2 px-3 py-1 bg-destructive/10">
-                        <span className="flex-1 text-xs text-destructive">Delete "{t.name}"?</span>
+                        <span className="flex-1 text-xs text-destructive">Delete &quot;{t.name}&quot;?</span>
                         <button
                           onClick={() => handleDelete(t)}
                           disabled={deletingId === t.id}
@@ -195,7 +195,7 @@ export function TakeoffSelector({
               <DialogTitle>Delete takeoff?</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground/70">"{selected.name}"</span> and all its rows will be permanently deleted. This cannot be undone.
+              <span className="font-medium text-foreground/70">&quot;{selected.name}&quot;</span> and all its rows will be permanently deleted. This cannot be undone.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" size="sm" onClick={() => setDeleteModalOpen(false)}>

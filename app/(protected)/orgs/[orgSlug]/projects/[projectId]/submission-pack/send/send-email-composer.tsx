@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { pdf } from "@react-pdf/renderer";
 import { Button } from "@/components/ui/button";
 import { CoverPageDoc, type TocSection } from "@/components/pdf/submission-cover-page";
-import { CoverLetterDoc } from "@/components/pdf/submission-cover-letter";
+import { CoverLetterDoc, type RefNote } from "@/components/pdf/submission-cover-letter";
 import { QuotePdfDocument, type QuotePdfLine } from "../../estimates/[estimateId]/quote/quote-pdf-document";
 import type { TakeoffRow } from "@/lib/takeoff-types";
 import { cn } from "@/lib/utils";
@@ -185,7 +185,8 @@ export function SendEmailComposer({
   const signatoryPhone = d?.signatoryPhone ?? org.phone ?? "";
   const signatoryEmail = d?.signatoryEmail ?? org.org_email ?? "";
   const selectedQuoteIds = d?.selectedQuoteIds ?? quotes.map((q) => q.id);
-  const includeTakeoff = d?.includeTakeoff ?? false;
+  const selectedTakeoffIds = d?.selectedTakeoffIds ?? [];
+  const dedupeNotesTerms = d?.dedupeNotesTerms ?? true;
   const refRows = d?.refRows ?? [];
 
   const selectedQuotes = useMemo(
@@ -215,14 +216,9 @@ export function SendEmailComposer({
 
   const effectiveRe = reSubjectEdited ? reSubjectSaved : derivedRe;
 
-  const refNotes = refRows
+  const refNotes: RefNote[] = refRows
     .filter((r) => r.reference || r.note)
-    .map((r) => {
-      const label =
-        r.type === "drawing" ? "Drawing" : r.type === "min_order" ? "Min Order" : "Note";
-      return `${label}${r.reference ? `: ${r.reference}` : ""}${r.note ? ` — ${r.note}` : ""}`;
-    })
-    .join("\n");
+    .map(({ type, reference, note }) => ({ type, reference, note }));
 
   // ── Email form state ───────────────────────────────────────────────────────
 
@@ -323,10 +319,10 @@ export function SendEmailComposer({
     const secs: TocSection[] = [];
     secs.push({ number: n++, title: "SPM COVER LETTER" });
     if (selectedQuoteIds.length > 0) secs.push({ number: n++, title: "CONFORMING QUOTES" });
-    if (includeTakeoff && takeoffRows.length > 0)
+    if (selectedTakeoffIds.length > 0)
       secs.push({ number: n++, title: "QUANTITY TAKEOFF SCHEDULE" });
     return secs;
-  }, [selectedQuoteIds, includeTakeoff, takeoffRows.length]);
+  }, [selectedQuoteIds, selectedTakeoffIds]);
 
   const handleSend = useCallback(async () => {
     if (!to.trim()) {
@@ -382,7 +378,7 @@ export function SendEmailComposer({
 
       // 3. Quotes
       const quoteBlobs = await Promise.all(
-        selectedQuotes.map((q) =>
+        selectedQuotes.map((q, i) =>
           pdf(
             <QuotePdfDocument
               companyName={q.company_name ?? org.name}
@@ -407,6 +403,7 @@ export function SendEmailComposer({
               grandTotal={q.grand_total ?? 0}
               notes={q.notes ?? ""}
               terms={q.terms ?? ""}
+              omitNotesAndTerms={dedupeNotesTerms && i < selectedQuotes.length - 1}
             />
           ).toBlob()
         )
@@ -414,9 +411,9 @@ export function SendEmailComposer({
 
       // 4. Takeoff (if included)
       const takeoffBlob =
-        includeTakeoff && takeoffRows.length > 0
+        selectedTakeoffIds.length > 0
           ? await fetch(
-              `/api/takeoff-pdf?projectId=${project.id}&orgSlug=${orgSlug}`
+              `/api/takeoff-pdf?projectId=${project.id}&orgSlug=${orgSlug}&takeoffIds=${selectedTakeoffIds.join(",")}`
             ).then((r) => {
               if (!r.ok) throw new Error("Failed to fetch takeoff PDF");
               return r.blob();
@@ -485,7 +482,7 @@ export function SendEmailComposer({
     packageName, sections, packDate, contactName, contactTitle, clientCompany,
     effectiveRe, refNotes, capabilitiesText, approachIntro, approachPointsText,
     closingText, signatoryName, signatoryTitle, signatoryCompany, signatoryPhone,
-    signatoryEmail, selectedQuotes, includeTakeoff, takeoffRows.length, attachedDocs,
+    signatoryEmail, selectedQuotes, selectedTakeoffIds, attachedDocs,
   ]);
 
   // ── Render ─────────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ChevronRight, FileText, Image, Mail } from "lucide-react";
+import { ChevronRight, FileText, Image, Mail, Package } from "lucide-react";
 import { NewEstimateDialog } from "./new-estimate-dialog";
 import { QuoteActions } from "./quotes/quote-actions";
 import { EstimateTableRow } from "./estimate-table-row";
@@ -344,6 +344,14 @@ export default async function ProjectDetailPage({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold">Quotes</h2>
+            <div className="flex items-center gap-2">
+            <Link
+              href={`/orgs/${params.orgSlug}/projects/${params.projectId}/submission-pack`}
+              className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors"
+            >
+              <Package className="h-3 w-3 shrink-0" />
+              <span>Submission Pack</span>
+            </Link>
             <Link
               href={`/orgs/${params.orgSlug}/projects/${params.projectId}/price-requests`}
               className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors"
@@ -358,6 +366,7 @@ export default async function ProjectDetailPage({
                 {priceRequests.length}
               </span>
             </Link>
+            </div>
           </div>
 
           {quotes.length === 0 ? (

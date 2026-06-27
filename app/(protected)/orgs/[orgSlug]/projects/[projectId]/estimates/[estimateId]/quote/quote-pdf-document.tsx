@@ -268,6 +268,26 @@ const s = StyleSheet.create({
 const fmt = (n: number) =>
   n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// Strip HTML tags → plain text lines for PDF rendering
+function htmlToLines(html: string): string[] {
+  if (!html) return [];
+  if (!html.includes("<")) return html.split("\n").filter(Boolean);
+  const text = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  return text.split("\n").filter((l) => l.trim());
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type QuotePdfLine = {
   id: string;
@@ -302,6 +322,8 @@ export type QuotePdfProps = {
   grandTotal: number;
   notes: string;
   terms: string;
+  hideZeros?: boolean;
+  omitNotesAndTerms?: boolean;
 };
 
 // ── Document ──────────────────────────────────────────────────────────────────
@@ -312,9 +334,9 @@ export function QuotePdfDocument({
   projectRef, projectLoc,
   scopeText, lines,
   totalExGst, gst, grandTotal,
-  notes, terms,
+  notes, terms, hideZeros, omitNotesAndTerms,
 }: QuotePdfProps) {
-  const scopeLines = scopeText.split("\n").filter(Boolean);
+  const scopeLines = htmlToLines(scopeText);
   const noteLines  = notes.split("\n").filter(Boolean);
   const termLines  = terms.split("\n").filter(Boolean);
 
@@ -436,13 +458,16 @@ export function QuotePdfDocument({
                 } else {
                   const idx = itemIdx++;
                   sectionTotal += Number(line.amount) || 0;
+                  const qtyStr  = hideZeros && Number(line.qty) === 0    ? "" : String(line.qty);
+                  const rateStr = hideZeros && line.rate === 0           ? "" : `$${fmt(line.rate)}`;
+                  const amtStr  = hideZeros && line.amount === 0         ? "" : `$${fmt(line.amount)}`;
                   rows.push(
                     <View key={line.id} style={idx % 2 === 1 ? s.tableRowAlt : s.tableRow} wrap={false}>
                       <Text style={s.tdDesc}>{line.description || "—"}</Text>
-                      <Text style={s.tdQty}>{line.qty}</Text>
+                      <Text style={s.tdQty}>{qtyStr}</Text>
                       <Text style={s.tdUnit}>{line.unit}</Text>
-                      <Text style={s.tdRate}>${fmt(line.rate)}</Text>
-                      <Text style={s.tdAmt}>${fmt(line.amount)}</Text>
+                      <Text style={s.tdRate}>{rateStr}</Text>
+                      <Text style={s.tdAmt}>{amtStr}</Text>
                     </View>
                   );
                   if (hasHeaders && inSection && (isLast || nextIsHeader)) {
@@ -481,7 +506,7 @@ export function QuotePdfDocument({
         </View>
 
         {/* ── Additional notes ─────────────────────────────────────────────── */}
-        {noteLines.length > 0 && (
+        {!omitNotesAndTerms && noteLines.length > 0 && (
           <View style={s.section}>
             <Text style={[s.sectionLabel, { marginBottom: 5 }]}>Additional Notes</Text>
             {noteLines.map((line, i) => (
@@ -491,7 +516,7 @@ export function QuotePdfDocument({
         )}
 
         {/* ── Terms & Conditions ───────────────────────────────────────────── */}
-        {termLines.length > 0 && (
+        {!omitNotesAndTerms && termLines.length > 0 && (
           <View style={s.sectionNoBorder}>
             <Text style={[s.sectionLabel, { marginBottom: 5 }]}>Terms &amp; Conditions</Text>
             {termLines.map((line, i) => (

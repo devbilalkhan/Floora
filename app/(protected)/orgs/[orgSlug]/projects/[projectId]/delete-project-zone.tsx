@@ -29,7 +29,7 @@ function DeleteDialog({
           <h2 className="text-base font-semibold text-foreground/90">Delete project</h2>
           <p className="text-sm text-muted-foreground">
             This will permanently delete{" "}
-            <span className="font-medium text-primary">"{projectName}"</span>{" "}
+            <span className="font-medium text-primary">&quot;{projectName}&quot;</span>{" "}
             and all associated data — takeoffs, estimates, SWMS, price requests, and drawings. This cannot be undone.
           </p>
         </div>

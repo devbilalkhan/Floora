@@ -4,10 +4,10 @@ import React, { useState, useRef, useMemo, useCallback, useEffect } from "react"
 import Link from "next/link";
 import { ChevronRight, Download, X, Loader2, Plus, Trash2, ChevronUp, ChevronDown, FileText, Send } from "lucide-react";
 import { toast } from "sonner";
-import { pdf } from "@react-pdf/renderer";
+import { pdf, usePDF } from "@react-pdf/renderer";
 import { Button } from "@/components/ui/button";
 import { CoverPageDoc, type TocSection } from "@/components/pdf/submission-cover-page";
-import { CoverLetterDoc } from "@/components/pdf/submission-cover-letter";
+import { CoverLetterDoc, type RefNote } from "@/components/pdf/submission-cover-letter";
 import { QuotePdfDocument, type QuotePdfLine } from "../estimates/[estimateId]/quote/quote-pdf-document";
 import type { TakeoffRow } from "@/lib/takeoff-types";
 import { cn } from "@/lib/utils";
@@ -234,6 +234,7 @@ export function PackBuilder({
   project,
   org,
   quotes,
+  takeoffs,
   takeoffRows,
   today,
   draft,
@@ -243,6 +244,7 @@ export function PackBuilder({
   project: Project;
   org: Org;
   quotes: QuoteRow[];
+  takeoffs: { id: string; name: string }[];
   takeoffRows: TakeoffRow[];
   today: string;
   draft: PackDraft | null;
@@ -284,13 +286,9 @@ export function PackBuilder({
   function updateRefRow(id: number, field: "type" | "reference" | "note", value: string) {
     setRefRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
   }
-  const refNotes = refRows
+  const refNotes: RefNote[] = refRows
     .filter((r) => r.reference || r.note)
-    .map((r) => {
-      const label = r.type === "drawing" ? "Drawing" : r.type === "min_order" ? "Min Order" : "Note";
-      return `${label}${r.reference ? `: ${r.reference}` : ""}${r.note ? ` — ${r.note}` : ""}`;
-    })
-    .join("\n");
+    .map(({ type, reference, note }) => ({ type, reference, note }));
   const [capabilitiesText, setCapabilitiesText] = useState(
     () => draft?.capabilitiesText ?? textToHtml(DEFAULT_CAPABILITIES)
   );
@@ -312,8 +310,36 @@ export function PackBuilder({
     draft?.selectedQuoteIds ?? quotes.map((q) => q.id)
   );
 
-  // Takeoff toggle
-  const [includeTakeoff, setIncludeTakeoff] = useState(draft?.includeTakeoff ?? false);
+  // Which selected quotes to show pricing for in the cover letter
+  const [pricedQuoteIds, setPricedQuoteIds] = useState<string[]>(
+    draft?.pricedQuoteIds ?? quotes.map((q) => q.id)
+  );
+
+  // Per-quote conforming/non-conforming + level settings
+  const [quoteSettings, setQuoteSettings] = useState<Record<string, { type: "conforming" | "non-conforming"; level: string }>>(
+    draft?.quoteSettings ?? {}
+  );
+
+  function updateQuoteSetting(id: string, field: "type" | "level", value: string) {
+    setQuoteSettings((prev) => ({
+      ...prev,
+      [id]: { ...{ type: "conforming" as const, level: "" }, ...prev[id], [field]: value },
+    }));
+  }
+
+  // Takeoff selection
+  const [selectedTakeoffIds, setSelectedTakeoffIds] = useState<string[]>(
+    draft?.selectedTakeoffIds ?? []
+  );
+
+  function toggleTakeoff(id: string) {
+    setSelectedTakeoffIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  // Notes & terms deduplication
+  const [dedupeNotesTerms, setDedupeNotesTerms] = useState(draft?.dedupeNotesTerms ?? true);
 
   // ── Auto-save ──────────────────────────────────────────────────────────────
 
@@ -326,14 +352,14 @@ export function PackBuilder({
     reSubject, reSubjectEdited,
     refRows, capabilitiesText, approachIntro, approachPointsText, closingText,
     signatoryName, signatoryTitle, signatoryCompany, signatoryPhone, signatoryEmail,
-    selectedQuoteIds, includeTakeoff,
+    selectedQuoteIds, pricedQuoteIds, quoteSettings, selectedTakeoffIds, dedupeNotesTerms,
   }), [
     clientName, projectNameState, packageName, packDate,
     contactName, contactTitle, clientCompany,
     reSubject, reSubjectEdited,
     refRows, capabilitiesText, approachIntro, approachPointsText, closingText,
     signatoryName, signatoryTitle, signatoryCompany, signatoryPhone, signatoryEmail,
-    selectedQuoteIds, includeTakeoff,
+    selectedQuoteIds, pricedQuoteIds, quoteSettings, selectedTakeoffIds, dedupeNotesTerms,
   ]);
 
   useEffect(() => {
@@ -357,7 +383,25 @@ export function PackBuilder({
   // Preview
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
+  const [generating, setGenerating] = useState<null | "preview" | "send">(null);
+
+  // Live cover letter preview
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  const [liveInstance, updateLivePDF] = usePDF({
+    document: <CoverLetterDoc
+      orgLogoUrl={org.logo_url} orgName={org.name} orgAbn={org.abn ?? ""}
+      orgAddress={org.address ?? ""} orgPhone={org.phone ?? ""} orgEmail={org.org_email ?? ""}
+      packDate={packDate} contactName={contactName} contactTitle={contactTitle}
+      clientCompany={clientCompany} reSubject="" refNotes={[]} quotePricing={[]}
+      capabilitiesText={capabilitiesText} approachIntro={approachIntro}
+      approachPoints={approachPointsText.split("\n").map((l) => l.trim()).filter(Boolean)}
+      closingText={closingText} signatoryName={signatoryName} signatoryTitle={signatoryTitle}
+      signatoryCompany={signatoryCompany} signatoryPhone={signatoryPhone} signatoryEmail={signatoryEmail}
+    />,
+  });
+
 
   // Compose modal
   const [composeOpen, setComposeOpen] = useState(false);
@@ -375,6 +419,17 @@ export function PackBuilder({
     [selectedQuoteIds, quotes]
   );
 
+  const pricedQuotes = useMemo(
+    () => quotes.filter((q) => pricedQuoteIds.includes(q.id) && q.total_ex_gst != null),
+    [quotes, pricedQuoteIds]
+  );
+
+  function togglePricedQuote(id: string) {
+    setPricedQuoteIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
   const sections = useMemo<TocSection[]>(() => {
     let n = 1;
     const secs: TocSection[] = [];
@@ -382,7 +437,7 @@ export function PackBuilder({
     if (selectedQuoteIds.length > 0) {
       secs.push({ number: n++, title: "CONFORMING QUOTES" });
     }
-    if (includeTakeoff && takeoffRows.length > 0) {
+    if (selectedTakeoffIds.length > 0) {
       secs.push({ number: n++, title: "QUANTITY TAKEOFF SCHEDULE" });
     }
     for (const doc of attachedDocs) {
@@ -392,7 +447,7 @@ export function PackBuilder({
       });
     }
     return secs;
-  }, [selectedQuoteIds, includeTakeoff, takeoffRows.length, attachedDocs]);
+  }, [selectedQuoteIds, selectedTakeoffIds, attachedDocs]);
 
   // Auto-update RE subject when key fields change
   const derivedRe = useMemo(() => {
@@ -408,6 +463,36 @@ export function PackBuilder({
 
   // Use derived RE unless user has manually edited it
   const effectiveRe = reSubjectEdited ? reSubject : derivedRe;
+
+  // Debounced live cover letter preview update
+  useEffect(() => {
+    const t = setTimeout(() => {
+      updateLivePDF(<CoverLetterDoc
+        orgLogoUrl={org.logo_url} orgName={org.name} orgAbn={org.abn ?? ""}
+        orgAddress={org.address ?? ""} orgPhone={org.phone ?? ""} orgEmail={org.org_email ?? ""}
+        packDate={packDate} contactName={contactName} contactTitle={contactTitle}
+        clientCompany={clientCompany} reSubject={effectiveRe} refNotes={refNotes}
+        quotePricing={pricedQuotes.map((q) => ({
+          quoteNumber: q.quote_number,
+          site: q.project_loc || q.project_ref || "",
+          totalExGst: q.total_ex_gst!,
+          grandTotal: q.grand_total ?? q.total_ex_gst! * 1.1,
+          quoteType: quoteSettings[q.id]?.type ?? "conforming",
+          quoteLevel: quoteSettings[q.id]?.level ?? "",
+        }))}
+        capabilitiesText={capabilitiesText} approachIntro={approachIntro}
+        approachPoints={approachPointsText.split("\n").map((l) => l.trim()).filter(Boolean)}
+        closingText={closingText} signatoryName={signatoryName} signatoryTitle={signatoryTitle}
+        signatoryCompany={signatoryCompany} signatoryPhone={signatoryPhone} signatoryEmail={signatoryEmail}
+      />);
+    }, 500);
+    return () => clearTimeout(t);
+  }, [
+    org, packDate, contactName, contactTitle, clientCompany, effectiveRe, refNotes,
+    pricedQuotes, quoteSettings, capabilitiesText, approachIntro, approachPointsText, closingText,
+    signatoryName, signatoryTitle, signatoryCompany, signatoryPhone, signatoryEmail,
+    updateLivePDF,
+  ]);
 
   // ── Quote selection helpers ────────────────────────────────────────────────
 
@@ -504,6 +589,14 @@ export function PackBuilder({
         clientCompany={clientCompany}
         reSubject={effectiveRe}
         refNotes={refNotes}
+        quotePricing={pricedQuotes.map((q) => ({
+          quoteNumber: q.quote_number,
+          site: q.project_loc || q.project_ref || "",
+          totalExGst: q.total_ex_gst!,
+          grandTotal: q.grand_total ?? q.total_ex_gst! * 1.1,
+          quoteType: quoteSettings[q.id]?.type ?? "conforming",
+          quoteLevel: quoteSettings[q.id]?.level ?? "",
+        }))}
         capabilitiesText={capabilitiesText}
         approachIntro={approachIntro}
         approachPoints={approachPoints}
@@ -517,7 +610,7 @@ export function PackBuilder({
     ).toBlob();
 
     const quoteBlobs = await Promise.all(
-      selectedQuotes.map((q) =>
+      selectedQuotes.map((q, i) =>
         pdf(
           <QuotePdfDocument
             companyName={q.company_name ?? org.name}
@@ -542,15 +635,16 @@ export function PackBuilder({
             grandTotal={q.grand_total ?? 0}
             notes={q.notes ?? ""}
             terms={q.terms ?? ""}
+            omitNotesAndTerms={dedupeNotesTerms && i < selectedQuotes.length - 1}
           />
         ).toBlob()
       )
     );
 
     const takeoffBlob =
-      includeTakeoff && takeoffRows.length > 0
+      selectedTakeoffIds.length > 0
         ? await fetch(
-            `/api/takeoff-pdf?projectId=${project.id}&orgSlug=${orgSlug}`
+            `/api/takeoff-pdf?projectId=${project.id}&orgSlug=${orgSlug}&takeoffIds=${selectedTakeoffIds.join(",")}`
           ).then((r) => {
             if (!r.ok) throw new Error("Failed to fetch takeoff PDF");
             return r.blob();
@@ -587,13 +681,13 @@ export function PackBuilder({
   }, [
     org, orgSlug, clientName, projectNameState, packageName, sections, packDate,
     contactName, contactTitle, clientCompany, effectiveRe, refNotes,
-    selectedQuotes, capabilitiesText, approachIntro, approachPointsText,
+    selectedQuotes, pricedQuotes, capabilitiesText, approachIntro, approachPointsText,
     closingText, signatoryName, signatoryTitle, signatoryCompany,
-    signatoryPhone, signatoryEmail, includeTakeoff, takeoffRows.length, attachedDocs,
+    signatoryPhone, signatoryEmail, selectedTakeoffIds, attachedDocs,
   ]);
 
   const handleGenerate = useCallback(async () => {
-    setGenerating(true);
+    setGenerating("preview");
     try {
       const blob = await generatePdfBlob();
       const url = URL.createObjectURL(blob);
@@ -604,14 +698,14 @@ export function PackBuilder({
       console.error(err);
       toast.error("Failed to generate submission pack.");
     } finally {
-      setGenerating(false);
+      setGenerating(null);
     }
   }, [generatePdfBlob, previewUrl]);
 
   // Opens compose modal — reuses the already-previewed blob if available,
   // otherwise generates fresh so attached docs are always included.
   const handleOpenCompose = useCallback(async () => {
-    setGenerating(true);
+    setGenerating("send");
     try {
       let blob: Blob;
       if (previewUrl) {
@@ -626,7 +720,7 @@ export function PackBuilder({
       console.error(err);
       toast.error("Failed to generate submission pack.");
     } finally {
-      setGenerating(false);
+      setGenerating(null);
     }
   }, [generatePdfBlob, previewUrl]);
 
@@ -649,7 +743,7 @@ export function PackBuilder({
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-4xl mx-auto py-6 px-4 space-y-5 text-[11px]">
+    <div className="max-w-[1400px] mx-auto py-6 px-4 space-y-5 text-[11px]">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Link
@@ -692,11 +786,11 @@ export function PackBuilder({
         <div className="flex items-center gap-2">
           <Button
             onClick={handleOpenCompose}
-            disabled={generating}
+            disabled={generating !== null}
             variant="outline"
             className="gap-1.5 text-xs"
           >
-            {generating ? (
+            {generating === "send" ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <Send className="h-3.5 w-3.5" />
@@ -705,18 +799,22 @@ export function PackBuilder({
           </Button>
           <Button
             onClick={handleGenerate}
-            disabled={generating}
+            disabled={generating !== null}
             className="gap-1.5 text-xs"
           >
-            {generating ? (
+            {generating === "preview" ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <Download className="h-3.5 w-3.5" />
             )}
-            {generating ? "Building pack…" : "Preview & Download"}
+            {generating === "preview" ? "Building pack…" : "Preview & Download"}
           </Button>
         </div>
       </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-[3fr_2fr] gap-6 items-start">
+        {/* Left: form cards */}
+        <div className="space-y-5">
 
       {/* Pack Details */}
       <Card title="Pack Details">
@@ -779,7 +877,7 @@ export function PackBuilder({
           ) : (
             <table className="w-full text-xs border-collapse">
               <thead>
-                <tr className="border-b border-border">
+                <tr>
                   <th className="text-left pb-1.5 pr-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide w-[110px]">Type</th>
                   <th className="text-left pb-1.5 pr-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide w-[38%]">Reference / Drawing No.</th>
                   <th className="text-left pb-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Note / Description</th>
@@ -788,7 +886,7 @@ export function PackBuilder({
               </thead>
               <tbody>
                 {refRows.map((row) => (
-                  <tr key={row.id} className="border-b border-border/40 last:border-0">
+                  <tr key={row.id}>
                     <td className="py-1 pr-2 align-middle">
                       <select
                         value={row.type}
@@ -831,6 +929,61 @@ export function PackBuilder({
             </table>
           )}
         </div>
+
+        {quotes.length > 0 && (
+          <div>
+            <SectionLabel>Quotation pricing (shown in cover letter before capabilities)</SectionLabel>
+            <div className="space-y-1.5">
+              {quotes.map((q) => {
+                const checked = pricedQuoteIds.includes(q.id);
+                const settings = quoteSettings[q.id] ?? { type: "conforming", level: "" };
+                return (
+                  <div
+                    key={q.id}
+                    className={cn(
+                      "rounded-lg border transition-colors",
+                      checked ? "border-primary/30 bg-primary/5" : "border-border bg-muted/20 opacity-60"
+                    )}
+                  >
+                    <label className="flex items-center gap-3 px-3 py-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => togglePricedQuote(q.id)}
+                        className="h-3.5 w-3.5 accent-primary flex-shrink-0"
+                      />
+                      <span className="text-[11px] font-mono text-foreground/80">{q.quote_number}</span>
+                      {(q.project_loc || q.project_ref) && (
+                        <span className="text-[11px] text-muted-foreground">— {q.project_loc || q.project_ref}</span>
+                      )}
+                      <span className="ml-auto text-[11px] tabular-nums text-muted-foreground flex-shrink-0">
+                        {q.total_ex_gst != null ? `$${fmt(q.total_ex_gst)} ex GST` : "no price"}
+                      </span>
+                    </label>
+                    {checked && (
+                      <div className="flex items-center gap-2 px-3 pb-2">
+                        <select
+                          value={settings.type}
+                          onChange={(e) => updateQuoteSetting(q.id, "type", e.target.value)}
+                          className="bg-background/60 border border-border rounded-sm px-2 h-6 text-[11px] text-foreground outline-none focus:ring-1 focus:ring-primary/50"
+                        >
+                          <option value="conforming">Conforming</option>
+                          <option value="non-conforming">Non-conforming</option>
+                        </select>
+                        <input
+                          value={settings.level}
+                          onChange={(e) => updateQuoteSetting(q.id, "level", e.target.value)}
+                          placeholder="Level (e.g. Level 3/4) — optional"
+                          className="flex-1 bg-background/60 border border-border rounded-sm px-2 h-6 text-[11px] text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary/50"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div>
           <SectionLabel>Capabilities paragraph</SectionLabel>
@@ -957,47 +1110,74 @@ export function PackBuilder({
           )}
         </div>
 
+        {selectedQuoteIds.length > 1 && (
+          <label className="flex items-center gap-2.5 cursor-pointer mt-2">
+            <input
+              type="checkbox"
+              checked={dedupeNotesTerms}
+              onChange={(e) => setDedupeNotesTerms(e.target.checked)}
+              className="h-3.5 w-3.5 accent-primary"
+            />
+            <span className="text-[11px] text-foreground/70">
+              Include notes &amp; terms on last quote only
+            </span>
+          </label>
+        )}
+
         <div className="h-px bg-border/50 my-3" />
 
         {/* Quantity Takeoff subsection */}
         <div>
-          <p className="text-[11px] font-medium text-foreground/70 mb-1.5">Quantity Takeoff Schedule</p>
-          <div
-            className={cn(
-              "flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors",
-              takeoffRows.length === 0
-                ? "border-border bg-muted/20 opacity-50 cursor-not-allowed"
-                : includeTakeoff
-                ? "border-primary/30 bg-primary/5"
-                : "border-border bg-muted/20 opacity-60"
-            )}
-          >
-            <input
-              type="checkbox"
-              checked={includeTakeoff}
-              disabled={takeoffRows.length === 0}
-              onChange={(e) => setIncludeTakeoff(e.target.checked)}
-              className="h-3.5 w-3.5 accent-primary disabled:cursor-not-allowed"
-            />
-            <div className="flex-1 min-w-0">
-              <span className="text-[11px] text-foreground/80">Quantity Takeoff</span>
-              <span className="ml-2 text-[11px] text-muted-foreground">
-                {takeoffRows.length === 0
-                  ? "— no takeoff data for this project"
-                  : `— ${takeoffRows.length} item${takeoffRows.length !== 1 ? "s" : ""}`}
-              </span>
+          <p className="text-[11px] font-medium text-foreground/70 mb-1.5">
+            Quantity Takeoff Schedule{" "}
+            <span className="text-muted-foreground font-normal">
+              ({selectedTakeoffIds.length} of {takeoffs.length} selected)
+            </span>
+          </p>
+          {takeoffs.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground py-1">
+              No takeoffs for this project.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {takeoffs.map((t) => {
+                const selected = selectedTakeoffIds.includes(t.id);
+                const rowCount = takeoffRows.filter((r) => r.takeoff_id === t.id).length;
+                return (
+                  <div
+                    key={t.id}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors",
+                      selected
+                        ? "border-primary/30 bg-primary/5"
+                        : "border-border bg-muted/20 opacity-60"
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => toggleTakeoff(t.id)}
+                      className="h-3.5 w-3.5 accent-primary"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[11px] text-foreground/80">{t.name}</span>
+                      <span className="ml-2 text-[11px] text-muted-foreground">
+                        — {rowCount} item{rowCount !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <Link
+                      href={`/orgs/${orgSlug}/projects/${project.id}/takeoff/print?takeoffId=${t.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-muted-foreground hover:text-primary transition-colors flex-shrink-0"
+                    >
+                      Preview ↗
+                    </Link>
+                  </div>
+                );
+              })}
             </div>
-            {takeoffRows.length > 0 && (
-              <Link
-                href={`/orgs/${orgSlug}/projects/${project.id}/takeoff/print`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-muted-foreground hover:text-primary transition-colors flex-shrink-0"
-              >
-                Preview ↗
-              </Link>
-            )}
-          </div>
+          )}
         </div>
 
         <div className="h-px bg-border/50 my-3" />
@@ -1092,18 +1272,45 @@ export function PackBuilder({
       <div className="flex justify-end pb-6">
         <Button
           onClick={handleGenerate}
-          disabled={generating}
+          disabled={generating !== null}
           size="lg"
           className="gap-2"
         >
-          {generating ? (
+          {generating === "preview" ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Download className="h-4 w-4" />
           )}
-          {generating ? "Building pack…" : "Preview & Download"}
+          {generating === "preview" ? "Building pack…" : "Preview & Download"}
         </Button>
       </div>
+
+        </div>{/* end left column */}
+
+        {/* Right: live cover letter preview */}
+        <div className="sticky top-4">
+          <div className="bg-card/65 backdrop-blur-xl border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-2.5 bg-muted/30 border-b border-border flex items-center justify-between">
+              <h2 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                Cover Letter Preview
+              </h2>
+              <span className="text-[10px] text-muted-foreground/60">Updates after 0.5s pause</span>
+            </div>
+            {mounted && liveInstance.url ? (
+              <iframe
+                src={`${liveInstance.url}#zoom=60`}
+                className="w-full border-0"
+                style={{ height: "88vh" }}
+                title="Cover Letter Preview"
+              />
+            ) : (
+              <div className="h-[88vh] flex items-center justify-center text-xs text-muted-foreground">
+                {liveInstance.loading ? "Rendering…" : "Loading preview…"}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>{/* end grid */}
 
       {/* PDF preview modal */}
       {/* Compose modal — rendered in same page so attached docs blob survives */}
@@ -1140,9 +1347,14 @@ export function PackBuilder({
               <Button
                 size="sm"
                 onClick={handleOpenCompose}
+                disabled={generating !== null}
                 className="gap-1.5 text-xs"
               >
-                <Send className="h-3.5 w-3.5" />
+                {generating === "send" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Send className="h-3.5 w-3.5" />
+                )}
                 Send Email
               </Button>
               <Button size="sm" variant="outline" onClick={handleDownload} className="gap-1.5 text-xs">

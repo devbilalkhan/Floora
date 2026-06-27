@@ -42,8 +42,10 @@ const C = {
 
 export default async function TakeoffPrintPage({
   params,
+  searchParams,
 }: {
   params: { orgSlug: string; projectId: string };
+  searchParams: { takeoffId?: string };
 }) {
   const supabase = createClient();
 
@@ -70,7 +72,11 @@ export default async function TakeoffPrintPage({
         .eq("project_id", params.projectId),
     ]);
 
-  const takeoffIds = (takeoffList ?? []).map((t) => t.id as string);
+  const allTakeoffIds = (takeoffList ?? []).map((t) => t.id as string);
+  const takeoffIds = searchParams.takeoffId && allTakeoffIds.includes(searchParams.takeoffId)
+    ? [searchParams.takeoffId]
+    : allTakeoffIds;
+
   const { data: rawRows } =
     takeoffIds.length > 0
       ? await supabase

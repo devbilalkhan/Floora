@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const projectId = searchParams.get("projectId");
   const orgSlug = searchParams.get("orgSlug");
+  const takeoffIdsParam = searchParams.get("takeoffIds");
   if (!projectId || !orgSlug) return new Response("Missing params", { status: 400 });
 
   const supabase = createClient();
@@ -29,7 +30,11 @@ export async function GET(req: NextRequest) {
 
   if (!project || !org) return new Response("Not found", { status: 404 });
 
-  const takeoffIds = (takeoffList ?? []).map((t) => t.id as string);
+  const allTakeoffIds = (takeoffList ?? []).map((t) => t.id as string);
+  const allowedIds = takeoffIdsParam ? takeoffIdsParam.split(",") : null;
+  const takeoffIds = allowedIds
+    ? allTakeoffIds.filter((id) => allowedIds.includes(id))
+    : allTakeoffIds;
   const { data: rawRows } = takeoffIds.length > 0
     ? await supabase.from("project_takeoff").select("id, takeoff_id, scope_category, finish_code, description, manufacturer, colour, location, level, product_type, qty, unit, waste_pct, notes, sort_order, parent_finish_code, cove_height_mm").in("takeoff_id", takeoffIds).order("scope_category").order("sort_order")
     : { data: [] };

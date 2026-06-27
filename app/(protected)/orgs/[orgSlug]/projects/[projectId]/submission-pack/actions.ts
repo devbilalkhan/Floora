@@ -23,7 +23,10 @@ export type PackDraft = {
   signatoryPhone: string;
   signatoryEmail: string;
   selectedQuoteIds: string[];
-  includeTakeoff: boolean;
+  pricedQuoteIds: string[];
+  quoteSettings: Record<string, { type: "conforming" | "non-conforming"; level: string }>;
+  selectedTakeoffIds: string[];
+  dedupeNotesTerms: boolean;
 };
 
 export async function savePackDraft(projectId: string, draft: PackDraft) {

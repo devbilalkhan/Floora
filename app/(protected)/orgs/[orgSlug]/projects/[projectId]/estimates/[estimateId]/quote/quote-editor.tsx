@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
-import { ChevronRight, Sparkles, Loader2, Plus, Trash2, Download, X, GripVertical } from "lucide-react";
+import { ChevronRight, Sparkles, Loader2, Plus, Trash2, Download, X, GripVertical, List, Bold } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { pdf } from "@react-pdf/renderer";
@@ -61,7 +61,6 @@ function toLine(item: EstimateItem): QuoteLine {
 
 function buildLines(items: EstimateItem[], level: string, distinctLevels: string[]): QuoteLine[] {
   if (level === "consolidated") {
-    // Group by finish_code; items without a code stay individual
     const groups = new Map<string, EstimateItem[]>();
     const order: string[] = [];
     for (const item of items) {
@@ -102,7 +101,143 @@ function buildLines(items: EstimateItem[], level: string, distinctLevels: string
 // ── Input helpers ─────────────────────────────────────────────────────────────
 const docInput = "bg-transparent border-0 outline-none w-full text-[11px] text-gray-800 placeholder:text-gray-300 focus:bg-gray-50 focus:ring-1 focus:ring-gray-200 rounded px-1 py-0.5 transition-colors";
 const docInputSm = "bg-transparent border-0 outline-none w-full text-[11px] text-gray-800/80 placeholder:text-gray-300 focus:bg-gray-50 focus:ring-1 focus:ring-gray-200 rounded px-1 py-0.5 transition-colors";
-const docTextarea = "bg-transparent border-0 outline-none w-full text-[11px] text-gray-800/80 placeholder:text-gray-300 focus:bg-gray-50 focus:ring-1 focus:ring-gray-200 rounded px-1 py-0.5 resize-none transition-colors leading-relaxed print:overflow-visible";
+
+// ── Convert plain text → HTML (for initial value normalisation and AI output) ──
+function plainToHtml(text: string): string {
+  if (!text) return "";
+  // Already HTML
+  if (text.includes("<")) return text;
+  return text
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => {
+      const esc = l.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      return `<p>${esc}</p>`;
+    })
+    .join("");
+}
+
+// ── Scope rich-text editor (white-document themed) ────────────────────────────
+function QuoteScopeEditor({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (html: string) => void;
+  disabled?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [bold, setBold] = useState(false);
+  const [list, setList] = useState(false);
+
+  useEffect(() => {
+    if (ref.current) ref.current.innerHTML = plainToHtml(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sync = useCallback(() => {
+    onChange(ref.current?.innerHTML ?? "");
+  }, [onChange]);
+
+  const updateState = useCallback(() => {
+    try {
+      setBold(document.queryCommandState("bold"));
+      setList(document.queryCommandState("insertUnorderedList"));
+    } catch {}
+  }, []);
+
+  function exec(cmd: string) {
+    ref.current?.focus();
+    document.execCommand(cmd, false);
+    sync();
+    updateState();
+  }
+
+  return (
+    <div
+      className="border border-gray-200 rounded overflow-hidden focus-within:ring-1 focus-within:ring-violet-200 transition-colors"
+      style={{ width: "70%" }}
+    >
+      {/* Toolbar */}
+      <div className="flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-50 border-b border-gray-200 print:hidden">
+        <button
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); exec("bold"); }}
+          title="Bold"
+          className={cn(
+            "p-1 rounded transition-colors",
+            bold ? "bg-violet-100 text-violet-600" : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+          )}
+        >
+          <Bold className="h-3 w-3" />
+        </button>
+        <button
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); exec("insertUnorderedList"); }}
+          title="Bullet list"
+          className={cn(
+            "p-1 rounded transition-colors",
+            list ? "bg-violet-100 text-violet-600" : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+          )}
+        >
+          <List className="h-3 w-3" />
+        </button>
+      </div>
+
+      {/* Editable area */}
+      <div
+        ref={ref}
+        contentEditable={!disabled}
+        suppressContentEditableWarning
+        onInput={sync}
+        onKeyUp={updateState}
+        onMouseUp={updateState}
+        onSelect={updateState}
+        style={{ minHeight: "6rem" }}
+        className={cn(
+          "px-2 py-1.5 text-[11px] leading-relaxed text-gray-800/80 focus:outline-none",
+          "[&_ul]:pl-4 [&_ul]:list-disc [&_ul]:space-y-0.5 [&_li]:leading-relaxed",
+          "[&_b]:font-semibold [&_strong]:font-semibold",
+          "[&_p]:mb-1",
+          "empty:before:content-[attr(data-placeholder)] empty:before:text-gray-300 empty:before:pointer-events-none empty:before:float-left",
+          disabled && "opacity-50 pointer-events-none"
+        )}
+        data-placeholder={
+          disabled
+            ? "Generating scope of works…"
+            : "• Supply and install flooring throughout the project…"
+        }
+      />
+    </div>
+  );
+}
+
+// ── Currency input: shows comma-formatted value when blurred ─────────────────
+function CurrencyInput({
+  value,
+  onChange,
+  className,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  className?: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={focused ? draft : fmt(value)}
+      onFocus={() => { setDraft(value.toFixed(2)); setFocused(true); }}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => { setFocused(false); onChange(parseFloat(draft.replace(/,/g, "")) || 0); }}
+      className={className}
+    />
+  );
+}
 
 // ── Sortable row ──────────────────────────────────────────────────────────────
 function SortableQuoteLine({
@@ -110,14 +245,24 @@ function SortableQuoteLine({
   itemIdx,
   onUpdate,
   onRemove,
+  hideZeros,
 }: {
   line: QuoteLine;
   itemIdx: number;
   onUpdate: (id: string, field: keyof QuoteLine, value: string | number) => void;
   onRemove: (id: string) => void;
+  hideZeros: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: line.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+
+  // Auto-resize textarea on mount
+  const descRef = useCallback((el: HTMLTextAreaElement | null) => {
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  }, []);
 
   const grip = (
     <td className="p-0 print:hidden w-6">
@@ -166,17 +311,24 @@ function SortableQuoteLine({
     >
       {grip}
       <td className="p-0 border-r border-gray-100">
-        <input
+        <textarea
+          ref={descRef}
           value={line.description}
           onChange={(e) => onUpdate(line.id, "description", e.target.value)}
-          className={cn(docInput, "px-2 py-1.5")}
+          rows={1}
+          className={cn(docInput, "px-2 py-1.5 resize-none overflow-hidden block leading-relaxed")}
           placeholder="Description"
+          onInput={(e) => {
+            const el = e.currentTarget;
+            el.style.height = "auto";
+            el.style.height = `${el.scrollHeight}px`;
+          }}
         />
       </td>
       <td className="p-0 border-r border-gray-100">
         <input
           type="number"
-          value={line.qty}
+          value={hideZeros && Number(line.qty) === 0 ? "" : line.qty}
           onChange={(e) => onUpdate(line.id, "qty", parseFloat(e.target.value) || 0)}
           className={cn(docInput, "text-right tabular-nums px-2 py-1.5")}
         />
@@ -191,7 +343,7 @@ function SortableQuoteLine({
       <td className="p-0 border-r border-gray-100">
         <input
           type="number"
-          value={line.rate.toFixed(2)}
+          value={hideZeros && line.rate === 0 ? "" : line.rate.toFixed(2)}
           onChange={(e) => onUpdate(line.id, "rate", parseFloat(e.target.value) || 0)}
           className={cn(docInput, "text-right tabular-nums px-2 py-1.5")}
         />
@@ -199,7 +351,7 @@ function SortableQuoteLine({
       <td className="p-0 border-r border-gray-100">
         <input
           type="number"
-          value={line.amount.toFixed(2)}
+          value={hideZeros && line.amount === 0 ? "" : line.amount.toFixed(2)}
           onChange={(e) => onUpdate(line.id, "amount", parseFloat(e.target.value) || 0)}
           className={cn(docInput, "text-right tabular-nums font-medium px-2 py-1.5")}
         />
@@ -246,6 +398,8 @@ export function QuoteEditor({
   initialToEmail,
   initialProjectLoc,
   initialValidity,
+  initialHideZeros,
+  initialName,
 }: {
   orgSlug: string;
   orgId: string;
@@ -276,8 +430,11 @@ export function QuoteEditor({
   initialToEmail?: string;
   initialProjectLoc?: string;
   initialValidity?: string;
+  initialHideZeros?: boolean;
+  initialName?: string;
 }) {
   // ── Editable state ────────────────────────────────────────────────────────
+  const [quoteName, setQuoteName] = useState(initialName ?? "");
   const [companyName, setCompanyName] = useState(orgName);
   const [companyAbn, setCompanyAbn] = useState(orgAbn);
   const [companyAddress, setCompanyAddress] = useState(orgAddress);
@@ -297,7 +454,10 @@ export function QuoteEditor({
   const [projectLoc, setProjectLoc] = useState(initialProjectLoc ?? projectLocation);
 
   const [scopeText, setScopeText] = useState(initialScopeText ?? "");
+  const [scopeEditorKey, setScopeEditorKey] = useState(0);
   const [scopeLoading, setScopeLoading] = useState(false);
+
+  const [hideZeros, setHideZeros] = useState(initialHideZeros ?? false);
 
   const [selectedLevel, setSelectedLevel] = useState<string>("consolidated");
 
@@ -357,6 +517,7 @@ export function QuoteEditor({
           scopeText={scopeText} lines={lines}
           totalExGst={totalExGst} gst={gst} grandTotal={grandTotal}
           notes={notes} terms={terms}
+          hideZeros={hideZeros}
         />
       ).toBlob();
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -393,6 +554,7 @@ export function QuoteEditor({
         orgId,
         projectId,
         estimateId,
+        name: quoteName || undefined,
         quoteNumber: qNumber,
         quoteDate: qDate,
         validFor: qValidity,
@@ -414,6 +576,7 @@ export function QuoteEditor({
         totalExGst,
         gst,
         grandTotal,
+        hideZeros,
       }, quoteId);
       setQuoteId(id);
       toast.success("Quote saved.");
@@ -448,7 +611,10 @@ export function QuoteEditor({
       });
       if (!res.ok) throw new Error("API error");
       const { summary: text } = await res.json();
-      setScopeText(text ?? "");
+      // Convert plain text to HTML and remount the rich editor with the new content
+      const html = plainToHtml(text ?? "");
+      setScopeText(html);
+      setScopeEditorKey((k) => k + 1);
       toast.success("Scope of works generated.");
     } catch {
       toast.error("Failed to generate scope. Try again.");
@@ -485,8 +651,6 @@ export function QuoteEditor({
     setLines((prev) => prev.filter((l) => l.id !== id));
   }
 
-  const lineSubtotal = lines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
-
   // ── GST sync when totalExGst changes ─────────────────────────────────────
   function handleTotalExGstChange(val: number) {
     setTotalExGst(val);
@@ -510,7 +674,15 @@ export function QuoteEditor({
         </nav>
 
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-semibold">Client Quote</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-lg font-semibold">Client Quote</h1>
+            <input
+              value={quoteName}
+              onChange={(e) => setQuoteName(e.target.value)}
+              placeholder="Untitled"
+              className="text-sm text-muted-foreground bg-transparent border-0 border-b border-border/40 outline-none focus:border-primary/60 px-1 py-0.5 w-48 transition-colors"
+            />
+          </div>
           <div className="flex items-center gap-2">
             <Button
               size="sm"
@@ -550,9 +722,20 @@ export function QuoteEditor({
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          Click any field to edit. Use &ldquo;Generate scope with AI&rdquo; to auto-populate the scope of works.
-        </p>
+        <div className="flex items-center gap-4 flex-wrap">
+          <p className="text-xs text-muted-foreground">
+            Click any field to edit. Use &ldquo;Generate scope with AI&rdquo; to auto-populate the scope of works.
+          </p>
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={hideZeros}
+              onChange={(e) => setHideZeros(e.target.checked)}
+              className="rounded border-border"
+            />
+            Hide zero values
+          </label>
+        </div>
 
         {levels.length >= 2 && (
           <div className="flex items-center gap-1.5">
@@ -730,18 +913,10 @@ export function QuoteEditor({
               {scopeLoading ? "Generating…" : "Generate with AI"}
             </button>
           </div>
-          {!scopeText && !scopeLoading && (
-            <p className="text-[10px] text-gray-400 italic mb-1" style={{ width: "70%" }}>
-              Type scope below or use &ldquo;Generate with AI&rdquo; above to auto-populate.
-            </p>
-          )}
-          <textarea
+          <QuoteScopeEditor
+            key={scopeEditorKey}
             value={scopeText}
-            onChange={(e) => setScopeText(e.target.value)}
-            rows={Math.max(4, scopeText.split("\n").length + 1)}
-            className={cn(docTextarea)}
-            style={{ width: "70%" }}
-            placeholder={scopeLoading ? "Generating scope of works…" : "• Supply and install flooring throughout the project…"}
+            onChange={setScopeText}
             disabled={scopeLoading}
           />
         </div>
@@ -799,6 +974,7 @@ export function QuoteEditor({
                             itemIdx={line.type === "header" ? 0 : itemIdx++}
                             onUpdate={updateLine}
                             onRemove={removeLine}
+                            hideZeros={hideZeros}
                           />
                         );
 
@@ -859,22 +1035,13 @@ export function QuoteEditor({
         <div className="px-5 py-4 border-b border-gray-100">
           <div className="flex justify-end">
             <div className="w-72 space-y-0.5">
-              {/* Line subtotal (informational) */}
-              {Math.abs(lineSubtotal - totalExGst) > 1 && (
-                <div className="flex justify-between items-center py-1 text-[11px] text-gray-400 border-b border-gray-100 mb-1">
-                  <span>Line items subtotal</span>
-                  <span className="tabular-nums font-mono">${fmt(lineSubtotal)}</span>
-                </div>
-              )}
-
               <div className="flex justify-between items-center py-1.5">
                 <span className="text-[11px] text-gray-500">Total (ex GST)</span>
                 <div className="flex items-center gap-0.5">
                   <span className="text-[10px] text-gray-400">$</span>
-                  <input
-                    type="number"
-                    value={totalExGst.toFixed(2)}
-                    onChange={(e) => handleTotalExGstChange(parseFloat(e.target.value) || 0)}
+                  <CurrencyInput
+                    value={totalExGst}
+                    onChange={handleTotalExGstChange}
                     className="text-[11px] text-gray-800/80 tabular-nums font-mono text-right bg-transparent border-0 outline-none w-28 focus:bg-gray-50 rounded px-1 py-0.5 transition-colors"
                   />
                 </div>
@@ -884,10 +1051,9 @@ export function QuoteEditor({
                 <span className="text-[11px] text-gray-500">GST (10%)</span>
                 <div className="flex items-center gap-0.5">
                   <span className="text-[10px] text-gray-400">$</span>
-                  <input
-                    type="number"
-                    value={gst.toFixed(2)}
-                    onChange={(e) => setGst(parseFloat(e.target.value) || 0)}
+                  <CurrencyInput
+                    value={gst}
+                    onChange={setGst}
                     className="text-[11px] text-gray-800/80 tabular-nums font-mono text-right bg-transparent border-0 outline-none w-28 focus:bg-gray-50 rounded px-1 py-0.5 transition-colors"
                   />
                 </div>
@@ -897,10 +1063,9 @@ export function QuoteEditor({
                 <span className="text-[11px] font-bold text-gray-800 uppercase tracking-wide">Total (incl. GST)</span>
                 <div className="flex items-center gap-0.5">
                   <span className="text-[11px] text-gray-700 font-semibold">$</span>
-                  <input
-                    type="number"
-                    value={grandTotal.toFixed(2)}
-                    onChange={(e) => setGrandTotal(parseFloat(e.target.value) || 0)}
+                  <CurrencyInput
+                    value={grandTotal}
+                    onChange={setGrandTotal}
                     className="text-[13px] text-gray-900 font-bold tabular-nums font-mono text-right bg-transparent border-0 outline-none w-28 focus:bg-gray-50 rounded px-1 py-0.5 transition-colors"
                   />
                 </div>
@@ -916,7 +1081,7 @@ export function QuoteEditor({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
-            className={cn(docTextarea, "w-full")}
+            className="bg-transparent border-0 outline-none w-full text-[11px] text-gray-800/80 placeholder:text-gray-300 focus:bg-gray-50 focus:ring-1 focus:ring-gray-200 rounded px-1 py-0.5 resize-none transition-colors leading-relaxed print:overflow-visible"
             placeholder="Any additional notes or conditions specific to this quote…"
           />
         </div>
@@ -928,7 +1093,7 @@ export function QuoteEditor({
             value={terms}
             onChange={(e) => setTerms(e.target.value)}
             rows={Math.max(4, terms.split("\n").length + 1)}
-            className={cn(docTextarea, "w-full text-gray-500")}
+            className="bg-transparent border-0 outline-none w-full text-[11px] text-gray-800/80 placeholder:text-gray-300 focus:bg-gray-50 focus:ring-1 focus:ring-gray-200 rounded px-1 py-0.5 resize-none transition-colors leading-relaxed print:overflow-visible text-gray-500"
             placeholder="Payment terms, warranty details, and other conditions of this quote…"
           />
 

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient, createAuthedClient } from "@/lib/supabase/server";
 import type { EstimateItem, EstimateSettings, WetArea } from "@/lib/estimate-types";
-import { MAT, LAB, COVERAGE_M2 as COVERAGE, FILLET_LM } from "@/lib/default-rates";
+import { MAT as MAT_DEFAULTS, LAB as LAB_DEFAULTS, COVERAGE_M2 as COVERAGE, FILLET_LM } from "@/lib/default-rates";
 
 const ESTIMATE_ITEMS_COLS =
   "id, estimate_id, parent_item_id, sort_order, type, scope_category, finish_code, description, qty, unit, waste_pct, cov_lm, cov_area, cov_height_mm, mat_rate, lab_rate, coverage_m2, is_auto, manufacturer, level, product_type";
@@ -30,6 +30,18 @@ async function assertWetAreaAccess(id: string): Promise<void> {
   if (!data) throw new Error("Wet area not found or access denied.");
 }
 
+async function getEffectiveRates(estimateId: string): Promise<{ MAT: Record<string, number>; LAB: Record<string, number> }> {
+  const { supabase } = await createAuthedClient();
+  const { data: est } = await supabase.from("estimates").select("project_id").eq("id", estimateId).single();
+  if (!est) return { MAT: { ...MAT_DEFAULTS }, LAB: { ...LAB_DEFAULTS } };
+  const { data: proj } = await supabase.from("projects").select("organizations(default_rates)").eq("id", est.project_id).single();
+  const orgRates = (proj as any)?.organizations as { default_rates?: { mat?: Record<string, number>; lab?: Record<string, number> } } | null;
+  return {
+    MAT: { ...MAT_DEFAULTS, ...(orgRates?.default_rates?.mat ?? {}) },
+    LAB: { ...LAB_DEFAULTS, ...(orgRates?.default_rates?.lab ?? {}) },
+  };
+}
+
 // Product type helpers
 const isPlank = (t: string | null | undefined) => t === "plank_glued" || t === "plank_floating";
 const isFloating = (t: string | null | undefined) => t === "plank_floating";
@@ -41,7 +53,7 @@ function ceil(n: number) {
 // ── Import takeoff into estimate ───────────────────────────────────────────────
 export async function importTakeoff(estimateId: string, takeoffId: string, orgSlug: string, projectId: string) {
   await assertEstimateAccess(estimateId);
-  const { supabase } = await createAuthedClient();
+  const [{ supabase }, { MAT, LAB }] = await Promise.all([createAuthedClient(), getEffectiveRates(estimateId)]);
 
   // Load all takeoff rows
   const { data: rows, error: rowErr } = await supabase
@@ -309,8 +321,10 @@ function buildAutoChildren(
   parentId: string,
   scopeCategory: string,
   startOrder: number,
-  productType: string | null = null
+  productType: string | null = null,
+  rates: { MAT: Record<string, number>; LAB: Record<string, number> } = { MAT: MAT_DEFAULTS, LAB: LAB_DEFAULTS }
 ): Omit<EstimateItem, "id" | "created_at" | "updated_at">[] {
+  const { MAT, LAB } = rates;
   const children: Omit<EstimateItem, "id" | "created_at" | "updated_at">[] = [];
   let order = startOrder;
 
@@ -355,7 +369,8 @@ export async function addEstimateItem(
   productType: string | null = null
 ): Promise<{ primary: EstimateItem; children: EstimateItem[] }> {
   await assertEstimateAccess(estimateId);
-  const { supabase } = await createAuthedClient();
+  const [{ supabase }, rates] = await Promise.all([createAuthedClient(), getEffectiveRates(estimateId)]);
+  const { MAT, LAB } = rates;
 
   const unit =
     scopeCategory === "coving_skirting" || scopeCategory === "transition" || scopeCategory === "stairs"
@@ -383,7 +398,7 @@ export async function addEstimateItem(
     .single();
   if (error) throw new Error(error.message);
 
-  const childDefs = buildAutoChildren(estimateId, primary.id, scopeCategory, sortOrder + 1, productType);
+  const childDefs = buildAutoChildren(estimateId, primary.id, scopeCategory, sortOrder + 1, productType, rates);
   let children: EstimateItem[] = [];
   if (childDefs.length > 0) {
     const { data: childRows } = await supabase.from("estimate_items").insert(childDefs).select(ESTIMATE_ITEMS_COLS);
@@ -434,7 +449,7 @@ export async function addCovingToItem(
   startSortOrder: number
 ): Promise<EstimateItem[]> {
   await assertEstimateAccess(estimateId);
-  const { supabase } = await createAuthedClient();
+  const [{ supabase }, { MAT, LAB }] = await Promise.all([createAuthedClient(), getEffectiveRates(estimateId)]);
   const covArea = covLm * (covHeightMm / 1000);
 
   // Update cov fields on the primary item
@@ -495,7 +510,7 @@ export async function restoreAutoConsumables(
   parentQty: number
 ): Promise<EstimateItem[]> {
   await assertEstimateAccess(estimateId);
-  const { supabase } = await createAuthedClient();
+  const [{ supabase }, rates] = await Promise.all([createAuthedClient(), getEffectiveRates(estimateId)]);
 
   const { data: existing } = await supabase
     .from("estimate_items")
@@ -506,7 +521,7 @@ export async function restoreAutoConsumables(
   const existingDescs = new Set((existing ?? []).map((c) => c.description as string));
   const maxOrder = (existing ?? []).reduce((m, c) => Math.max(m, c.sort_order as number), 0);
 
-  const allExpected = buildAutoChildren(estimateId, primaryId, scopeCategory, maxOrder + 1);
+  const allExpected = buildAutoChildren(estimateId, primaryId, scopeCategory, maxOrder + 1, null, rates);
   const missing = allExpected.filter((c) => !existingDescs.has(c.description ?? ""));
   if (missing.length === 0) return [];
 
@@ -534,7 +549,7 @@ export async function syncSectionConsumables(
   gluableArea: number
 ): Promise<EstimateItem[]> {
   await assertEstimateAccess(estimateId);
-  const { supabase } = await createAuthedClient();
+  const [{ supabase }, { MAT, LAB }] = await Promise.all([createAuthedClient(), getEffectiveRates(estimateId)]);
 
   const base = {
     estimate_id: estimateId,

@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { ChevronRight, Clock, CheckCircle2, Send, MessageSquare } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { stripQuotedContent } from "@/lib/gmail";
+import { PriceConfirmPanel } from "./price-confirm-panel";
+import type { ProductSnapshot } from "../actions";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString("en-AU", {
@@ -14,14 +16,6 @@ function formatDate(iso: string) {
   });
 }
 
-type ProductSnapshot = {
-  finish_code: string;
-  description: string | null;
-  manufacturer: string | null;
-  colour: string | null;
-  scope_category: string;
-  supply: Record<string, number>;
-};
 
 export default async function PriceRequestDetailPage({
   params,
@@ -106,6 +100,16 @@ export default async function PriceRequestDetailPage({
             ))}
           </div>
         </div>
+      )}
+
+      {/* Confirm prices — only shown when reply received */}
+      {received && products.length > 0 && (
+        <PriceConfirmPanel
+          requestId={req.id}
+          orgSlug={params.orgSlug}
+          projectId={params.projectId}
+          products={products as ProductSnapshot[]}
+        />
       )}
 
       {/* Conversation — latest on top */}

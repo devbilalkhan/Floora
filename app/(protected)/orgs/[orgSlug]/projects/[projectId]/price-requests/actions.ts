@@ -24,6 +24,7 @@ export type ProductSnapshot = {
   colour: string | null;
   scope_category: string;
   supply: Record<string, number>;
+  confirmed_price?: number | null;
 };
 
 export async function sendPriceRequest(input: {
@@ -84,6 +85,39 @@ export async function sendPriceRequest(input: {
   if (error) throw new Error(error.message);
 
   revalidatePath(`/orgs/${input.orgSlug}/projects/${input.projectId}/price-requests`);
+}
+
+export async function confirmProductPrice(
+  requestId: string,
+  finishCode: string,
+  price: number,
+  orgSlug: string,
+  projectId: string
+) {
+  await requireProjectManagerRole(projectId);
+  const { supabase } = await createAuthedClient();
+
+  const { data: req } = await supabase
+    .from("price_requests")
+    .select("products")
+    .eq("id", requestId)
+    .single();
+
+  if (!req) throw new Error("Price request not found.");
+
+  const products = (Array.isArray(req.products) ? req.products : []) as ProductSnapshot[];
+  const updated = products.map((p) =>
+    p.finish_code === finishCode ? { ...p, confirmed_price: price > 0 ? price : null } : p
+  );
+
+  const { error } = await supabase
+    .from("price_requests")
+    .update({ products: updated })
+    .eq("id", requestId);
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/orgs/${orgSlug}/projects/${projectId}/price-requests/${requestId}`);
 }
 
 export async function checkForReplies(projectId: string, orgSlug: string) {

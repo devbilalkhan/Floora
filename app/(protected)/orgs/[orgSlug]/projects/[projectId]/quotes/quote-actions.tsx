@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, MoreHorizontal } from "lucide-react";
+import { Trash2, MoreHorizontal, Pencil } from "lucide-react";
 import { toast } from "sonner";
-import { deleteQuote, updateQuoteStatus } from "../estimates/[estimateId]/quote/actions";
+import { deleteQuote, updateQuoteStatus, renameQuote } from "../estimates/[estimateId]/quote/actions";
 
 const STATUSES = ["draft", "sent", "accepted", "declined"] as const;
 
@@ -13,15 +13,24 @@ export function QuoteActions({
   orgSlug,
   projectId,
   currentStatus,
+  currentName,
 }: {
   quoteId: string;
   orgSlug: string;
   projectId: string;
   currentStatus: string;
+  currentName?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [renaming, setRenaming] = useState(false);
+  const [nameInput, setNameInput] = useState(currentName ?? "");
+
+  function close() {
+    setOpen(false);
+    setRenaming(false);
+  }
 
   function handleDelete() {
     startTransition(async () => {
@@ -32,7 +41,7 @@ export function QuoteActions({
       } catch {
         toast.error("Failed to delete quote.");
       }
-      setOpen(false);
+      close();
     });
   }
 
@@ -44,14 +53,27 @@ export function QuoteActions({
       } catch {
         toast.error("Failed to update status.");
       }
-      setOpen(false);
+      close();
+    });
+  }
+
+  function handleRename() {
+    startTransition(async () => {
+      try {
+        await renameQuote(quoteId, nameInput.trim(), orgSlug, projectId);
+        router.refresh();
+        toast.success("Quote renamed.");
+      } catch {
+        toast.error("Failed to rename quote.");
+      }
+      close();
     });
   }
 
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => { setOpen((o) => !o); setRenaming(false); }}
         className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-sm text-muted-foreground hover:text-foreground"
       >
         <MoreHorizontal className="h-3.5 w-3.5" />
@@ -59,31 +81,72 @@ export function QuoteActions({
 
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-50 w-36 bg-card border border-black/10 dark:border-white/10 rounded-sm shadow-xl shadow-black/30 overflow-hidden">
-            <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wide border-b border-black/10 dark:border-white/10">
-              Set status
-            </div>
-            {STATUSES.map((s) => (
-              <button
-                key={s}
-                disabled={s === currentStatus || isPending}
-                onClick={() => handleStatus(s)}
-                className="w-full text-left px-3 py-1 text-[11px] capitalize hover:bg-muted/40 transition-colors disabled:text-muted-foreground/40"
-              >
-                {s}
-              </button>
-            ))}
-            <div className="border-t border-black/10 dark:border-white/10">
-              <button
-                onClick={handleDelete}
-                disabled={isPending}
-                className="w-full text-left px-3 py-1 text-[11px] text-destructive hover:bg-destructive/10 transition-colors flex items-center gap-1.5"
-              >
-                <Trash2 className="h-3 w-3" />
-                Delete
-              </button>
-            </div>
+          <div className="fixed inset-0 z-40" onClick={close} />
+          <div className="absolute right-0 top-full mt-1 z-50 w-44 bg-card border border-black/10 dark:border-white/10 rounded-sm shadow-xl shadow-black/30 overflow-hidden">
+            {renaming ? (
+              <div className="px-2 py-2 space-y-1.5">
+                <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Rename quote</div>
+                <input
+                  autoFocus
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleRename();
+                    if (e.key === "Escape") setRenaming(false);
+                  }}
+                  placeholder="Quote name"
+                  className="w-full text-[11px] border border-border rounded px-2 py-1 bg-background outline-none focus:ring-1 focus:ring-primary/50"
+                />
+                <div className="flex gap-1">
+                  <button
+                    onClick={handleRename}
+                    disabled={isPending}
+                    className="flex-1 text-[10px] bg-primary text-primary-foreground rounded px-2 py-1 hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setRenaming(false)}
+                    className="flex-1 text-[10px] border border-border rounded px-2 py-1 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => setRenaming(true)}
+                  className="w-full text-left px-3 py-1.5 text-[11px] hover:bg-muted/40 transition-colors flex items-center gap-1.5 border-b border-black/10 dark:border-white/10"
+                >
+                  <Pencil className="h-3 w-3 text-muted-foreground" />
+                  Rename
+                </button>
+                <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wide border-b border-black/10 dark:border-white/10">
+                  Set status
+                </div>
+                {STATUSES.map((s) => (
+                  <button
+                    key={s}
+                    disabled={s === currentStatus || isPending}
+                    onClick={() => handleStatus(s)}
+                    className="w-full text-left px-3 py-1 text-[11px] capitalize hover:bg-muted/40 transition-colors disabled:text-muted-foreground/40"
+                  >
+                    {s}
+                  </button>
+                ))}
+                <div className="border-t border-black/10 dark:border-white/10">
+                  <button
+                    onClick={handleDelete}
+                    disabled={isPending}
+                    className="w-full text-left px-3 py-1 text-[11px] text-destructive hover:bg-destructive/10 transition-colors flex items-center gap-1.5"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Delete
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </>
       )}
