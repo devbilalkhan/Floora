@@ -23,6 +23,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { COVERAGE_M2 } from "@/lib/default-rates";
 import {
   updateEstimateItem,
@@ -743,6 +744,7 @@ export function CostingTable({
 }) {
   const [items, setItems] = useState<EstimateItem[]>(initialItems);
   const [wetAreas, setWetAreas] = useState<WetArea[]>(initialWetAreas);
+  const [includeWetAreas, setIncludeWetAreas] = useState(true);
   const [selectedLevel, setSelectedLevel] = useState<string>("all");
   const [settings, setSettings] = useState<EstimateSettings>({
     accounting_rate: estimate.accounting_rate,
@@ -1007,7 +1009,10 @@ export function CostingTable({
     return { primaries, children, sectionConsumables };
   }, [filteredItems]);
 
-  const summary = useMemo(() => computeSummary(filteredItems, settings, wetAreas), [filteredItems, settings, wetAreas]);
+  const summary = useMemo(
+    () => computeSummary(filteredItems, settings, includeWetAreas ? wetAreas : []),
+    [filteredItems, settings, wetAreas, includeWetAreas],
+  );
 
   // Category totals: primary rows + their children + section consumables
   const catTotals = useMemo(() => {
@@ -1438,11 +1443,28 @@ export function CostingTable({
       </div>
 
       {/* ── Wet Areas ─────────────────────────────────────────────────────── */}
-      <WetAreasPanel
-        estimateId={estimate.id}
-        initialAreas={initialWetAreas}
-        onChange={setWetAreas}
-      />
+      <div className="space-y-0">
+        <div className="flex items-center justify-between px-3 py-1.5 bg-muted/20 border border-border rounded-t-sm border-b-0">
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
+            Wet Areas
+          </span>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <span className={cn("text-[10px] tabular-nums", includeWetAreas ? "text-foreground/70" : "text-muted-foreground/50 line-through")}>
+              Include in totals
+            </span>
+            <Switch
+              checked={includeWetAreas}
+              onCheckedChange={setIncludeWetAreas}
+              className="scale-75 origin-right"
+            />
+          </label>
+        </div>
+        <WetAreasPanel
+          estimateId={estimate.id}
+          initialAreas={initialWetAreas}
+          onChange={setWetAreas}
+        />
+      </div>
 
       {/* ── Summary + Floor Prep ───────────────────────────────────────────── */}
       <div className="flex gap-4 items-start">
