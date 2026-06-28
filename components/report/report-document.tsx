@@ -221,7 +221,10 @@ export function ReportDocument({
       const ch = childrenByParent.get(p.id) ?? [];
       return s + itemLabCost(p) + ch.reduce((cs, c) => cs + itemLabCost(c), 0);
     }, 0);
-    return { cat, rows, catMat, catLab, catTotal: catMat + catLab };
+    const m2Rows = rows.filter((p) => p.unit === "m2");
+    const netSqm = m2Rows.reduce((s, p) => s + p.qty + (p.cov_area ?? 0), 0);
+    const grossSqm = m2Rows.reduce((s, p) => s + itemMatQty(p), 0);
+    return { cat, rows, catMat, catLab, catTotal: catMat + catLab, netSqm, grossSqm };
   }).filter((g) => g.rows.length > 0);
 
   const itemsGrandTotal = categoryStats.reduce((s, c) => s + c.catTotal, 0);
@@ -560,6 +563,68 @@ export function ReportDocument({
                 </td>
               </tr>
             </tfoot>
+          </table>
+        </div>
+      )}
+
+      {/* ── Per m² sell rates ────────────────────────────────────────── */}
+      {categoryStats.some((c) => c.grossSqm > 0) && (
+        <div className="bg-card/65 backdrop-blur-xl border border-border rounded-sm overflow-hidden print:bg-white print:border-gray-200 print:rounded-none print:break-inside-avoid">
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/30 print:bg-gray-50 border-b border-border print:border-gray-200">
+            <div className="w-0.5 h-3.5 rounded-full bg-primary/60 print:bg-gray-400 shrink-0" />
+            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground print:text-gray-500">
+              Sell Rate by Category (per m² · ex-GST)
+            </span>
+          </div>
+          <table className="w-full">
+            <colgroup>
+              <col />
+              <col className="w-28" />
+              <col className="w-32" />
+              <col className="w-32" />
+              <col className="w-36" />
+            </colgroup>
+            <thead>
+              <tr className="bg-muted/15 print:bg-gray-50">
+                <Th>Category</Th>
+                <Th right>Net m²</Th>
+                <Th right>Gross m² (incl. waste)</Th>
+                <Th right>Allocated sell price</Th>
+                <Th right>Per m² sell rate</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {categoryStats
+                .filter((c) => c.grossSqm > 0)
+                .map(({ cat, catTotal, netSqm, grossSqm }) => {
+                  const catShare = itemsGrandTotal > 0 ? catTotal / itemsGrandTotal : 0;
+                  const catWithOverhead = catTotal * (1 + settings.accounting_rate + settings.admin_rate);
+                  const totalRecoverable =
+                    catWithOverhead +
+                    catShare * summary.markupAmount +
+                    catShare * summary.additionalCosts;
+                  const perSqm = grossSqm > 0 ? totalRecoverable / grossSqm : 0;
+                  return (
+                    <tr
+                      key={cat.key}
+                      className="border-b border-border print:border-gray-100 hover:bg-muted/10 print:hover:bg-transparent"
+                    >
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-0.5 h-3 rounded-full bg-primary/40 print:bg-gray-300 shrink-0" />
+                          <span className="text-xs font-medium text-foreground/90 print:text-gray-700">
+                            {cat.label}
+                          </span>
+                        </div>
+                      </td>
+                      <Td right>{fmt(netSqm)}</Td>
+                      <Td right>{fmt(grossSqm)}</Td>
+                      <Td right>${fmt(totalRecoverable)}</Td>
+                      <Td right bold>${fmt(perSqm)}</Td>
+                    </tr>
+                  );
+                })}
+            </tbody>
           </table>
         </div>
       )}
