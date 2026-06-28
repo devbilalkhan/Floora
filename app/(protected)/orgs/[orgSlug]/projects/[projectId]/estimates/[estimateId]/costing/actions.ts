@@ -667,3 +667,99 @@ export async function updateEstimateSettings(
   const { error } = await supabase.from("estimates").update(patch).eq("id", estimateId);
   if (error) throw new Error(error.message);
 }
+
+// ── Estimate attachments ──────────────────────────────────────────────────────
+
+const ATTACHMENT_BUCKET = "project-documents";
+const ALLOWED_MIME_TYPES = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/msword",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "text/csv",
+];
+
+export type EstimateAttachment = {
+  id: string;
+  name: string;
+  mime_type: string;
+  size_bytes: number | null;
+  created_at: string;
+};
+
+export async function uploadEstimateAttachment(
+  estimateId: string,
+  projectId: string,
+  formData: FormData,
+): Promise<EstimateAttachment> {
+  await assertEstimateAccess(estimateId);
+  const { supabase, user } = await createAuthedClient();
+
+  const file = formData.get("file") as File;
+  if (!file || file.size === 0) throw new Error("No file provided.");
+  if (!ALLOWED_MIME_TYPES.includes(file.type))
+    throw new Error("File type not supported. Upload a PDF, Excel, Word, image, or CSV.");
+  if (file.size > 20 * 1024 * 1024) throw new Error("File too large. Maximum size is 20 MB.");
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `estimate-attachments/${estimateId}/${Date.now()}-${safeName}`;
+
+  const bytes = await file.arrayBuffer();
+  const { error: uploadError } = await supabase.storage
+    .from(ATTACHMENT_BUCKET)
+    .upload(path, bytes, { contentType: file.type });
+  if (uploadError) throw new Error(uploadError.message);
+
+  const { data, error: dbError } = await supabase
+    .from("estimate_attachments")
+    .insert({
+      estimate_id: estimateId,
+      project_id: projectId,
+      name: file.name,
+      storage_path: path,
+      mime_type: file.type,
+      size_bytes: file.size,
+      created_by: user.id,
+    })
+    .select("id, name, mime_type, size_bytes, created_at")
+    .single();
+  if (dbError) throw new Error(dbError.message);
+  return data;
+}
+
+export async function getEstimateAttachmentUrl(attachmentId: string, estimateId: string): Promise<string> {
+  await assertEstimateAccess(estimateId);
+  const { supabase } = await createAuthedClient();
+
+  const { data: row } = await supabase
+    .from("estimate_attachments")
+    .select("storage_path")
+    .eq("id", attachmentId)
+    .single();
+  if (!row) throw new Error("Attachment not found.");
+
+  const { data, error } = await supabase.storage
+    .from(ATTACHMENT_BUCKET)
+    .createSignedUrl(row.storage_path, 3600);
+  if (error || !data?.signedUrl) throw new Error("Failed to generate URL.");
+  return data.signedUrl;
+}
+
+export async function deleteEstimateAttachment(attachmentId: string, estimateId: string): Promise<void> {
+  await assertEstimateAccess(estimateId);
+  const { supabase } = await createAuthedClient();
+
+  const { data: row } = await supabase
+    .from("estimate_attachments")
+    .select("storage_path")
+    .eq("id", attachmentId)
+    .single();
+  if (!row) throw new Error("Attachment not found.");
+
+  await supabase.storage.from(ATTACHMENT_BUCKET).remove([row.storage_path]);
+  await supabase.from("estimate_attachments").delete().eq("id", attachmentId);
+}

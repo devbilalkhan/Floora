@@ -7,6 +7,8 @@ import type { Estimate, EstimateItem, WetArea } from "@/lib/estimate-types";
 import { CostingTable } from "./costing-table";
 import { EstimateSwitcher } from "./estimate-switcher";
 import { EstimateStatusBadge } from "./estimate-status-badge";
+import { EstimateAttachmentsPanel } from "./estimate-attachments-panel";
+import type { EstimateAttachment } from "./actions";
 
 export default async function CostingPage({
   params,
@@ -28,6 +30,7 @@ export default async function CostingPage({
     { data: rawWetAreas },
     { data: allEstimates },
     { data: rawPriceRequests },
+    { data: rawAttachments },
   ] = await Promise.all([
     supabase
       .from("estimates")
@@ -64,6 +67,11 @@ export default async function CostingPage({
       .select("products")
       .eq("project_id", params.projectId)
       .eq("status", "received"),
+    supabase
+      .from("estimate_attachments")
+      .select("id, name, mime_type, size_bytes, created_at")
+      .eq("estimate_id", params.estimateId)
+      .order("created_at", { ascending: false }),
   ]);
 
   if (!estimate || !project) notFound();
@@ -167,6 +175,12 @@ export default async function CostingPage({
         orgSlug={params.orgSlug}
         projectId={params.projectId}
         confirmedPrices={confirmedPrices}
+      />
+
+      <EstimateAttachmentsPanel
+        estimateId={params.estimateId}
+        projectId={params.projectId}
+        initialAttachments={(rawAttachments ?? []) as EstimateAttachment[]}
       />
     </div>
   );
