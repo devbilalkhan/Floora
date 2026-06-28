@@ -1222,6 +1222,9 @@ export function CostingTable({
                 const netQty    = catPrimaries.reduce((s, i) => s + (Number(i.qty) || 0), 0);
                 const supplyQty = catPrimaries.reduce((s, i) => s + (itemMatQty(i) || 0), 0);
                 const catUnit   = catPrimaries.length > 0 ? uLabel(catPrimaries[0].unit) : "m²";
+                const itemsComponent = summary.totalExGst - summary.floorPrepRevenue;
+                const catShare = tableTotals.total > 0 ? catTotal.total / tableTotals.total : 0;
+                const perUnit = supplyQty > 0 ? (catShare * itemsComponent) / supplyQty : 0;
 
                 return (
                   <React.Fragment key={cat.key}>
@@ -1258,6 +1261,11 @@ export function CostingTable({
                                   ${fmt(catTotal.total)}
                                 </span>
                               </div>
+                            )}
+                            {perUnit > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold tabular-nums bg-primary/10 text-primary border border-primary/20">
+                                ${fmt(perUnit)}<span className="font-normal opacity-70">/ {catUnit}</span>
+                              </span>
                             )}
                           </div>
                         </div>
