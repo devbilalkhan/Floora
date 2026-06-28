@@ -745,7 +745,16 @@ export function CostingTable({
   const [items, setItems] = useState<EstimateItem[]>(initialItems);
   const [wetAreas, setWetAreas] = useState<WetArea[]>(initialWetAreas);
   const [includeWetAreas, setIncludeWetAreas] = useState(true);
+  const [excludedCategories, setExcludedCategories] = useState<Set<string>>(new Set());
   const [selectedLevel, setSelectedLevel] = useState<string>("all");
+
+  const toggleCategory = useCallback((key: string) => {
+    setExcludedCategories((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }, []);
   const [settings, setSettings] = useState<EstimateSettings>({
     accounting_rate: estimate.accounting_rate,
     admin_rate: estimate.admin_rate,
@@ -988,6 +997,11 @@ export function CostingTable({
     );
   }, [items, selectedLevel, levels]);
 
+  const activeItems = useMemo(
+    () => filteredItems.filter((i) => !excludedCategories.has(i.scope_category)),
+    [filteredItems, excludedCategories],
+  );
+
   // Group items: primaries, per-item children, and section-level consumables
   const grouped = useMemo(() => {
     const children = new Map<string, EstimateItem[]>();
@@ -1010,8 +1024,8 @@ export function CostingTable({
   }, [filteredItems]);
 
   const summary = useMemo(
-    () => computeSummary(filteredItems, settings, includeWetAreas ? wetAreas : []),
-    [filteredItems, settings, wetAreas, includeWetAreas],
+    () => computeSummary(activeItems, settings, includeWetAreas ? wetAreas : []),
+    [activeItems, settings, wetAreas, includeWetAreas],
   );
 
   // Category totals: primary rows + their children + section consumables
@@ -1036,21 +1050,24 @@ export function CostingTable({
   }, [grouped]);
 
   const tableTotals = useMemo(() => {
-    const mat = filteredItems.reduce((s, i) => s + itemMatCost(i), 0);
-    const lab = filteredItems.reduce((s, i) => s + itemLabCost(i), 0);
+    const mat = activeItems.reduce((s, i) => s + itemMatCost(i), 0);
+    const lab = activeItems.reduce((s, i) => s + itemLabCost(i), 0);
     return { mat, lab, total: mat + lab };
-  }, [filteredItems]);
+  }, [activeItems]);
 
-  // Mirrors report-document: primaries + parent-attached children only, no section consumables
+  // Mirrors report-document: primaries + parent-attached children only, no section consumables.
+  // Excludes toggled-off categories so per-unit badges and grand total stay consistent.
   const reportCatTotals = useMemo(() => {
     const map: Record<string, number> = {};
-    grouped.primaries.forEach((p) => {
-      const ch = grouped.children.get(p.id) ?? [];
-      const cost = itemMatCost(p) + itemLabCost(p) + ch.reduce((s, c) => s + itemMatCost(c) + itemLabCost(c), 0);
-      map[p.scope_category] = (map[p.scope_category] ?? 0) + cost;
-    });
+    grouped.primaries
+      .filter((p) => !excludedCategories.has(p.scope_category))
+      .forEach((p) => {
+        const ch = grouped.children.get(p.id) ?? [];
+        const cost = itemMatCost(p) + itemLabCost(p) + ch.reduce((s, c) => s + itemMatCost(c) + itemLabCost(c), 0);
+        map[p.scope_category] = (map[p.scope_category] ?? 0) + cost;
+      });
     return map;
-  }, [grouped]);
+  }, [grouped, excludedCategories]);
 
   const reportItemsGrandTotal = useMemo(
     () => Object.values(reportCatTotals).reduce((s, v) => s + v, 0),
@@ -1252,15 +1269,22 @@ export function CostingTable({
                 const catShare = reportItemsGrandTotal > 0 ? catPrimaryTotal / reportItemsGrandTotal : 0;
                 const perUnit = grossQty > 0 ? (catShare * (summary.totalExGst - summary.floorPrepRevenue)) / grossQty : 0;
 
+                const isExcluded = excludedCategories.has(cat.key);
+
                 return (
                   <React.Fragment key={cat.key}>
                     {/* Section header */}
-                    <tr className="bg-muted/30 border-y border-border">
+                    <tr className={cn("border-y border-border", isExcluded ? "bg-muted/10" : "bg-muted/30")}>
                       <td colSpan={13} className="px-3 py-1.5">
-                        <div className="flex items-center justify-between">
+                        <div className={cn("flex items-center justify-between", isExcluded && "opacity-50")}>
                           <div className="flex items-center gap-2">
+                            <Switch
+                              checked={!isExcluded}
+                              onCheckedChange={() => toggleCategory(cat.key)}
+                              className="scale-75 origin-left"
+                            />
                             <div className="w-0.5 h-3 rounded-full bg-primary/50" />
-                            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
+                            <span className={cn("text-[10px] font-semibold text-muted-foreground uppercase tracking-widest", isExcluded && "line-through")}>
                               {cat.label}
                             </span>
                           </div>
