@@ -486,35 +486,42 @@ export function ReportDocument({
         </table>
       </div>
 
-      {/* ── Category summary ─────────────────────────────────────────── */}
+      {/* ── Category breakdown & sell rates ─────────────────────────── */}
       {categoryStats.length > 0 && (
         <div className="bg-card/65 backdrop-blur-xl border border-border rounded-sm overflow-hidden print:bg-white print:border-gray-200 print:rounded-none print:break-inside-avoid">
           <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/30 print:bg-gray-50 border-b border-border print:border-gray-200">
             <div className="w-0.5 h-3.5 rounded-full bg-primary/60 print:bg-gray-400 shrink-0" />
             <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground print:text-gray-500">
-              Cost Breakdown by Category
+              Category Breakdown &amp; Sell Rates (ex-GST)
             </span>
           </div>
           <table className="w-full">
             <colgroup>
               <col />
+              <col className="w-24" />
+              <col className="w-24" />
+              <col className="w-24" />
+              <col className="w-32" />
               <col className="w-28" />
-              <col className="w-28" />
-              <col className="w-28" />
-              <col className="w-40" />
+              <col className="w-32" />
             </colgroup>
             <thead>
               <tr className="bg-muted/15 print:bg-gray-50">
                 <Th>Category</Th>
                 <Th right>Materials</Th>
                 <Th right>Labour</Th>
-                <Th right>Total</Th>
-                <Th right>Share</Th>
+                <Th right>Total cost</Th>
+                <Th right>Gross qty (incl. waste)</Th>
+                <Th right>Sell price</Th>
+                <Th right>Per unit rate</Th>
               </tr>
             </thead>
             <tbody>
-              {categoryStats.map(({ cat, catMat, catLab, catTotal }) => {
-                const pct = itemsGrandTotal > 0 ? (catTotal / itemsGrandTotal) * 100 : 0;
+              {categoryStats.map(({ cat, catMat, catLab, catTotal, primaryUnit, netQty, grossQty }) => {
+                const itemsComponent = summary.totalExGst - summary.floorPrepRevenue;
+                const catShare = itemsGrandTotal > 0 ? catTotal / itemsGrandTotal : 0;
+                const catAllocated = catShare * itemsComponent;
+                const perUnit = grossQty > 0 ? catAllocated / grossQty : 0;
                 return (
                   <tr key={cat.key} className="border-b border-border print:border-gray-100 hover:bg-muted/10 print:hover:bg-transparent">
                     <td className="px-3 py-2.5">
@@ -525,102 +532,9 @@ export function ReportDocument({
                         </span>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-right text-xs tabular-nums text-foreground/90 print:text-gray-900">
-                      ${fmt(catMat)}
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-xs tabular-nums text-foreground/90 print:text-gray-900">
-                      ${fmt(catLab)}
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-xs tabular-nums font-semibold text-foreground/80 print:text-gray-900">
-                      ${fmt(catTotal)}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-2 justify-end">
-                        <div className="w-24 h-1.5 rounded-full bg-muted/50 print:bg-gray-200 overflow-hidden shrink-0">
-                          <div
-                            className="h-full rounded-full bg-primary/50 print:bg-gray-500"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className="text-xs tabular-nums text-foreground/90 print:text-gray-900 w-12 text-right shrink-0">
-                          {pct.toFixed(1)}%
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="bg-muted/25 print:bg-gray-100 border-t-2 border-border print:border-gray-300">
-                <td className="px-3 py-2 text-xs font-bold text-foreground/90 print:text-gray-900 uppercase tracking-wide">
-                  Total
-                </td>
-                <td className="px-3 py-2 text-right text-xs tabular-nums font-semibold text-foreground/70 print:text-gray-700">
-                  ${fmt(categoryStats.reduce((s, c) => s + c.catMat, 0))}
-                </td>
-                <td className="px-3 py-2 text-right text-xs tabular-nums font-semibold text-foreground/70 print:text-gray-700">
-                  ${fmt(categoryStats.reduce((s, c) => s + c.catLab, 0))}
-                </td>
-                <td className="px-3 py-2 text-right text-sm tabular-nums font-bold text-foreground/85 print:text-gray-900">
-                  ${fmt(itemsGrandTotal)}
-                </td>
-                <td className="px-3 py-2 text-right text-xs tabular-nums text-foreground/90 print:text-gray-900">
-                  100.0%
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-
-      {/* ── Sell rates by category ───────────────────────────────────── */}
-      {categoryStats.length > 0 && (
-        <div className="bg-card/65 backdrop-blur-xl border border-border rounded-sm overflow-hidden print:bg-white print:border-gray-200 print:rounded-none print:break-inside-avoid">
-          <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/30 print:bg-gray-50 border-b border-border print:border-gray-200">
-            <div className="w-0.5 h-3.5 rounded-full bg-primary/60 print:bg-gray-400 shrink-0" />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground print:text-gray-500">
-              Sell Rate by Category (ex-GST)
-            </span>
-          </div>
-          <table className="w-full">
-            <colgroup>
-              <col />
-              <col className="w-28" />
-              <col className="w-36" />
-              <col className="w-32" />
-              <col className="w-36" />
-            </colgroup>
-            <thead>
-              <tr className="bg-muted/15 print:bg-gray-50">
-                <Th>Category</Th>
-                <Th right>Net qty</Th>
-                <Th right>Gross qty (incl. waste)</Th>
-                <Th right>Allocated sell price</Th>
-                <Th right>Per unit sell rate</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {categoryStats.map(({ cat, catTotal, primaryUnit, netQty, grossQty }) => {
-                // Allocate totalExGst (minus floor prep, which is a fixed line) proportionally by cost
-                const itemsComponent = summary.totalExGst - summary.floorPrepRevenue;
-                const catShare = itemsGrandTotal > 0 ? catTotal / itemsGrandTotal : 0;
-                const catAllocated = catShare * itemsComponent;
-                const perUnit = grossQty > 0 ? catAllocated / grossQty : 0;
-                return (
-                  <tr
-                    key={cat.key}
-                    className="border-b border-border print:border-gray-100 hover:bg-muted/10 print:hover:bg-transparent"
-                  >
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <div className="w-0.5 h-3 rounded-full bg-primary/40 print:bg-gray-300 shrink-0" />
-                        <span className="text-xs font-medium text-foreground/90 print:text-gray-700">
-                          {cat.label}
-                        </span>
-                      </div>
-                    </td>
-                    <Td right>{grossQty > 0 ? `${fmt(netQty)} ${uLabel(primaryUnit)}` : "—"}</Td>
+                    <Td right>${fmt(catMat)}</Td>
+                    <Td right>${fmt(catLab)}</Td>
+                    <Td right bold>${fmt(catTotal)}</Td>
                     <Td right>{grossQty > 0 ? `${fmt(grossQty)} ${uLabel(primaryUnit)}` : "—"}</Td>
                     <Td right>${fmt(catAllocated)}</Td>
                     <Td right bold>{grossQty > 0 ? `$${fmt(perUnit)} / ${uLabel(primaryUnit)}` : "—"}</Td>
@@ -637,7 +551,9 @@ export function ReportDocument({
                       </span>
                     </div>
                   </td>
+                  <Td right>${fmt(summary.floorPrepCost)}</Td>
                   <Td right>—</Td>
+                  <Td right bold>${fmt(summary.floorPrepCost)}</Td>
                   <Td right>—</Td>
                   <Td right>${fmt(summary.floorPrepRevenue)}</Td>
                   <Td right>—</Td>
@@ -647,9 +563,18 @@ export function ReportDocument({
             <tfoot>
               <tr className="bg-muted/25 print:bg-gray-100 border-t-2 border-border print:border-gray-300">
                 <td className="px-3 py-2 text-xs font-bold text-foreground/90 print:text-gray-900 uppercase tracking-wide">
-                  Total (ex-GST)
+                  Total
                 </td>
-                <td colSpan={2} />
+                <td className="px-3 py-2 text-right text-xs tabular-nums font-semibold text-foreground/70 print:text-gray-700">
+                  ${fmt(categoryStats.reduce((s, c) => s + c.catMat, 0) + (summary.floorPrepBags > 0 ? summary.floorPrepCost : 0))}
+                </td>
+                <td className="px-3 py-2 text-right text-xs tabular-nums font-semibold text-foreground/70 print:text-gray-700">
+                  ${fmt(categoryStats.reduce((s, c) => s + c.catLab, 0))}
+                </td>
+                <td className="px-3 py-2 text-right text-sm tabular-nums font-bold text-foreground/85 print:text-gray-900">
+                  ${fmt(itemsGrandTotal + (summary.floorPrepBags > 0 ? summary.floorPrepCost : 0))}
+                </td>
+                <td />
                 <td className="px-3 py-2 text-right text-sm tabular-nums font-bold text-foreground/85 print:text-gray-900">
                   ${fmt(summary.totalExGst)}
                 </td>
