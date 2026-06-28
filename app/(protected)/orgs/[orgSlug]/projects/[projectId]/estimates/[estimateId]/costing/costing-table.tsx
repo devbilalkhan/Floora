@@ -1036,6 +1036,22 @@ export function CostingTable({
     return { mat, lab, total: mat + lab };
   }, [filteredItems]);
 
+  // Mirrors report-document: primaries + parent-attached children only, no section consumables
+  const reportCatTotals = useMemo(() => {
+    const map: Record<string, number> = {};
+    grouped.primaries.forEach((p) => {
+      const ch = grouped.children.get(p.id) ?? [];
+      const cost = itemMatCost(p) + itemLabCost(p) + ch.reduce((s, c) => s + itemMatCost(c) + itemLabCost(c), 0);
+      map[p.scope_category] = (map[p.scope_category] ?? 0) + cost;
+    });
+    return map;
+  }, [grouped]);
+
+  const reportItemsGrandTotal = useMemo(
+    () => Object.values(reportCatTotals).reduce((s, v) => s + v, 0),
+    [reportCatTotals],
+  );
+
   const grossMarginPct = summary.grossMarginPct;
   const markupWarning = grossMarginPct < 0.18;
 
@@ -1222,9 +1238,14 @@ export function CostingTable({
                 const netQty    = catPrimaries.reduce((s, i) => s + (Number(i.qty) || 0), 0);
                 const supplyQty = catPrimaries.reduce((s, i) => s + (itemMatQty(i) || 0), 0);
                 const catUnit   = catPrimaries.length > 0 ? uLabel(catPrimaries[0].unit) : "m²";
-                const itemsComponent = summary.totalExGst - summary.floorPrepRevenue;
-                const catShare = tableTotals.total > 0 ? catTotal.total / tableTotals.total : 0;
-                const perUnit = supplyQty > 0 ? (catShare * itemsComponent) / supplyQty : 0;
+                // Per-unit sell rate — mirrors report-document exactly
+                const unitCounts: Record<string, number> = {};
+                catPrimaries.forEach((p) => { unitCounts[p.unit] = (unitCounts[p.unit] ?? 0) + 1; });
+                const primaryUnit = Object.entries(unitCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "m2";
+                const grossQty = catPrimaries.filter((p) => p.unit === primaryUnit).reduce((s, p) => s + itemMatQty(p), 0);
+                const catPrimaryTotal = reportCatTotals[cat.key] ?? 0;
+                const catShare = reportItemsGrandTotal > 0 ? catPrimaryTotal / reportItemsGrandTotal : 0;
+                const perUnit = grossQty > 0 ? (catShare * (summary.totalExGst - summary.floorPrepRevenue)) / grossQty : 0;
 
                 return (
                   <React.Fragment key={cat.key}>
