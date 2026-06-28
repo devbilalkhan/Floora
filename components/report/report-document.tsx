@@ -224,7 +224,14 @@ export function ReportDocument({
     const m2Rows = rows.filter((p) => p.unit === "m2");
     const netSqm = m2Rows.reduce((s, p) => s + p.qty + (p.cov_area ?? 0), 0);
     const grossSqm = m2Rows.reduce((s, p) => s + itemMatQty(p), 0);
-    return { cat, rows, catMat, catLab, catTotal: catMat + catLab, netSqm, grossSqm };
+    // Primary unit = most common unit among primary rows (for non-m² categories like trims)
+    const unitCounts: Record<string, number> = {};
+    rows.forEach((p) => { unitCounts[p.unit] = (unitCounts[p.unit] ?? 0) + 1; });
+    const primaryUnit = Object.entries(unitCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "m2";
+    const primaryRows = rows.filter((p) => p.unit === primaryUnit);
+    const netQty = primaryRows.reduce((s, p) => s + p.qty + (p.cov_area ?? 0), 0);
+    const grossQty = primaryRows.reduce((s, p) => s + itemMatQty(p), 0);
+    return { cat, rows, catMat, catLab, catTotal: catMat + catLab, netSqm, grossSqm, primaryUnit, netQty, grossQty };
   }).filter((g) => g.rows.length > 0);
 
   const itemsGrandTotal = categoryStats.reduce((s, c) => s + c.catTotal, 0);
@@ -567,64 +574,88 @@ export function ReportDocument({
         </div>
       )}
 
-      {/* ── Per m² sell rates ────────────────────────────────────────── */}
-      {categoryStats.some((c) => c.grossSqm > 0) && (
+      {/* ── Sell rates by category ───────────────────────────────────── */}
+      {categoryStats.length > 0 && (
         <div className="bg-card/65 backdrop-blur-xl border border-border rounded-sm overflow-hidden print:bg-white print:border-gray-200 print:rounded-none print:break-inside-avoid">
           <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/30 print:bg-gray-50 border-b border-border print:border-gray-200">
             <div className="w-0.5 h-3.5 rounded-full bg-primary/60 print:bg-gray-400 shrink-0" />
             <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground print:text-gray-500">
-              Sell Rate by Category (per m² · ex-GST)
+              Sell Rate by Category (ex-GST)
             </span>
           </div>
           <table className="w-full">
             <colgroup>
               <col />
               <col className="w-28" />
-              <col className="w-32" />
+              <col className="w-36" />
               <col className="w-32" />
               <col className="w-36" />
             </colgroup>
             <thead>
               <tr className="bg-muted/15 print:bg-gray-50">
                 <Th>Category</Th>
-                <Th right>Net m²</Th>
-                <Th right>Gross m² (incl. waste)</Th>
+                <Th right>Net qty</Th>
+                <Th right>Gross qty (incl. waste)</Th>
                 <Th right>Allocated sell price</Th>
-                <Th right>Per m² sell rate</Th>
+                <Th right>Per unit sell rate</Th>
               </tr>
             </thead>
             <tbody>
-              {categoryStats
-                .filter((c) => c.grossSqm > 0)
-                .map(({ cat, catTotal, netSqm, grossSqm }) => {
-                  const catShare = itemsGrandTotal > 0 ? catTotal / itemsGrandTotal : 0;
-                  const catWithOverhead = catTotal * (1 + settings.accounting_rate + settings.admin_rate);
-                  const totalRecoverable =
-                    catWithOverhead +
-                    catShare * summary.markupAmount +
-                    catShare * summary.additionalCosts;
-                  const perSqm = grossSqm > 0 ? totalRecoverable / grossSqm : 0;
-                  return (
-                    <tr
-                      key={cat.key}
-                      className="border-b border-border print:border-gray-100 hover:bg-muted/10 print:hover:bg-transparent"
-                    >
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2">
-                          <div className="w-0.5 h-3 rounded-full bg-primary/40 print:bg-gray-300 shrink-0" />
-                          <span className="text-xs font-medium text-foreground/90 print:text-gray-700">
-                            {cat.label}
-                          </span>
-                        </div>
-                      </td>
-                      <Td right>{fmt(netSqm)}</Td>
-                      <Td right>{fmt(grossSqm)}</Td>
-                      <Td right>${fmt(totalRecoverable)}</Td>
-                      <Td right bold>${fmt(perSqm)}</Td>
-                    </tr>
-                  );
-                })}
+              {categoryStats.map(({ cat, catTotal, primaryUnit, netQty, grossQty }) => {
+                // Allocate totalExGst (minus floor prep, which is a fixed line) proportionally by cost
+                const itemsComponent = summary.totalExGst - summary.floorPrepRevenue;
+                const catShare = itemsGrandTotal > 0 ? catTotal / itemsGrandTotal : 0;
+                const catAllocated = catShare * itemsComponent;
+                const perUnit = grossQty > 0 ? catAllocated / grossQty : 0;
+                return (
+                  <tr
+                    key={cat.key}
+                    className="border-b border-border print:border-gray-100 hover:bg-muted/10 print:hover:bg-transparent"
+                  >
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-0.5 h-3 rounded-full bg-primary/40 print:bg-gray-300 shrink-0" />
+                        <span className="text-xs font-medium text-foreground/90 print:text-gray-700">
+                          {cat.label}
+                        </span>
+                      </div>
+                    </td>
+                    <Td right>{grossQty > 0 ? `${fmt(netQty)} ${uLabel(primaryUnit)}` : "—"}</Td>
+                    <Td right>{grossQty > 0 ? `${fmt(grossQty)} ${uLabel(primaryUnit)}` : "—"}</Td>
+                    <Td right>${fmt(catAllocated)}</Td>
+                    <Td right bold>{grossQty > 0 ? `$${fmt(perUnit)} / ${uLabel(primaryUnit)}` : "—"}</Td>
+                  </tr>
+                );
+              })}
+              {summary.floorPrepBags > 0 && (
+                <tr className="border-b border-border print:border-gray-100 hover:bg-muted/10 print:hover:bg-transparent">
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-0.5 h-3 rounded-full bg-primary/40 print:bg-gray-300 shrink-0" />
+                      <span className="text-xs font-medium text-foreground/90 print:text-gray-700">
+                        Floor Prep ({summary.floorPrepBags} bag{summary.floorPrepBags !== 1 ? "s" : ""})
+                      </span>
+                    </div>
+                  </td>
+                  <Td right>—</Td>
+                  <Td right>—</Td>
+                  <Td right>${fmt(summary.floorPrepRevenue)}</Td>
+                  <Td right>—</Td>
+                </tr>
+              )}
             </tbody>
+            <tfoot>
+              <tr className="bg-muted/25 print:bg-gray-100 border-t-2 border-border print:border-gray-300">
+                <td className="px-3 py-2 text-xs font-bold text-foreground/90 print:text-gray-900 uppercase tracking-wide">
+                  Total (ex-GST)
+                </td>
+                <td colSpan={2} />
+                <td className="px-3 py-2 text-right text-sm tabular-nums font-bold text-foreground/85 print:text-gray-900">
+                  ${fmt(summary.totalExGst)}
+                </td>
+                <td />
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
