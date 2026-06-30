@@ -62,6 +62,9 @@ export type EstimateSettings = {
   floor_prep_charge_per_bag: number;
   floor_prep_mat_per_bag: number;
   floor_prep_lab_per_bag: number;
+  grind_area: number;
+  grind_labor_rate: number;
+  grind_charge_rate: number;
 };
 
 export type Estimate = {
@@ -110,6 +113,9 @@ export type Summary = {
   floorPrepRevenue: number;
   floorPrepCost: number;
   floorPrepProfit: number;
+  grindCost: number;
+  grindRevenue: number;
+  grindProfit: number;
   wetAreasTotalLabor: number;
   wetAreasTotalCharge: number;
   wetAreasProfit: number;
@@ -147,13 +153,18 @@ export function computeSummary(items: EstimateItem[], settings: EstimateSettings
   const floorPrepCost = (settings.floor_prep_mat_per_bag + settings.floor_prep_lab_per_bag) * floorPrepBags;
   const floorPrepProfit = floorPrepRevenue - floorPrepCost;
 
-  // subtotalAfterMarkup consolidates items markup + floor prep profit
-  const subtotalAfterMarkup = subtotalAfterOverhead + markupAmount + floorPrepProfit;
-  // floor prep cost is a separate recovery line — client pays cost + profit = full charge
-  const totalExGst = subtotalAfterMarkup + additionalCosts + floorPrepCost;
+  // Grinding — per-m² surface prep; profit baked into margin same as floor prep
+  const grindCost = (settings.grind_area ?? 0) * (settings.grind_labor_rate ?? 0);
+  const grindRevenue = (settings.grind_area ?? 0) * (settings.grind_charge_rate ?? 0);
+  const grindProfit = grindRevenue - grindCost;
+
+  // subtotalAfterMarkup consolidates items markup + floor prep profit + grind profit
+  const subtotalAfterMarkup = subtotalAfterOverhead + markupAmount + floorPrepProfit + grindProfit;
+  // floor prep and grind costs are separate recovery lines — client pays cost + profit = full charge
+  const totalExGst = subtotalAfterMarkup + additionalCosts + floorPrepCost + grindCost;
   const gst = totalExGst * 0.1;
   const grandTotal = totalExGst + gst;
-  const grossMarginPct = totalExGst > 0 ? (markupAmount + floorPrepProfit) / totalExGst : 0;
+  const grossMarginPct = totalExGst > 0 ? (markupAmount + floorPrepProfit + grindProfit) / totalExGst : 0;
   return {
     base,
     accountingCost,
@@ -166,6 +177,9 @@ export function computeSummary(items: EstimateItem[], settings: EstimateSettings
     floorPrepRevenue,
     floorPrepCost,
     floorPrepProfit,
+    grindCost,
+    grindRevenue,
+    grindProfit,
     wetAreasTotalLabor,
     wetAreasTotalCharge,
     wetAreasProfit,

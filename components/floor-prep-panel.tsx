@@ -20,11 +20,14 @@ type Props = {
   chargePerBag: number;
   matPerBag: number;
   labPerBag: number;
+  grindArea: number;
+  grindLaborRate: number;
+  grindChargeRate: number;
   onUpdate: (patch: Partial<EstimateSettings>) => void;
   onReset: () => void;
 };
 
-export function FloorPrepPanel({ area, depthMm, chargePerBag, matPerBag, labPerBag, onUpdate, onReset }: Props) {
+export function FloorPrepPanel({ area, depthMm, chargePerBag, matPerBag, labPerBag, grindArea, grindLaborRate, grindChargeRate, onUpdate, onReset }: Props) {
   const bags = useMemo(
     () =>
       area > 0 && depthMm > 0
@@ -40,6 +43,11 @@ export function FloorPrepPanel({ area, depthMm, chargePerBag, matPerBag, labPerB
   const profit = revenue - totalCost;
 
   const hasResult = bags > 0;
+
+  const grindCost = grindArea * grindLaborRate;
+  const grindRevenue = grindArea * grindChargeRate;
+  const grindProfit = grindRevenue - grindCost;
+  const hasGrind = grindArea > 0;
 
   return (
     <div className="w-72 shrink-0 sticky top-4 self-start">
@@ -238,6 +246,101 @@ export function FloorPrepPanel({ area, depthMm, chargePerBag, matPerBag, labPerB
           {!hasResult && (
             <p className="text-[10px] text-muted-foreground/30 text-center py-2">
               Enter area &amp; depth to calculate
+            </p>
+          )}
+        </div>
+
+        {/* ── Grinding ───────────────────────────────────────────── */}
+        <div className="border-t border-border px-4 py-3 space-y-3">
+          <p className="text-[9px] font-semibold text-muted-foreground/40 uppercase tracking-widest">
+            Grinding
+          </p>
+
+          {/* Area + rates row */}
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground/55 w-12 shrink-0">Area</span>
+              <input
+                type="number"
+                value={grindArea === 0 ? "" : r2(grindArea)}
+                onChange={(e) => onUpdate({ grind_area: parseFloat(e.target.value) || 0 })}
+                className="flex-1 min-w-0 text-xs text-right tabular-nums bg-input border border-border rounded px-2 py-1 text-foreground/70 focus:outline-none focus:ring-1 focus:ring-primary/40 placeholder:text-muted-foreground/25"
+                placeholder="0"
+                min={0}
+              />
+              <span className="text-[10px] text-muted-foreground/50 shrink-0">m²</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground/55 w-12 shrink-0">Labour</span>
+              <div className="flex items-center gap-1 flex-1 min-w-0">
+                <span className="text-[9px] text-muted-foreground/35">$</span>
+                <input
+                  type="number"
+                  value={grindLaborRate === 0 ? "" : r2(grindLaborRate)}
+                  onChange={(e) => onUpdate({ grind_labor_rate: parseFloat(e.target.value) || 0 })}
+                  className={rateInput}
+                  placeholder="0.00"
+                  min={0}
+                  step={0.01}
+                />
+                <span className="text-[9px] text-muted-foreground/35">/m²</span>
+              </div>
+              <span className={cn("tabular-nums text-[11px] w-16 text-right", hasGrind ? "text-foreground/55" : "text-muted-foreground/25")}>
+                {hasGrind ? `$${fmt(grindCost)}` : "—"}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground/55 w-12 shrink-0">Charge</span>
+              <div className="flex items-center gap-1 flex-1 min-w-0">
+                <span className="text-[9px] text-muted-foreground/35">$</span>
+                <input
+                  type="number"
+                  value={grindChargeRate === 0 ? "" : r2(grindChargeRate)}
+                  onChange={(e) => onUpdate({ grind_charge_rate: parseFloat(e.target.value) || 0 })}
+                  className={rateInput}
+                  placeholder="0.00"
+                  min={0}
+                  step={0.01}
+                />
+                <span className="text-[9px] text-muted-foreground/35">/m²</span>
+              </div>
+              <span className={cn("tabular-nums text-[11px] w-16 text-right", hasGrind ? "text-foreground/65" : "text-muted-foreground/25")}>
+                {hasGrind ? `$${fmt(grindRevenue)}` : "—"}
+              </span>
+            </div>
+          </div>
+
+          {hasGrind && (
+            <div className={cn(
+              "rounded-lg px-3 py-2.5 flex items-center justify-between",
+              grindProfit > 0
+                ? "bg-success/10 border border-success/20"
+                : grindProfit < 0
+                ? "bg-destructive/10 border border-destructive/20"
+                : "bg-muted/20 border border-border"
+            )}>
+              <div>
+                <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wide">
+                  Grind Profit
+                </p>
+                <p className="text-[9px] text-muted-foreground/40 mt-0.5">
+                  Adds to estimate margin
+                </p>
+              </div>
+              <p className={cn(
+                "text-base font-bold tabular-nums",
+                grindProfit > 0 ? "text-success" : grindProfit < 0 ? "text-destructive" : "text-foreground/50"
+              )}>
+                ${fmt(grindProfit)}
+              </p>
+            </div>
+          )}
+
+          {!hasGrind && (
+            <p className="text-[10px] text-muted-foreground/30 text-center py-1">
+              Enter area to calculate
             </p>
           )}
         </div>

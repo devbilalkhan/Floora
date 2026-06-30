@@ -64,6 +64,9 @@ const FLOOR_PREP_DEFAULTS = {
   floor_prep_charge_per_bag: 0,
   floor_prep_mat_per_bag: 33,
   floor_prep_lab_per_bag: 40,
+  grind_area: 0,
+  grind_labor_rate: 0,
+  grind_charge_rate: 0,
 } as const;
 
 // Client-side mirror of the server sync logic
@@ -768,6 +771,9 @@ export function CostingTable({
     floor_prep_charge_per_bag: estimate.floor_prep_charge_per_bag ?? 0,
     floor_prep_mat_per_bag: estimate.floor_prep_mat_per_bag ?? 33,
     floor_prep_lab_per_bag: estimate.floor_prep_lab_per_bag ?? 40,
+    grind_area: estimate.grind_area ?? 0,
+    grind_labor_rate: estimate.grind_labor_rate ?? 0,
+    grind_charge_rate: estimate.grind_charge_rate ?? 0,
   });
   const [importing, setImporting] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
@@ -1593,10 +1599,23 @@ export function CostingTable({
                 </td>
               </tr>
             )}
+            {summary.grindProfit !== 0 && settings.grind_area > 0 && (
+              <tr className="bg-muted/10 border-b border-border">
+                <td className="pl-9 pr-4 py-1.5 text-xs text-muted-foreground/45">
+                  Grinding profit ({fmt(settings.grind_area)} m²)
+                </td>
+                <td className={cn("px-4 py-1.5 text-xs text-right tabular-nums", summary.grindProfit >= 0 ? "text-success/80" : "text-destructive/80")}>
+                  {summary.grindProfit >= 0 ? "+" : ""}${fmt(summary.grindProfit)}
+                </td>
+              </tr>
+            )}
             <SummaryRow label="Subtotal after Mark-up" value={summary.subtotalAfterMarkup} subtotal />
             <SummaryRow label="Additional Costs" value={summary.additionalCosts} />
             {summary.floorPrepBags > 0 && (
               <SummaryRow label={`Floor Prep material & labour (${summary.floorPrepBags} bags)`} value={summary.floorPrepCost} />
+            )}
+            {settings.grind_area > 0 && (
+              <SummaryRow label={`Grinding labour (${fmt(settings.grind_area)} m²)`} value={summary.grindCost} />
             )}
             <SummaryRow label="Total ex-GST" value={summary.totalExGst} primary />
             <SummaryRow label="GST (10%)" value={summary.gst} muted />
@@ -1623,6 +1642,9 @@ export function CostingTable({
         chargePerBag={settings.floor_prep_charge_per_bag}
         matPerBag={settings.floor_prep_mat_per_bag}
         labPerBag={settings.floor_prep_lab_per_bag}
+        grindArea={settings.grind_area}
+        grindLaborRate={settings.grind_labor_rate}
+        grindChargeRate={settings.grind_charge_rate}
         onUpdate={updateSettings}
         onReset={resetFloorPrep}
       />

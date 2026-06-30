@@ -48,7 +48,7 @@ export default async function ProjectDetailPage({
         .single(),
       supabase
         .from("estimates")
-        .select("id, name, status, updated_at, accounting_rate, admin_rate, net_markup_pct, freight, accommodation, travel_allowance, bailing_fee, floor_prep_area, floor_prep_depth_mm, floor_prep_charge_per_bag, floor_prep_mat_per_bag, floor_prep_lab_per_bag")
+        .select("id, name, status, updated_at, accounting_rate, admin_rate, net_markup_pct, freight, accommodation, travel_allowance, bailing_fee, floor_prep_area, floor_prep_depth_mm, floor_prep_charge_per_bag, floor_prep_mat_per_bag, floor_prep_lab_per_bag, grind_area, grind_labor_rate, grind_charge_rate")
         .eq("project_id", params.projectId)
         .order("created_at", { ascending: false }),
       supabase
@@ -132,6 +132,9 @@ export default async function ProjectDetailPage({
         floor_prep_charge_per_bag: e.floor_prep_charge_per_bag ?? 0,
         floor_prep_mat_per_bag: e.floor_prep_mat_per_bag ?? 33,
         floor_prep_lab_per_bag: e.floor_prep_lab_per_bag ?? 40,
+        grind_area: e.grind_area ?? 0,
+        grind_labor_rate: e.grind_labor_rate ?? 0,
+        grind_charge_rate: e.grind_charge_rate ?? 0,
       };
       return [e.id, computeSummary(itemsByEstimate.get(e.id) ?? [], settings, (wetAreasByEstimate.get(e.id) ?? []) as WetArea[])];
     })

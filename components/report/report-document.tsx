@@ -187,12 +187,15 @@ export function ReportDocument({
     floor_prep_charge_per_bag: estimate.floor_prep_charge_per_bag ?? 0,
     floor_prep_mat_per_bag: estimate.floor_prep_mat_per_bag ?? 33,
     floor_prep_lab_per_bag: estimate.floor_prep_lab_per_bag ?? 40,
+    grind_area: estimate.grind_area ?? 0,
+    grind_labor_rate: estimate.grind_labor_rate ?? 0,
+    grind_charge_rate: estimate.grind_charge_rate ?? 0,
   };
 
   const summary = computeSummary(items, settings, wetAreas);
   const totalCost =
-    summary.subtotalAfterOverhead + summary.additionalCosts + summary.floorPrepCost;
-  const grossProfit = summary.markupAmount + summary.floorPrepProfit;
+    summary.subtotalAfterOverhead + summary.additionalCosts + summary.floorPrepCost + summary.grindCost;
+  const grossProfit = summary.markupAmount + summary.floorPrepProfit + summary.grindProfit;
   const gm = summary.grossMarginPct;
   const gmLow = gm < 0.18;
 
@@ -442,6 +445,13 @@ export function ReportDocument({
                 variant="indent"
               />
             )}
+            {summary.grindCost > 0 && (
+              <WfRow
+                label={`Grinding — ${fmt(settings.grind_area)} m²`}
+                value={summary.grindCost}
+                variant="indent"
+              />
+            )}
             <WfRow label="Total Cost" value={totalCost} variant="total" />
 
             <WfDivider />
@@ -458,6 +468,15 @@ export function ReportDocument({
                 value={summary.floorPrepProfit}
                 variant="indent"
                 positive
+              />
+            )}
+            {summary.grindProfit !== 0 && settings.grind_area > 0 && (
+              <WfRow
+                label={`Grinding profit (${fmt(settings.grind_area)} m²)`}
+                value={summary.grindProfit}
+                variant="indent"
+                positive={summary.grindProfit > 0}
+                negative={summary.grindProfit < 0}
               />
             )}
             <WfRow label="Gross Profit" value={grossProfit} variant="subtotal" positive />
@@ -518,7 +537,7 @@ export function ReportDocument({
             </thead>
             <tbody>
               {categoryStats.map(({ cat, catMat, catLab, catTotal, primaryUnit, netQty, grossQty }) => {
-                const itemsComponent = summary.totalExGst - summary.floorPrepRevenue;
+                const itemsComponent = summary.totalExGst - summary.floorPrepRevenue - summary.grindRevenue;
                 const catShare = itemsGrandTotal > 0 ? catTotal / itemsGrandTotal : 0;
                 const catAllocated = catShare * itemsComponent;
                 const perUnit = grossQty > 0 ? catAllocated / grossQty : 0;
@@ -559,6 +578,24 @@ export function ReportDocument({
                   <Td right>—</Td>
                 </tr>
               )}
+              {summary.grindCost > 0 && (
+                <tr className="border-b border-border print:border-gray-100 hover:bg-muted/10 print:hover:bg-transparent">
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-0.5 h-3 rounded-full bg-primary/40 print:bg-gray-300 shrink-0" />
+                      <span className="text-xs font-medium text-foreground/90 print:text-gray-700">
+                        Grinding ({fmt(settings.grind_area)} m²)
+                      </span>
+                    </div>
+                  </td>
+                  <Td right>${fmt(summary.grindCost)}</Td>
+                  <Td right>—</Td>
+                  <Td right bold>${fmt(summary.grindCost)}</Td>
+                  <Td right>—</Td>
+                  <Td right>${fmt(summary.grindRevenue)}</Td>
+                  <Td right>—</Td>
+                </tr>
+              )}
             </tbody>
             <tfoot>
               <tr className="bg-muted/25 print:bg-gray-100 border-t-2 border-border print:border-gray-300">
@@ -566,13 +603,13 @@ export function ReportDocument({
                   Total
                 </td>
                 <td className="px-3 py-2 text-right text-xs tabular-nums font-semibold text-foreground/70 print:text-gray-700">
-                  ${fmt(categoryStats.reduce((s, c) => s + c.catMat, 0) + (summary.floorPrepBags > 0 ? summary.floorPrepCost : 0))}
+                  ${fmt(categoryStats.reduce((s, c) => s + c.catMat, 0) + (summary.floorPrepBags > 0 ? summary.floorPrepCost : 0) + summary.grindCost)}
                 </td>
                 <td className="px-3 py-2 text-right text-xs tabular-nums font-semibold text-foreground/70 print:text-gray-700">
                   ${fmt(categoryStats.reduce((s, c) => s + c.catLab, 0))}
                 </td>
                 <td className="px-3 py-2 text-right text-sm tabular-nums font-bold text-foreground/85 print:text-gray-900">
-                  ${fmt(itemsGrandTotal + (summary.floorPrepBags > 0 ? summary.floorPrepCost : 0))}
+                  ${fmt(itemsGrandTotal + (summary.floorPrepBags > 0 ? summary.floorPrepCost : 0) + summary.grindCost)}
                 </td>
                 <td />
                 <td className="px-3 py-2 text-right text-sm tabular-nums font-bold text-foreground/85 print:text-gray-900">

@@ -25,7 +25,7 @@ export async function fetchReportData(
   const { data: estimates } = await supabase
     .from("estimates")
     .select(
-      "id, project_id, name, status, accounting_rate, admin_rate, net_markup_pct, freight, accommodation, travel_allowance, bailing_fee, floor_prep_area, floor_prep_depth_mm, floor_prep_charge_per_bag, floor_prep_mat_per_bag, floor_prep_lab_per_bag"
+      "id, project_id, name, status, accounting_rate, admin_rate, net_markup_pct, freight, accommodation, travel_allowance, bailing_fee, floor_prep_area, floor_prep_depth_mm, floor_prep_charge_per_bag, floor_prep_mat_per_bag, floor_prep_lab_per_bag, grind_area, grind_labor_rate, grind_charge_rate"
     )
     .in("project_id", projectIds)
     .order("created_at", { ascending: false });
@@ -98,6 +98,9 @@ export async function fetchReportData(
           floor_prep_charge_per_bag: best.floor_prep_charge_per_bag ?? 0,
           floor_prep_mat_per_bag: best.floor_prep_mat_per_bag ?? 33,
           floor_prep_lab_per_bag: best.floor_prep_lab_per_bag ?? 40,
+          grind_area: best.grind_area ?? 0,
+          grind_labor_rate: best.grind_labor_rate ?? 0,
+          grind_charge_rate: best.grind_charge_rate ?? 0,
         };
         const s = computeSummary(itemsByEstimate.get(best.id) ?? [], settings);
         estRevenue = s.totalExGst;
