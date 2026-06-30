@@ -5,6 +5,7 @@ import { Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FLOOR_PREP } from "@/lib/default-rates";
 import type { EstimateSettings } from "@/lib/estimate-types";
+import { Switch } from "@/components/ui/switch";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -23,11 +24,15 @@ type Props = {
   grindArea: number;
   grindLaborRate: number;
   grindChargeRate: number;
+  includeFloorPrep: boolean;
+  onToggleFloorPrep: () => void;
+  includeGrind: boolean;
+  onToggleGrind: () => void;
   onUpdate: (patch: Partial<EstimateSettings>) => void;
   onReset: () => void;
 };
 
-export function FloorPrepPanel({ area, depthMm, chargePerBag, matPerBag, labPerBag, grindArea, grindLaborRate, grindChargeRate, onUpdate, onReset }: Props) {
+export function FloorPrepPanel({ area, depthMm, chargePerBag, matPerBag, labPerBag, grindArea, grindLaborRate, grindChargeRate, includeFloorPrep, onToggleFloorPrep, includeGrind, onToggleGrind, onUpdate, onReset }: Props) {
   const bags = useMemo(
     () =>
       area > 0 && depthMm > 0
@@ -56,19 +61,27 @@ export function FloorPrepPanel({ area, depthMm, chargePerBag, matPerBag, labPerB
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/30">
           <Layers className="h-3.5 w-3.5 text-primary/70 shrink-0" />
-          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
+          <span className={cn(
+            "text-[11px] font-semibold uppercase tracking-widest",
+            includeFloorPrep ? "text-muted-foreground" : "text-muted-foreground/40 line-through"
+          )}>
             Floor Preparation
           </span>
+          <Switch
+            checked={includeFloorPrep}
+            onCheckedChange={onToggleFloorPrep}
+            className="ml-auto scale-75"
+          />
           <button
             onClick={onReset}
-            className="ml-auto text-[10px] text-primary/50 hover:text-primary transition-colors underline underline-offset-2"
+            className="text-[10px] text-primary/50 hover:text-primary transition-colors underline underline-offset-2"
           >
             reset
           </button>
         </div>
 
         {/* Inputs */}
-        <div className="px-4 py-4 space-y-3.5">
+        <div className={cn("px-4 py-4 space-y-3.5", !includeFloorPrep && "opacity-40 pointer-events-none")}>
           <div className="flex gap-3">
             <label className="flex flex-col gap-1.5 flex-1 min-w-0">
               <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
@@ -124,7 +137,7 @@ export function FloorPrepPanel({ area, depthMm, chargePerBag, matPerBag, labPerB
         </div>
 
         {/* Results */}
-        <div className="border-t border-border px-4 py-3 space-y-3">
+        <div className={cn("border-t border-border px-4 py-3 space-y-3", !includeFloorPrep && "opacity-40 pointer-events-none")}>
           {/* Bags count */}
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
@@ -252,12 +265,22 @@ export function FloorPrepPanel({ area, depthMm, chargePerBag, matPerBag, labPerB
 
         {/* ── Grinding ───────────────────────────────────────────── */}
         <div className="border-t border-border px-4 py-3 space-y-3">
-          <p className="text-[9px] font-semibold text-muted-foreground/40 uppercase tracking-widest">
-            Grinding
-          </p>
+          <div className="flex items-center gap-2">
+            <p className={cn(
+              "text-[9px] font-semibold uppercase tracking-widest",
+              includeGrind ? "text-muted-foreground/40" : "text-muted-foreground/20 line-through"
+            )}>
+              Grinding
+            </p>
+            <Switch
+              checked={includeGrind}
+              onCheckedChange={onToggleGrind}
+              className="ml-auto scale-75"
+            />
+          </div>
 
           {/* Area + rates row */}
-          <div className="space-y-2.5">
+          <div className={cn("space-y-2.5", !includeGrind && "opacity-40 pointer-events-none")}>
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-muted-foreground/55 w-12 shrink-0">Area</span>
               <input
@@ -315,7 +338,9 @@ export function FloorPrepPanel({ area, depthMm, chargePerBag, matPerBag, labPerB
           {hasGrind && (
             <div className={cn(
               "rounded-lg px-3 py-2.5 flex items-center justify-between",
-              grindProfit > 0
+              !includeGrind
+                ? "opacity-40 bg-muted/20 border border-border"
+                : grindProfit > 0
                 ? "bg-success/10 border border-success/20"
                 : grindProfit < 0
                 ? "bg-destructive/10 border border-destructive/20"

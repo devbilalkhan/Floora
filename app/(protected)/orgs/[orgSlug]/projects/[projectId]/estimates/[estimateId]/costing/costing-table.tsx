@@ -748,6 +748,8 @@ export function CostingTable({
   const [items, setItems] = useState<EstimateItem[]>(initialItems);
   const [wetAreas, setWetAreas] = useState<WetArea[]>(initialWetAreas);
   const [includeWetAreas, setIncludeWetAreas] = useState(true);
+  const [includeFloorPrep, setIncludeFloorPrep] = useState(true);
+  const [includeGrind, setIncludeGrind] = useState(true);
   const [excludedCategories, setExcludedCategories] = useState<Set<string>>(new Set());
   const [selectedLevel, setSelectedLevel] = useState<string>("all");
 
@@ -1029,9 +1031,18 @@ export function CostingTable({
     return { primaries, children, sectionConsumables };
   }, [filteredItems]);
 
+  const effectiveSettings = useMemo(
+    () => ({
+      ...settings,
+      floor_prep_area: includeFloorPrep ? settings.floor_prep_area : 0,
+      grind_area: includeGrind ? settings.grind_area : 0,
+    }),
+    [settings, includeFloorPrep, includeGrind],
+  );
+
   const summary = useMemo(
-    () => computeSummary(activeItems, settings, includeWetAreas ? wetAreas : []),
-    [activeItems, settings, wetAreas, includeWetAreas],
+    () => computeSummary(activeItems, effectiveSettings, includeWetAreas ? wetAreas : []),
+    [activeItems, effectiveSettings, wetAreas, includeWetAreas],
   );
 
   // Category totals: primary rows + their children + section consumables
@@ -1599,7 +1610,7 @@ export function CostingTable({
                 </td>
               </tr>
             )}
-            {summary.grindProfit !== 0 && settings.grind_area > 0 && (
+            {summary.grindProfit !== 0 && effectiveSettings.grind_area > 0 && (
               <tr className="bg-muted/10 border-b border-border">
                 <td className="pl-9 pr-4 py-1.5 text-xs text-muted-foreground/45">
                   Grinding profit ({fmt(settings.grind_area)} m²)
@@ -1614,7 +1625,7 @@ export function CostingTable({
             {summary.floorPrepBags > 0 && (
               <SummaryRow label={`Floor Prep material & labour (${summary.floorPrepBags} bags)`} value={summary.floorPrepCost} />
             )}
-            {settings.grind_area > 0 && (
+            {effectiveSettings.grind_area > 0 && (
               <SummaryRow label={`Grinding labour (${fmt(settings.grind_area)} m²)`} value={summary.grindCost} />
             )}
             <SummaryRow label="Total ex-GST" value={summary.totalExGst} primary />
@@ -1645,6 +1656,10 @@ export function CostingTable({
         grindArea={settings.grind_area}
         grindLaborRate={settings.grind_labor_rate}
         grindChargeRate={settings.grind_charge_rate}
+        includeFloorPrep={includeFloorPrep}
+        onToggleFloorPrep={() => setIncludeFloorPrep((v) => !v)}
+        includeGrind={includeGrind}
+        onToggleGrind={() => setIncludeGrind((v) => !v)}
         onUpdate={updateSettings}
         onReset={resetFloorPrep}
       />
