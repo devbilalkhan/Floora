@@ -78,7 +78,7 @@ export default async function ProjectDetailPage({
         .eq("project_id", params.projectId),
       supabase
         .from("actual_line_items")
-        .select("group_id, invoice_date, subtotal, qty, unit_price")
+        .select("group_id, invoice_date, subtotal, qty, unit_price, included_in_totals")
         .eq("project_id", params.projectId),
     ]);
 
@@ -142,13 +142,15 @@ export default async function ProjectDetailPage({
 
   // Merge actuals items with group type for the project summary chart
   const actualsGroupTypeMap = new Map((rawActualsGroups ?? []).map(g => [g.id, g.type as "income" | "expense"]));
-  const actualsItems = (rawActualsItems ?? []).map(i => ({
-    invoice_date: i.invoice_date as string | null,
-    subtotal: i.subtotal as number,
-    qty: i.qty as number | null,
-    unit_price: i.unit_price as number | null,
-    type: actualsGroupTypeMap.get(i.group_id) ?? ("expense" as "income" | "expense"),
-  }));
+  const actualsItems = (rawActualsItems ?? [])
+    .filter(i => i.included_in_totals)
+    .map(i => ({
+      invoice_date: i.invoice_date as string | null,
+      subtotal: i.subtotal as number,
+      qty: i.qty as number | null,
+      unit_price: i.unit_price as number | null,
+      type: actualsGroupTypeMap.get(i.group_id) ?? ("expense" as "income" | "expense"),
+    }));
 
   // Actuals GP for margin chart
   function actualsEffSub(item: { qty: number | null; unit_price: number | null; subtotal: number }) {

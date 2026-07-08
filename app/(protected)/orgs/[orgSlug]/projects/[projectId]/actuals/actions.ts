@@ -93,7 +93,7 @@ export async function createLineItem(groupId: string, projectId: string) {
       owner_id: user.id,
       sort_order: (last?.sort_order ?? -1) + 1,
     })
-    .select("id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source")
+    .select("id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source, retention_applied, included_in_totals")
     .single();
 
   if (error) throw new Error(error.message);
@@ -112,6 +112,8 @@ export async function updateLineItem(
     qty?: number | null;
     unit_price?: number | null;
     subtotal?: number;
+    retention_applied?: boolean;
+    included_in_totals?: boolean;
   }
 ) {
   await assertActualsAccess(projectId);
@@ -180,7 +182,7 @@ export async function duplicateLines(
   const { data, error } = await supabase
     .from("actual_line_items")
     .insert(rows)
-    .select("id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source");
+    .select("id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source, retention_applied, included_in_totals");
 
   if (error) throw new Error(error.message);
   return data ?? [];
@@ -202,6 +204,16 @@ export async function updateAdminFeeEstimate(projectId: string, cost: number | n
   const { error } = await supabase
     .from("projects")
     .update({ admin_fee_estimated_cost: cost })
+    .eq("id", projectId);
+  if (error) throw new Error(error.message);
+}
+
+export async function updateProjectRetentionPct(projectId: string, pct: number | null) {
+  await assertActualsAccess(projectId);
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("projects")
+    .update({ retention_pct: pct })
     .eq("id", projectId);
   if (error) throw new Error(error.message);
 }
@@ -250,7 +262,7 @@ export async function importExtractedLines(
     .from("actual_line_items")
     .insert(rows)
     .select(
-      "id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source"
+      "id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source, retention_applied, included_in_totals"
     );
 
   if (error) throw new Error(error.message);

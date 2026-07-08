@@ -26,7 +26,7 @@ export default async function ActualsPage({
         .order("sort_order"),
       supabase
         .from("actual_line_items")
-        .select("id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source")
+        .select("id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source, retention_applied, included_in_totals")
         .eq("project_id", params.projectId)
         .order("sort_order"),
     ]);

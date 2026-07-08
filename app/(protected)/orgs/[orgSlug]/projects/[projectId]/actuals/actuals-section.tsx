@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, memo } from "react";
 import dynamic from "next/dynamic";
 import { toast } from "sonner";
-import { Check, ChevronDown, ChevronRight, Copy, GripVertical, Loader2, MoreHorizontal, Plus, Receipt, SlidersHorizontal, Trash2, X, Zap } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, Eye, EyeOff, GripVertical, Loader2, MoreHorizontal, Plus, Receipt, SlidersHorizontal, Trash2, X, Zap } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -60,6 +60,8 @@ export type ActualLineItem = {
   unit_price: number | null;
   subtotal: number;
   source: "manual" | "ai_extracted";
+  retention_applied: boolean;
+  included_in_totals: boolean;
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -72,6 +74,10 @@ function effectiveSubtotal(item: ActualLineItem): number {
   return item.qty !== null && item.unit_price !== null
     ? item.qty * item.unit_price
     : item.subtotal;
+}
+
+function sumIncluded(items: ActualLineItem[]): number {
+  return items.reduce((s, i) => s + (i.included_in_totals ? effectiveSubtotal(i) : 0), 0);
 }
 
 // ── Filters ────────────────────────────────────────────────────────────────────
@@ -172,16 +178,21 @@ function LineItemRow({
   item,
   index,
   projectId,
+  showRetention,
   onUpdate,
   onDelete,
 }: {
   item: ActualLineItem;
   index: number;
   projectId: string;
+  showRetention?: boolean;
   onUpdate: (id: string, patch: Partial<ActualLineItem>) => void;
   onDelete: (id: string) => void;
 }) {
   const [local, setLocal] = useState(item);
+  useEffect(() => {
+    setLocal(prev => ({ ...prev, included_in_totals: item.included_in_totals }));
+  }, [item.included_in_totals]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -258,6 +269,32 @@ function LineItemRow({
     }
   }
 
+  async function toggleRetention() {
+    const next = !local.retention_applied;
+    setLocal(prev => ({ ...prev, retention_applied: next }));
+    onUpdate(local.id, { retention_applied: next });
+    try {
+      await updateLineItem(local.id, projectId, { retention_applied: next });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update retention.");
+      setLocal(prev => ({ ...prev, retention_applied: !next }));
+      onUpdate(local.id, { retention_applied: !next });
+    }
+  }
+
+  async function toggleIncluded() {
+    const next = !local.included_in_totals;
+    setLocal(prev => ({ ...prev, included_in_totals: next }));
+    onUpdate(local.id, { included_in_totals: next });
+    try {
+      await updateLineItem(local.id, projectId, { included_in_totals: next });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update.");
+      setLocal(prev => ({ ...prev, included_in_totals: !next }));
+      onUpdate(local.id, { included_in_totals: !next });
+    }
+  }
+
   function numericHandlers(field: "qty" | "unit_price" | "subtotal") {
     const numVal = local[field];
     const idle = field === "subtotal"
@@ -292,7 +329,8 @@ function LineItemRow({
     <tr
       className={cn(
         "group border-t border-black/5 dark:border-white/5 hover:bg-muted/10 transition-colors",
-        local.source === "ai_extracted" && "border-l-2 border-l-secondary/40"
+        local.source === "ai_extracted" && "border-l-2 border-l-secondary/40",
+        !local.included_in_totals && "opacity-45"
       )}
     >
       <td className="text-center py-1.5">
@@ -376,6 +414,18 @@ function LineItemRow({
         )}
       </td>
 
+      {showRetention && (
+        <td className="p-0 text-center">
+          <input
+            type="checkbox"
+            checked={local.retention_applied}
+            onChange={toggleRetention}
+            title="Apply retention to this line"
+            className="h-3.5 w-3.5 accent-amber-500 cursor-pointer"
+          />
+        </td>
+      )}
+
       <td className="p-0 text-center">
         {confirmDelete ? (
           <div className="flex items-center justify-center gap-1 px-1">
@@ -404,12 +454,26 @@ function LineItemRow({
             <Check className="h-3 w-3 text-primary" />
           </div>
         ) : (
-          <button
-            onClick={() => setConfirmDelete(true)}
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-muted-foreground hover:text-destructive"
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
+          <div className="flex items-center justify-center gap-0.5">
+            <button
+              onClick={toggleIncluded}
+              title={local.included_in_totals ? "Exclude from totals" : "Include in totals"}
+              className={cn(
+                "p-1 rounded transition-colors",
+                local.included_in_totals
+                  ? "opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground"
+                  : "text-amber-500 hover:text-amber-600"
+              )}
+            >
+              {local.included_in_totals ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
         )}
       </td>
     </tr>
@@ -454,8 +518,10 @@ function InvoiceSubGroup({
     data: { invoiceNumber, sourceGroupId: groupId },
   });
 
-  const total = items.reduce((s, i) => s + effectiveSubtotal(i), 0);
+  const total = sumIncluded(items);
   const first = items[0];
+  const colSpan = type === "income" ? 10 : 9;
+  const allIncluded = items.every(i => i.included_in_totals);
 
   function fmtDate(iso: string | null) {
     if (!iso) return null;
@@ -512,6 +578,17 @@ function InvoiceSubGroup({
     }
   }
 
+  async function toggleInvoiceIncluded() {
+    const next = !allIncluded;
+    items.forEach(item => onUpdateLine(item.id, { included_in_totals: next }));
+    try {
+      await Promise.all(items.map(item => updateLineItem(item.id, projectId, { included_in_totals: next })));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update.");
+      items.forEach(item => onUpdateLine(item.id, { included_in_totals: !next }));
+    }
+  }
+
   async function handleDuplicate() {
     setDuplicating(true);
     try {
@@ -535,10 +612,13 @@ function InvoiceSubGroup({
     <>
       <tr
         ref={setDragRef}
-        className="group/inv border-t border-black/[0.05] dark:border-white/[0.05] bg-muted/[0.04]"
-        style={{ opacity: isDragging ? 0.4 : 1 }}
+        className={cn(
+          "group/inv border-t border-black/[0.05] dark:border-white/[0.05] bg-muted/[0.04]",
+          !allIncluded && "opacity-60"
+        )}
+        style={{ opacity: isDragging ? 0.4 : undefined }}
       >
-        <td colSpan={9} className="pl-3 pr-2 py-1">
+        <td colSpan={colSpan} className="pl-3 pr-2 py-1">
           <div className="flex items-center gap-2">
             <button
               {...listeners}
@@ -598,6 +678,20 @@ function InvoiceSubGroup({
             </span>
             {!confirmDelete && (
               <button
+                onClick={toggleInvoiceIncluded}
+                title={allIncluded ? "Exclude invoice from totals" : "Include invoice in totals"}
+                className={cn(
+                  "p-0.5 rounded transition-colors shrink-0",
+                  allIncluded
+                    ? "opacity-0 group-hover/inv:opacity-100 text-muted-foreground hover:text-foreground"
+                    : "text-amber-500 hover:text-amber-600"
+                )}
+              >
+                {allIncluded ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+              </button>
+            )}
+            {!confirmDelete && (
+              <button
                 onClick={handleDuplicate}
                 disabled={duplicating}
                 title="Duplicate invoice"
@@ -641,6 +735,7 @@ function InvoiceSubGroup({
           item={item}
           index={i}
           projectId={projectId}
+          showRetention={type === "income"}
           onUpdate={onUpdateLine}
           onDelete={onDeleteLine}
         />
@@ -648,7 +743,7 @@ function InvoiceSubGroup({
 
       {(type === "income" || !collapsed) && (
         <tr className="border-t border-black/[0.03] dark:border-white/[0.03]">
-          <td colSpan={9} className="pl-8 pr-2 py-1">
+          <td colSpan={colSpan} className="pl-8 pr-2 py-1">
             <button
               onClick={handleAddLine}
               disabled={addingLine}
@@ -699,7 +794,8 @@ function GroupRow({
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `group-droppable-${group.id}` });
 
-  const groupTotal = lineItems.reduce((s, i) => s + effectiveSubtotal(i), 0);
+  const groupTotal = sumIncluded(lineItems);
+  const colSpan = type === "income" ? 10 : 9;
 
   // Bucket by invoice_number; items without one render flat below invoice sub-groups
   const invoiceBuckets = new Map<string, ActualLineItem[]>();
@@ -778,7 +874,7 @@ function GroupRow({
             : "bg-muted/20 border-black/10 dark:border-white/10"
         )}
       >
-        <td colSpan={9} className="px-2 py-1.5">
+        <td colSpan={colSpan} className="px-2 py-1.5">
           <div className="flex items-center gap-2">
             {type !== "income" && (
               <button
@@ -871,6 +967,7 @@ function GroupRow({
           item={item}
           index={i}
           projectId={projectId}
+          showRetention={type === "income"}
           onUpdate={onUpdateLine}
           onDelete={onDeleteLine}
         />
@@ -879,7 +976,7 @@ function GroupRow({
       {/* Add-line shortcut when group is expanded and empty */}
       {(type === "income" || !collapsed) && lineItems.length === 0 && (
         <tr>
-          <td colSpan={9} className="px-4 py-2">
+          <td colSpan={colSpan} className="px-4 py-2">
             <button
               onClick={handleAddLine}
               disabled={addingLine}
@@ -1060,6 +1157,7 @@ export const ActualsSection = memo(function ActualsSection({
   adminFeeEstimatedCost,
   onTotalsChange,
   onAdminFeeChange,
+  onRetentionBaseChange,
 }: {
   type: "income" | "expense";
   projectId: string;
@@ -1071,6 +1169,7 @@ export const ActualsSection = memo(function ActualsSection({
   adminFeeEstimatedCost?: number | null;
   onTotalsChange?: (total: number) => void;
   onAdminFeeChange?: (pct: number | null, estimatedCost: number | null) => void;
+  onRetentionBaseChange?: (base: number) => void;
 }) {
   const [groups, setGroups] = useState<ActualGroup[]>(initialGroups);
   const [lineItems, setLineItems] = useState<ActualLineItem[]>(
@@ -1088,16 +1187,19 @@ export const ActualsSection = memo(function ActualsSection({
   const isFiltering = activeFilterCount > 0;
   const filteredLineItems = isFiltering ? lineItems.filter(i => matchesFilters(i, filters)) : lineItems;
 
-  const sectionTotal = lineItems.reduce((s, i) => s + effectiveSubtotal(i), 0);
-  const filteredTotal = isFiltering ? filteredLineItems.reduce((s, i) => s + effectiveSubtotal(i), 0) : sectionTotal;
-  const retentionHeld = retentionPct && retentionPct > 0 ? sectionTotal * (retentionPct / 100) : 0;
+  const sectionTotal = sumIncluded(lineItems);
+  const filteredTotal = isFiltering ? sumIncluded(filteredLineItems) : sectionTotal;
+  const retentionBase = sumIncluded(lineItems.filter(i => i.retention_applied));
+  const retentionHeld = retentionPct && retentionPct > 0 ? retentionBase * (retentionPct / 100) : 0;
   const label = type === "income" ? "INCOME" : "EXPENSES";
+  const colSpan = type === "income" ? 10 : 9;
 
   const mountedRef = useRef(false);
   useEffect(() => {
     if (!mountedRef.current) { mountedRef.current = true; return; }
     onTotalsChange?.(sectionTotal);
-  }, [sectionTotal]); // eslint-disable-line react-hooks/exhaustive-deps
+    onRetentionBaseChange?.(retentionBase);
+  }, [sectionTotal, retentionBase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Group handlers ────────────────────────────────────────────────────────
 
@@ -1327,6 +1429,7 @@ export const ActualsSection = memo(function ActualsSection({
               <col className="w-[88px]" />
               <col className="w-[88px]" />
               <col className="w-[100px]" />
+              {type === "income" && <col className="w-[64px]" />}
               <col className="w-[72px]" />
             </colgroup>
             <thead>
@@ -1341,6 +1444,9 @@ export const ActualsSection = memo(function ActualsSection({
                 <th className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground text-right uppercase tracking-wide">Qty</th>
                 <th className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground text-right uppercase tracking-wide">Unit Price</th>
                 <th className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground text-right uppercase tracking-wide">Subtotal</th>
+                {type === "income" && (
+                  <th className="px-1 py-1.5 text-[10px] font-medium text-muted-foreground text-center uppercase tracking-wide">Retention</th>
+                )}
                 <th className="w-8" />
               </tr>
             </thead>
@@ -1369,7 +1475,7 @@ export const ActualsSection = memo(function ActualsSection({
               })}
               {isFiltering && filteredLineItems.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-6 text-center text-[11px] text-muted-foreground/60">
+                  <td colSpan={colSpan} className="px-4 py-6 text-center text-[11px] text-muted-foreground/60">
                     No lines match the active filters.
                   </td>
                 </tr>

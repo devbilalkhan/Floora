@@ -49,7 +49,7 @@ export async function fetchReportData(
         .in("project_id", projectIds),
       supabase
         .from("actual_line_items")
-        .select("group_id, project_id, invoice_date, subtotal, qty, unit_price")
+        .select("group_id, project_id, invoice_date, subtotal, qty, unit_price, included_in_totals")
         .in("project_id", projectIds),
       supabase
         .from("projects")
@@ -111,7 +111,7 @@ export async function fetchReportData(
       }
 
       const projectActuals = (actualsItems ?? [])
-        .filter((i) => i.project_id === pid)
+        .filter((i) => i.project_id === pid && i.included_in_totals)
         .map((i) => ({
           ...i,
           type: groupTypeMap.get(i.group_id) ?? ("expense" as "income" | "expense"),

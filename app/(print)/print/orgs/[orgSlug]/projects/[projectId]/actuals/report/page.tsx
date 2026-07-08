@@ -22,6 +22,8 @@ type LineItem = {
   qty: number | null;
   unit_price: number | null;
   subtotal: number;
+  retention_applied: boolean;
+  included_in_totals: boolean;
 };
 
 function fmt(n: number) {
@@ -91,7 +93,7 @@ export default async function ActualsReportPage({
       supabase
         .from("actual_line_items")
         .select(
-          "id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal"
+          "id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, retention_applied, included_in_totals"
         )
         .eq("project_id", params.projectId)
         .order("sort_order"),
@@ -107,7 +109,7 @@ export default async function ActualsReportPage({
 
   const groupItems = (gId: string) => allLineItems.filter((i) => i.group_id === gId);
   const groupTotal = (gId: string) =>
-    groupItems(gId).reduce((s, i) => s + Number(i.subtotal), 0);
+    groupItems(gId).filter((i) => i.included_in_totals).reduce((s, i) => s + Number(i.subtotal), 0);
   const sectionTotal = (gs: Group[]) => gs.reduce((s, g) => s + groupTotal(g.id), 0);
 
   const totalIncome = sectionTotal(incomeGroups);
@@ -125,7 +127,11 @@ export default async function ActualsReportPage({
   const gpPct = totalIncome === 0 ? 0 : (grossProfit / totalIncome) * 100;
 
   const retentionPct = project.retention_pct != null ? Number(project.retention_pct) : null;
-  const retentionHeld = retentionPct != null ? (totalIncome * retentionPct) / 100 : null;
+  const retentionBase = incomeGroups.reduce(
+    (s, g) => s + groupItems(g.id).filter((i) => i.retention_applied && i.included_in_totals).reduce((a, i) => a + Number(i.subtotal), 0),
+    0
+  );
+  const retentionHeld = retentionPct != null ? (retentionBase * retentionPct) / 100 : null;
   const retentionReleased = Number(project.retention_released ?? 0);
 
   const today = new Date().toLocaleDateString("en-AU", {
@@ -258,7 +264,7 @@ export default async function ActualsReportPage({
                       <SummaryCard
                         label="Retention Held"
                         value={fmt(retentionHeld!)}
-                        sub={`${retentionPct}% of income`}
+                        sub={`${retentionPct}% of flagged income`}
                         bg="bg-amber-50"
                         border="border-amber-200"
                         labelColor="text-amber-700"
@@ -346,10 +352,9 @@ export default async function ActualsReportPage({
                             <tbody>
                               {/* Invoice sub-groups */}
                               {orderedBuckets.map(([invoiceNum, invItems]) => {
-                                const invTotal = invItems.reduce(
-                                  (s, i) => s + Number(i.subtotal),
-                                  0
-                                );
+                                const invTotal = invItems
+                                  .filter((i) => i.included_in_totals)
+                                  .reduce((s, i) => s + Number(i.subtotal), 0);
                                 const firstItem = invItems[0];
                                 return (
                                   <Fragment key={invoiceNum}>
@@ -378,12 +383,18 @@ export default async function ActualsReportPage({
                                         style={{
                                           backgroundColor: idx % 2 === 1 ? "#f8fafc" : "white",
                                           borderBottom: "1px solid #f1f5f9",
+                                          opacity: item.included_in_totals ? 1 : 0.45,
                                         }}
                                       >
                                         <Td muted pl4>{fmtDate(item.invoice_date)}</Td>
                                         <Td muted small>{item.invoice_number}</Td>
                                         <Td muted>{item.supplier ?? ""}</Td>
-                                        <Td small>{item.description}</Td>
+                                        <Td small>
+                                          {item.description}
+                                          {!item.included_in_totals && (
+                                            <span className="ml-1.5 text-[9px] italic text-gray-400">(excluded)</span>
+                                          )}
+                                        </Td>
                                         <Td right muted>{fmtQty(item.qty)}</Td>
                                         <Td right muted>{item.unit_price != null ? fmt(Number(item.unit_price)) : ""}</Td>
                                         <Td right>{fmt(Number(item.subtotal))}</Td>
@@ -400,12 +411,18 @@ export default async function ActualsReportPage({
                                   style={{
                                     backgroundColor: idx % 2 === 1 ? "#f8fafc" : "white",
                                     borderBottom: "1px solid #f1f5f9",
+                                    opacity: item.included_in_totals ? 1 : 0.45,
                                   }}
                                 >
                                   <Td muted>{fmtDate(item.invoice_date)}</Td>
                                   <Td muted small>{item.invoice_number ?? ""}</Td>
                                   <Td muted>{item.supplier ?? ""}</Td>
-                                  <Td small>{item.description}</Td>
+                                  <Td small>
+                                    {item.description}
+                                    {!item.included_in_totals && (
+                                      <span className="ml-1.5 text-[9px] italic text-gray-400">(excluded)</span>
+                                    )}
+                                  </Td>
                                   <Td right muted>{fmtQty(item.qty)}</Td>
                                   <Td right muted>{item.unit_price != null ? fmt(Number(item.unit_price)) : ""}</Td>
                                   <Td right>{fmt(Number(item.subtotal))}</Td>
