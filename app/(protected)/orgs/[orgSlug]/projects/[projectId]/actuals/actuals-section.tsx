@@ -625,6 +625,10 @@ function InvoiceSubGroup({
   const [localInvoiceNumber, setLocalInvoiceNumber] = useState(invoiceNumber);
   const [savingInvoice, setSavingInvoice] = useState(false);
   const invoiceInputRef = useRef<HTMLInputElement>(null);
+  const [editingSupplier, setEditingSupplier] = useState(false);
+  const [localSupplier, setLocalSupplier] = useState(items[0]?.supplier ?? "");
+  const [savingSupplier, setSavingSupplier] = useState(false);
+  const supplierInputRef = useRef<HTMLInputElement>(null);
 
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `invoice-${groupId}-${invoiceNumber}`,
@@ -656,6 +660,25 @@ function InvoiceSubGroup({
       setLocalInvoiceNumber(invoiceNumber);
     } finally {
       setSavingInvoice(false);
+    }
+  }
+
+  async function saveSupplierName() {
+    const trimmed = localSupplier.trim();
+    const prevSupplier = items[0]?.supplier ?? "";
+    const nextValue = trimmed === "" ? null : trimmed;
+    setLocalSupplier(trimmed);
+    setEditingSupplier(false);
+    if (trimmed === prevSupplier) return;
+    setSavingSupplier(true);
+    try {
+      await Promise.all(items.map(item => updateLineItem(item.id, projectId, { supplier: nextValue })));
+      items.forEach(item => onUpdateLine(item.id, { supplier: nextValue }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update supplier.");
+      setLocalSupplier(prevSupplier);
+    } finally {
+      setSavingSupplier(false);
     }
   }
 
@@ -773,15 +796,38 @@ function InvoiceSubGroup({
                 {localInvoiceNumber}{savingInvoice ? " …" : ""}
               </button>
             )}
-            {first.supplier && (
-              <span
+            {editingSupplier ? (
+              <input
+                ref={supplierInputRef}
+                value={localSupplier}
+                onChange={e => setLocalSupplier(e.target.value)}
+                onBlur={saveSupplierName}
+                onKeyDown={e => {
+                  if (e.key === "Enter") supplierInputRef.current?.blur();
+                  if (e.key === "Escape") { setLocalSupplier(first.supplier ?? ""); setEditingSupplier(false); }
+                }}
+                placeholder="Supplier…"
+                autoFocus
+                className="bg-transparent border-0 outline-none px-1.5 py-0.5 rounded text-[10px] font-medium text-foreground/80 focus:ring-1 focus:ring-inset focus:ring-primary/40 w-32"
+              />
+            ) : localSupplier ? (
+              <button
+                onClick={() => setEditingSupplier(true)}
+                disabled={savingSupplier}
                 className={cn(
-                  "text-[10px] font-medium px-1.5 py-0.5 rounded truncate max-w-[160px]",
-                  supplierBadgeClass(supplierColorMap, first.supplier)
+                  "text-[10px] font-medium px-1.5 py-0.5 rounded truncate max-w-[160px] hover:opacity-80 transition-opacity disabled:opacity-50",
+                  supplierBadgeClass(supplierColorMap, localSupplier)
                 )}
               >
-                {first.supplier}
-              </span>
+                {localSupplier}{savingSupplier ? " …" : ""}
+              </button>
+            ) : (
+              <button
+                onClick={() => setEditingSupplier(true)}
+                className="text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors px-1.5 py-0.5"
+              >
+                + Supplier
+              </button>
             )}
             {fmtDate(first.invoice_date) && (
               <span className="text-[10px] text-muted-foreground/50 tabular-nums">
