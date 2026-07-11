@@ -865,11 +865,18 @@ export function CostingTable({
               .filter(i => i.scope_category === scope && i.type === "primary" && !i.parent_item_id);
             const totalArea   = primaries.reduce((s, p) => s + (Number(p.qty) || 0), 0);
             const gluableArea = primaries.filter(p => p.product_type !== "plank_floating").reduce((s, p) => s + (Number(p.qty) || 0), 0);
-            // If section consumables don't exist yet, await and add to state
-            const hasSectionRows = items.some(i => i.scope_category === scope && i.is_auto && !i.parent_item_id && i.type === "consumable");
-            if (hasSectionRows) {
-              syncSectionConsumables(estimate.id, scope, totalArea, gluableArea).catch(() => {});
+            // If section consumables exist, update only those rows — never recreate manually deleted ones
+            const sectionRows = items.filter(i => i.scope_category === scope && i.is_auto && !i.parent_item_id && i.type === "consumable");
+            if (sectionRows.length > 0) {
+              for (const sc of sectionRows) {
+                let qty: number | null = null;
+                if (sc.description === "Feather Finish 20kg")  qty = totalArea > 0 ? Math.ceil(totalArea / COVERAGE_M2) : 0;
+                if (sc.description === "Feather Finish Labour") qty = totalArea;
+                if (sc.description === "Glue Sheet/Plank")     qty = gluableArea > 0 ? Math.ceil(gluableArea / COVERAGE_M2) : 0;
+                if (qty !== null) updateEstimateItem(sc.id, { qty }).catch(() => {});
+              }
             } else {
+              // No section rows exist yet (first qty entry) — create them
               syncSectionConsumables(estimate.id, scope, totalArea, gluableArea)
                 .then(rows => { if (rows.length > 0) setItems(prev => [...prev, ...rows]); })
                 .catch(() => {});
@@ -891,14 +898,14 @@ export function CostingTable({
       prev.forEach((i) => { if (i.parent_item_id && toRemove.has(i.parent_item_id)) toRemove.add(i.id); });
       const after = prev.filter((i) => !toRemove.has(i.id));
       // Recompute section consumables optimistically if deleting a vinyl primary
-      if (deletedItem && !deletedItem.parent_item_id && VINYL_SCOPES.has(deletedItem.scope_category)) {
+      if (deletedItem && deletedItem.type === "primary" && !deletedItem.parent_item_id && VINYL_SCOPES.has(deletedItem.scope_category)) {
         return applySectionConsumableQtys(after, deletedItem.scope_category);
       }
       return after;
     });
     deleteEstimateItem(id).catch(() => toast.error("Delete failed."));
-    // Resync section consumables in DB
-    if (deletedItem && !deletedItem.parent_item_id && VINYL_SCOPES.has(deletedItem.scope_category)) {
+    // Resync section consumables in DB — only when a primary row is deleted, not a section consumable
+    if (deletedItem && deletedItem.type === "primary" && !deletedItem.parent_item_id && VINYL_SCOPES.has(deletedItem.scope_category)) {
       const scope = deletedItem.scope_category;
       const remaining = items.filter(i => i.id !== id && i.scope_category === scope && i.type === "primary" && !i.parent_item_id);
       const totalArea   = remaining.reduce((s, p) => s + (Number(p.qty) || 0), 0);

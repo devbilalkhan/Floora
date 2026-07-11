@@ -57,6 +57,21 @@ export function ActualsPageClient({
         .reduce((s, i) => s + effectiveSub(i), 0)
   );
 
+  // Freight — sum of any line (income or expense) tagged with the FR code
+  const [incomeFreight, setIncomeFreight] = useState(
+    () =>
+      allLineItems
+        .filter(i => incomeGroupIds.has(i.group_id) && i.code === "FR" && i.included_in_totals)
+        .reduce((s, i) => s + effectiveSub(i), 0)
+  );
+  const [expenseFreight, setExpenseFreight] = useState(
+    () =>
+      allLineItems
+        .filter(i => expenseGroupIds.has(i.group_id) && i.code === "FR" && i.included_in_totals)
+        .reduce((s, i) => s + effectiveSub(i), 0)
+  );
+  const freightTotal = incomeFreight + expenseFreight;
+
   async function saveRetentionPct() {
     const trimmed = rawRetentionPct.trim();
     const val = trimmed === "" ? null : parseFloat(trimmed);
@@ -163,6 +178,12 @@ export function ActualsPageClient({
             <span className="text-[10px] text-orange-600/60 dark:text-orange-400/60">% retention{savingRetentionPct ? "…" : ""}</span>
           </div>
         </div>
+        {freightTotal > 0 && (
+          <div className="flex-1 min-w-[130px] rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2.5">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground/80 mb-0.5">Total Freight</p>
+            <p className="text-sm font-semibold tabular-nums text-sky-600 dark:text-sky-400">{fmtAU(freightTotal)}</p>
+          </div>
+        )}
       </div>
 
       {(incomeTotal > 0 || expensesTotal > 0) && (
@@ -183,6 +204,7 @@ export function ActualsPageClient({
         retentionPct={retentionPctVal}
         onTotalsChange={setIncomeTotal}
         onRetentionBaseChange={setRetentionBase}
+        onFreightTotalChange={setIncomeFreight}
       />
 
       <ActualsSection
@@ -196,6 +218,7 @@ export function ActualsPageClient({
         adminFeeEstimatedCost={adminFeeEstimatedCost}
         onTotalsChange={setExpensesTotal}
         onAdminFeeChange={handleAdminFeeChange}
+        onFreightTotalChange={setExpenseFreight}
       />
     </>
   );

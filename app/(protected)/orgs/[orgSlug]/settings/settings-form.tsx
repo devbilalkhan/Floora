@@ -380,7 +380,7 @@ export function SettingsForm({
                 <label className="cursor-pointer">
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
+                    accept="image/png,image/jpeg,image/jpg,image/svg+xml"
                     className="hidden"
                     disabled={logoUploading}
                     onChange={handleLogoUpload}
@@ -409,7 +409,7 @@ export function SettingsForm({
                     Remove
                   </Button>
                 )}
-                <p className="text-[10px] text-muted-foreground/60">PNG, JPG, SVG or WebP — max 2 MB</p>
+                <p className="text-[10px] text-muted-foreground/60">PNG, JPG or SVG — max 2 MB</p>
               </div>
             </div>
           </div>

@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { X, Send, Loader2, Mail } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { X, Send, Loader2, Mail, Paperclip, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
@@ -37,6 +37,21 @@ export function ComposeModal({
   >([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [contactsLoading, setContactsLoading] = useState(false);
+
+  // Secondary attachment — sent as its own separate file, never merged into the pack PDF
+  const [secondaryAttachment, setSecondaryAttachment] = useState<File | null>(null);
+  const secondaryFileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleSecondaryFileAdd(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) setSecondaryAttachment(file);
+    e.target.value = "";
+  }
+
+  // Reset secondary attachment each time the modal opens
+  useEffect(() => {
+    if (open) setSecondaryAttachment(null);
+  }, [open]);
 
   // Re-seed fields each time the modal opens (new defaults from fresh draft state)
   useEffect(() => {
@@ -86,6 +101,18 @@ export function ComposeModal({
       const bytes = await pdfBlob.arrayBuffer();
       const pdfBase64 = Buffer.from(bytes).toString("base64");
 
+      let secondaryAttachmentPayload:
+        | { base64: string; filename: string; mimeType: string }
+        | undefined;
+      if (secondaryAttachment) {
+        const secondaryBytes = await secondaryAttachment.arrayBuffer();
+        secondaryAttachmentPayload = {
+          base64: Buffer.from(secondaryBytes).toString("base64"),
+          filename: secondaryAttachment.name,
+          mimeType: secondaryAttachment.type || "application/octet-stream",
+        };
+      }
+
       const res = await fetch("/api/gmail/send-submission", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -96,6 +123,7 @@ export function ComposeModal({
           body,
           pdfBase64,
           filename,
+          secondaryAttachment: secondaryAttachmentPayload,
         }),
       });
 
@@ -280,6 +308,50 @@ export function ComposeModal({
             <span className="ml-auto text-[10px] text-muted-foreground flex-shrink-0">
               All selected documents included
             </span>
+          </div>
+
+          {/* Secondary attachment — sent as its own file, never merged into the pack PDF */}
+          <div className="bg-card/65 backdrop-blur-xl border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-2.5 bg-muted/30 border-b border-border">
+              <h2 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                Secondary attachment
+              </h2>
+            </div>
+            <div className="p-4 space-y-2">
+              <p className="text-[11px] text-muted-foreground">
+                Attach one extra file as its own separate attachment on the email — it is not merged into the submission pack PDF.
+              </p>
+
+              <input
+                ref={secondaryFileInputRef}
+                type="file"
+                onChange={handleSecondaryFileAdd}
+                className="hidden"
+              />
+
+              {secondaryAttachment ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted/20">
+                  <Paperclip className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  <span className="flex-1 min-w-0 truncate text-[11px] text-foreground">
+                    {secondaryAttachment.name}
+                  </span>
+                  <button
+                    onClick={() => setSecondaryAttachment(null)}
+                    className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => secondaryFileInputRef.current?.click()}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors py-1"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Attach file
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-end pb-6">

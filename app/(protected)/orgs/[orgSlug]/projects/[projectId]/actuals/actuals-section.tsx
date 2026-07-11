@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, memo } from "react";
+import { useState, useRef, useEffect, useMemo, memo } from "react";
 import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { Check, ChevronDown, ChevronRight, Copy, Eye, EyeOff, GripVertical, Loader2, MoreHorizontal, Plus, Receipt, SlidersHorizontal, Trash2, X, Zap } from "lucide-react";
@@ -22,6 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
   createGroup,
@@ -62,7 +63,17 @@ export type ActualLineItem = {
   source: "manual" | "ai_extracted";
   retention_applied: boolean;
   included_in_totals: boolean;
+  code: string | null;
 };
+
+// Cost codes let a line be tagged independent of which supplier/invoice it's
+// under (e.g. a freight charge on an otherwise-material invoice). More codes
+// can be added here later.
+export const LINE_CODES: { value: string; label: string; bg: string; text: string }[] = [
+  { value: "FR", label: "Freight", bg: "bg-sky-500/15", text: "text-sky-700 dark:text-sky-300" },
+];
+
+const NO_CODE = "none";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -78,6 +89,60 @@ function effectiveSubtotal(item: ActualLineItem): number {
 
 function sumIncluded(items: ActualLineItem[]): number {
   return items.reduce((s, i) => s + (i.included_in_totals ? effectiveSubtotal(i) : 0), 0);
+}
+
+// Supplier badge colors — each distinct supplier on the page is assigned its
+// own color from a fixed palette, in alphabetical order, so a color already
+// claimed by one supplier is never reused for another. Colors only repeat
+// once the palette is exhausted (more than SUPPLIER_BADGE_PALETTE.length
+// distinct suppliers in one project).
+const SUPPLIER_BADGE_PALETTE = [
+  { bg: "bg-emerald-500/15", text: "text-emerald-700 dark:text-emerald-300" },
+  { bg: "bg-blue-500/15", text: "text-blue-700 dark:text-blue-300" },
+  { bg: "bg-violet-500/15", text: "text-violet-700 dark:text-violet-300" },
+  { bg: "bg-amber-500/15", text: "text-amber-700 dark:text-amber-300" },
+  { bg: "bg-pink-500/15", text: "text-pink-700 dark:text-pink-300" },
+  { bg: "bg-cyan-500/15", text: "text-cyan-700 dark:text-cyan-300" },
+  { bg: "bg-orange-500/15", text: "text-orange-700 dark:text-orange-300" },
+  { bg: "bg-teal-500/15", text: "text-teal-700 dark:text-teal-300" },
+  { bg: "bg-rose-500/15", text: "text-rose-700 dark:text-rose-300" },
+  { bg: "bg-indigo-500/15", text: "text-indigo-700 dark:text-indigo-300" },
+  { bg: "bg-lime-500/15", text: "text-lime-700 dark:text-lime-300" },
+  { bg: "bg-fuchsia-500/15", text: "text-fuchsia-700 dark:text-fuchsia-300" },
+];
+
+function buildSupplierColorMap(items: ActualLineItem[]): Map<string, string> {
+  const uniqueSuppliers = Array.from(
+    new Set(
+      items
+        .map(i => i.supplier?.trim())
+        .filter((s): s is string => !!s)
+        .map(s => s.toLowerCase())
+    )
+  ).sort((a, b) => a.localeCompare(b));
+
+  const map = new Map<string, string>();
+  uniqueSuppliers.forEach((supplier, i) => {
+    const { bg, text } = SUPPLIER_BADGE_PALETTE[i % SUPPLIER_BADGE_PALETTE.length];
+    map.set(supplier, cn(bg, text));
+  });
+  return map;
+}
+
+function supplierBadgeClass(supplierColorMap: Map<string, string>, supplier: string): string {
+  return supplierColorMap.get(supplier.trim().toLowerCase()) ?? "";
+}
+
+// Invoices are ordered alphabetically by supplier name (blank suppliers last);
+// ties broken by original insertion order.
+function compareInvoiceBuckets(a: ActualLineItem[], b: ActualLineItem[]): number {
+  const supplierA = a[0]?.supplier?.trim() || "";
+  const supplierB = b[0]?.supplier?.trim() || "";
+  if (supplierA && !supplierB) return -1;
+  if (!supplierA && supplierB) return 1;
+  const cmp = supplierA.localeCompare(supplierB, undefined, { sensitivity: "base" });
+  if (cmp !== 0) return cmp;
+  return Math.min(...a.map(x => x.sort_order)) - Math.min(...b.map(x => x.sort_order));
 }
 
 // ── Filters ────────────────────────────────────────────────────────────────────
@@ -295,6 +360,20 @@ function LineItemRow({
     }
   }
 
+  async function setCode(raw: string) {
+    const next = raw === NO_CODE ? null : raw;
+    const prev = local.code;
+    setLocal(p => ({ ...p, code: next }));
+    onUpdate(local.id, { code: next });
+    try {
+      await updateLineItem(local.id, projectId, { code: next });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update code.");
+      setLocal(p => ({ ...p, code: prev }));
+      onUpdate(local.id, { code: prev });
+    }
+  }
+
   function numericHandlers(field: "qty" | "unit_price" | "subtotal") {
     const numVal = local[field];
     const idle = field === "subtotal"
@@ -414,6 +493,38 @@ function LineItemRow({
         )}
       </td>
 
+      <td className="p-0 text-center">
+        <Select value={local.code ?? NO_CODE} onValueChange={setCode}>
+          <SelectTrigger
+            title="Cost code"
+            className="h-full w-full border-0 rounded-none shadow-none bg-transparent px-1 py-1 justify-center focus:ring-1 focus:ring-inset focus:ring-primary/40 hover:bg-muted/20 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-40 [&>svg]:shrink-0"
+          >
+            <SelectValue placeholder="—">
+              {local.code ? (
+                <span className={cn(
+                  "px-1.5 py-0.5 rounded text-[10px] font-semibold",
+                  LINE_CODES.find(c => c.value === local.code)?.bg,
+                  LINE_CODES.find(c => c.value === local.code)?.text
+                )}>
+                  {local.code}
+                </span>
+              ) : undefined}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_CODE} className="text-xs">—</SelectItem>
+            {LINE_CODES.map(c => (
+              <SelectItem key={c.value} value={c.value} className="text-xs">
+                <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-semibold mr-1.5", c.bg, c.text)}>
+                  {c.value}
+                </span>
+                <span className="text-muted-foreground">{c.label}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </td>
+
       {showRetention && (
         <td className="p-0 text-center">
           <input
@@ -488,6 +599,7 @@ function InvoiceSubGroup({
   items,
   projectId,
   type,
+  supplierColorMap,
   onUpdateLine,
   onDeleteLine,
   onLineAdded,
@@ -498,6 +610,7 @@ function InvoiceSubGroup({
   items: ActualLineItem[];
   projectId: string;
   type: "income" | "expense";
+  supplierColorMap: Map<string, string>;
   onUpdateLine: (id: string, patch: Partial<ActualLineItem>) => void;
   onDeleteLine: (id: string) => void;
   onLineAdded: (item: ActualLineItem) => void;
@@ -520,7 +633,7 @@ function InvoiceSubGroup({
 
   const total = sumIncluded(items);
   const first = items[0];
-  const colSpan = type === "income" ? 10 : 9;
+  const colSpan = type === "income" ? 11 : 10;
   const allIncluded = items.every(i => i.included_in_totals);
 
   function fmtDate(iso: string | null) {
@@ -661,7 +774,12 @@ function InvoiceSubGroup({
               </button>
             )}
             {first.supplier && (
-              <span className="text-[10px] text-muted-foreground truncate max-w-[160px]">
+              <span
+                className={cn(
+                  "text-[10px] font-medium px-1.5 py-0.5 rounded truncate max-w-[160px]",
+                  supplierBadgeClass(supplierColorMap, first.supplier)
+                )}
+              >
                 {first.supplier}
               </span>
             )}
@@ -766,6 +884,7 @@ function GroupRow({
   lineItems,
   projectId,
   type,
+  supplierColorMap,
   onUpdateGroup,
   onDeleteGroup,
   onAddLine,
@@ -778,6 +897,7 @@ function GroupRow({
   lineItems: ActualLineItem[];
   projectId: string;
   type: "income" | "expense";
+  supplierColorMap: Map<string, string>;
   onUpdateGroup: (id: string, patch: Partial<ActualGroup>) => void;
   onDeleteGroup: (id: string) => void;
   onAddLine: (groupId: string) => Promise<void>;
@@ -795,7 +915,7 @@ function GroupRow({
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `group-droppable-${group.id}` });
 
   const groupTotal = sumIncluded(lineItems);
-  const colSpan = type === "income" ? 10 : 9;
+  const colSpan = type === "income" ? 11 : 10;
 
   // Bucket by invoice_number; items without one render flat below invoice sub-groups
   const invoiceBuckets = new Map<string, ActualLineItem[]>();
@@ -809,9 +929,7 @@ function GroupRow({
     }
   }
   const orderedBuckets = Array.from(invoiceBuckets.entries()).sort(
-    ([, a], [, b]) =>
-      Math.min(...a.map((x: ActualLineItem) => x.sort_order)) -
-      Math.min(...b.map((x: ActualLineItem) => x.sort_order))
+    ([, a], [, b]) => compareInvoiceBuckets(a, b)
   );
 
   async function toggleCollapse() {
@@ -953,6 +1071,7 @@ function GroupRow({
           items={items}
           projectId={projectId}
           type={type}
+          supplierColorMap={supplierColorMap}
           onUpdateLine={onUpdateLine}
           onDeleteLine={onDeleteLine}
           onLineAdded={onLineAdded}
@@ -1158,6 +1277,7 @@ export const ActualsSection = memo(function ActualsSection({
   onTotalsChange,
   onAdminFeeChange,
   onRetentionBaseChange,
+  onFreightTotalChange,
 }: {
   type: "income" | "expense";
   projectId: string;
@@ -1170,6 +1290,7 @@ export const ActualsSection = memo(function ActualsSection({
   onTotalsChange?: (total: number) => void;
   onAdminFeeChange?: (pct: number | null, estimatedCost: number | null) => void;
   onRetentionBaseChange?: (base: number) => void;
+  onFreightTotalChange?: (total: number) => void;
 }) {
   const [groups, setGroups] = useState<ActualGroup[]>(initialGroups);
   const [lineItems, setLineItems] = useState<ActualLineItem[]>(
@@ -1191,15 +1312,18 @@ export const ActualsSection = memo(function ActualsSection({
   const filteredTotal = isFiltering ? sumIncluded(filteredLineItems) : sectionTotal;
   const retentionBase = sumIncluded(lineItems.filter(i => i.retention_applied));
   const retentionHeld = retentionPct && retentionPct > 0 ? retentionBase * (retentionPct / 100) : 0;
+  const freightTotal = sumIncluded(lineItems.filter(i => i.code === "FR"));
+  const supplierColorMap = useMemo(() => buildSupplierColorMap(lineItems), [lineItems]);
   const label = type === "income" ? "INCOME" : "EXPENSES";
-  const colSpan = type === "income" ? 10 : 9;
+  const colSpan = type === "income" ? 11 : 10;
 
   const mountedRef = useRef(false);
   useEffect(() => {
     if (!mountedRef.current) { mountedRef.current = true; return; }
     onTotalsChange?.(sectionTotal);
     onRetentionBaseChange?.(retentionBase);
-  }, [sectionTotal, retentionBase]); // eslint-disable-line react-hooks/exhaustive-deps
+    onFreightTotalChange?.(freightTotal);
+  }, [sectionTotal, retentionBase, freightTotal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Group handlers ────────────────────────────────────────────────────────
 
@@ -1429,6 +1553,7 @@ export const ActualsSection = memo(function ActualsSection({
               <col className="w-[88px]" />
               <col className="w-[88px]" />
               <col className="w-[100px]" />
+              <col className="w-[56px]" />
               {type === "income" && <col className="w-[64px]" />}
               <col className="w-[72px]" />
             </colgroup>
@@ -1444,6 +1569,7 @@ export const ActualsSection = memo(function ActualsSection({
                 <th className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground text-right uppercase tracking-wide">Qty</th>
                 <th className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground text-right uppercase tracking-wide">Unit Price</th>
                 <th className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground text-right uppercase tracking-wide">Subtotal</th>
+                <th className="px-1 py-1.5 text-[10px] font-medium text-muted-foreground text-center uppercase tracking-wide">Code</th>
                 {type === "income" && (
                   <th className="px-1 py-1.5 text-[10px] font-medium text-muted-foreground text-center uppercase tracking-wide">Retention</th>
                 )}
@@ -1463,6 +1589,7 @@ export const ActualsSection = memo(function ActualsSection({
                     lineItems={items}
                     projectId={projectId}
                     type={type}
+                    supplierColorMap={supplierColorMap}
                     onUpdateGroup={handleUpdateGroup}
                     onDeleteGroup={handleDeleteGroup}
                     onAddLine={handleAddLine}

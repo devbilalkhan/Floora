@@ -47,8 +47,6 @@ export default async function SavedQuotePage({
       projectLocation={quote.project_loc ?? ""}
       clientName={quote.to_name ?? ""}
       estimateName={quote.project_ref ?? project.name}
-      primaryItems={[]}
-      levels={[]}
       summary={{
         base: 0, accountingCost: 0, adminCost: 0,
         subtotalAfterOverhead: 0, markupAmount: 0, subtotalAfterMarkup: 0,

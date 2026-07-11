@@ -11,6 +11,7 @@ import { CoverLetterDoc, type RefNote } from "@/components/pdf/submission-cover-
 import { QuotePdfDocument, type QuotePdfLine } from "../estimates/[estimateId]/quote/quote-pdf-document";
 import type { TakeoffRow } from "@/lib/takeoff-types";
 import { cn } from "@/lib/utils";
+import { toPdfSafeDataUrl } from "@/lib/pdf-utils";
 import { RichEditor } from "@/components/rich-editor";
 import { savePackDraft, type PackDraft } from "./actions";
 import { ComposeModal } from "./compose-modal";
@@ -100,6 +101,17 @@ const DEFAULT_APPROACH_POINTS = [
 ];
 
 const DEFAULT_CLOSING = `We look forward to the opportunity to work with you on this project. Should you have any questions or require additional information, please don't hesitate to contact me.`;
+
+const DEFAULT_EXCLUSIONS = [
+  "Floor preparation",
+  "Grinding",
+  "Ramping",
+  "Floor protection",
+  "Removal & disposal of existing floor coverings",
+  "Furniture removal & reinstatement",
+  "Asbestos removal / hazardous materials",
+  "Out of hours works",
+];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -289,6 +301,45 @@ export function PackBuilder({
   const refNotes: RefNote[] = refRows
     .filter((r) => r.reference || r.note)
     .map(({ type, reference, note }) => ({ type, reference, note }));
+
+  // Exclusions — an editable checklist of common items plus free-form custom rows
+  const [exclusionRows, setExclusionRows] = useState<{ id: number; label: string; checked: boolean }[]>(
+    () => {
+      if (draft?.exclusionRows) return draft.exclusionRows;
+      const legacySelected = (draft as unknown as { selectedExclusions?: string[] } | null)?.selectedExclusions ?? [];
+      return DEFAULT_EXCLUSIONS.map((label, i) => ({
+        id: i,
+        label,
+        checked: legacySelected.includes(label),
+      }));
+    }
+  );
+  function toggleExclusionRow(id: number) {
+    setExclusionRows((prev) => prev.map((r) => (r.id === id ? { ...r, checked: !r.checked } : r)));
+  }
+  function updateExclusionLabel(id: number, label: string) {
+    setExclusionRows((prev) => prev.map((r) => (r.id === id ? { ...r, label } : r)));
+  }
+  const [customExclusions, setCustomExclusions] = useState<{ id: number; text: string }[]>(
+    () => draft?.customExclusions ?? []
+  );
+  const nextExclusionId = useRef(draft?.customExclusions?.length ?? 0);
+  function addCustomExclusion() {
+    setCustomExclusions((prev) => [...prev, { id: nextExclusionId.current++, text: "" }]);
+  }
+  function updateCustomExclusion(id: number, text: string) {
+    setCustomExclusions((prev) => prev.map((r) => (r.id === id ? { ...r, text } : r)));
+  }
+  function removeCustomExclusion(id: number) {
+    setCustomExclusions((prev) => prev.filter((r) => r.id !== id));
+  }
+  const exclusions = useMemo(
+    () => [
+      ...exclusionRows.filter((r) => r.checked && r.label.trim()).map((r) => r.label.trim()),
+      ...customExclusions.map((r) => r.text.trim()).filter(Boolean),
+    ],
+    [exclusionRows, customExclusions]
+  );
   const [capabilitiesText, setCapabilitiesText] = useState(
     () => draft?.capabilitiesText ?? textToHtml(DEFAULT_CAPABILITIES)
   );
@@ -353,6 +404,7 @@ export function PackBuilder({
     refRows, capabilitiesText, approachIntro, approachPointsText, closingText,
     signatoryName, signatoryTitle, signatoryCompany, signatoryPhone, signatoryEmail,
     selectedQuoteIds, pricedQuoteIds, quoteSettings, selectedTakeoffIds, dedupeNotesTerms,
+    exclusionRows, customExclusions,
   }), [
     clientName, projectNameState, packageName, packDate,
     contactName, contactTitle, clientCompany,
@@ -360,6 +412,7 @@ export function PackBuilder({
     refRows, capabilitiesText, approachIntro, approachPointsText, closingText,
     signatoryName, signatoryTitle, signatoryCompany, signatoryPhone, signatoryEmail,
     selectedQuoteIds, pricedQuoteIds, quoteSettings, selectedTakeoffIds, dedupeNotesTerms,
+    exclusionRows, customExclusions,
   ]);
 
   useEffect(() => {
@@ -385,16 +438,24 @@ export function PackBuilder({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generating, setGenerating] = useState<null | "preview" | "send">(null);
 
+  // Pre-fetch org logo as a PDF-safe (png/jpeg/svg) base64 URL so react-pdf can
+  // embed it without making cross-origin requests or choking on formats like webp
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!org.logo_url) return;
+    toPdfSafeDataUrl(org.logo_url).then(setLogoDataUrl);
+  }, [org.logo_url]);
+
   // Live cover letter preview
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
   const [liveInstance, updateLivePDF] = usePDF({
     document: <CoverLetterDoc
-      orgLogoUrl={org.logo_url} orgName={org.name} orgAbn={org.abn ?? ""}
+      orgLogoUrl={logoDataUrl} orgName={org.name} orgAbn={org.abn ?? ""}
       orgAddress={org.address ?? ""} orgPhone={org.phone ?? ""} orgEmail={org.org_email ?? ""}
       packDate={packDate} contactName={contactName} contactTitle={contactTitle}
-      clientCompany={clientCompany} reSubject="" refNotes={[]} quotePricing={[]}
+      clientCompany={clientCompany} reSubject="" refNotes={[]} exclusions={[]} quotePricing={[]}
       capabilitiesText={capabilitiesText} approachIntro={approachIntro}
       approachPoints={approachPointsText.split("\n").map((l) => l.trim()).filter(Boolean)}
       closingText={closingText} signatoryName={signatoryName} signatoryTitle={signatoryTitle}
@@ -468,10 +529,11 @@ export function PackBuilder({
   useEffect(() => {
     const t = setTimeout(() => {
       updateLivePDF(<CoverLetterDoc
-        orgLogoUrl={org.logo_url} orgName={org.name} orgAbn={org.abn ?? ""}
+        orgLogoUrl={logoDataUrl} orgName={org.name} orgAbn={org.abn ?? ""}
         orgAddress={org.address ?? ""} orgPhone={org.phone ?? ""} orgEmail={org.org_email ?? ""}
         packDate={packDate} contactName={contactName} contactTitle={contactTitle}
         clientCompany={clientCompany} reSubject={effectiveRe} refNotes={refNotes}
+        exclusions={exclusions}
         quotePricing={pricedQuotes.map((q) => ({
           quoteNumber: q.quote_number,
           site: q.project_loc || q.project_ref || "",
@@ -488,8 +550,8 @@ export function PackBuilder({
     }, 500);
     return () => clearTimeout(t);
   }, [
-    org, packDate, contactName, contactTitle, clientCompany, effectiveRe, refNotes,
-    pricedQuotes, quoteSettings, capabilitiesText, approachIntro, approachPointsText, closingText,
+    org, logoDataUrl, packDate, contactName, contactTitle, clientCompany, effectiveRe, refNotes,
+    exclusions, pricedQuotes, quoteSettings, capabilitiesText, approachIntro, approachPointsText, closingText,
     signatoryName, signatoryTitle, signatoryCompany, signatoryPhone, signatoryEmail,
     updateLivePDF,
   ]);
@@ -567,7 +629,7 @@ export function PackBuilder({
 
     const coverBlob = await pdf(
       <CoverPageDoc
-        orgLogoUrl={org.logo_url}
+        orgLogoUrl={logoDataUrl}
         clientName={clientName}
         projectName={projectNameState}
         packageName={packageName}
@@ -577,7 +639,7 @@ export function PackBuilder({
 
     const letterBlob = await pdf(
       <CoverLetterDoc
-        orgLogoUrl={org.logo_url}
+        orgLogoUrl={logoDataUrl}
         orgName={org.name}
         orgAbn={org.abn ?? ""}
         orgAddress={org.address ?? ""}
@@ -589,6 +651,7 @@ export function PackBuilder({
         clientCompany={clientCompany}
         reSubject={effectiveRe}
         refNotes={refNotes}
+        exclusions={exclusions}
         quotePricing={pricedQuotes.map((q) => ({
           quoteNumber: q.quote_number,
           site: q.project_loc || q.project_ref || "",
@@ -618,7 +681,7 @@ export function PackBuilder({
             companyAddress={q.company_address ?? org.address ?? ""}
             companyPhone={q.company_phone ?? org.phone ?? ""}
             companyEmail={q.company_email ?? org.org_email ?? ""}
-            orgLogoUrl={org.logo_url}
+            orgLogoUrl={logoDataUrl}
             qNumber={q.quote_number}
             qDate={q.quote_date}
             qValidity={q.valid_for ?? "30 days from date of issue"}
@@ -679,8 +742,8 @@ export function PackBuilder({
     const finalBytes = await mergedDoc.save();
     return new Blob([finalBytes.buffer as ArrayBuffer], { type: "application/pdf" });
   }, [
-    org, orgSlug, clientName, projectNameState, packageName, sections, packDate,
-    contactName, contactTitle, clientCompany, effectiveRe, refNotes,
+    org, orgSlug, logoDataUrl, clientName, projectNameState, packageName, sections, packDate,
+    contactName, contactTitle, clientCompany, effectiveRe, refNotes, exclusions,
     selectedQuotes, pricedQuotes, capabilitiesText, approachIntro, approachPointsText,
     closingText, signatoryName, signatoryTitle, signatoryCompany,
     signatoryPhone, signatoryEmail, selectedTakeoffIds, attachedDocs,
@@ -930,6 +993,58 @@ export function PackBuilder({
           )}
         </div>
 
+        {/* Exclusions */}
+        <div className="space-y-2">
+          <SectionLabel>Exclusions (shown as a table in the cover letter)</SectionLabel>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+            {exclusionRows.map((row) => (
+              <div key={row.id} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={row.checked}
+                  onChange={() => toggleExclusionRow(row.id)}
+                  className="h-3.5 w-3.5 accent-primary flex-shrink-0"
+                />
+                <input
+                  value={row.label}
+                  onChange={(e) => updateExclusionLabel(row.id, e.target.value)}
+                  className="flex-1 bg-background/60 border border-border rounded-sm px-2 h-7 text-[11px] text-foreground/70 outline-none focus:ring-1 focus:ring-primary/50"
+                />
+              </div>
+            ))}
+          </div>
+
+          {customExclusions.length > 0 && (
+            <div className="space-y-1.5 pt-1">
+              {customExclusions.map((row) => (
+                <div key={row.id} className="flex items-center gap-2">
+                  <input
+                    value={row.text}
+                    onChange={(e) => updateCustomExclusion(row.id, e.target.value)}
+                    placeholder="e.g. Skirting & coving"
+                    className="flex-1 bg-background/60 border border-border rounded-sm px-2 h-7 text-[11px] text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeCustomExclusion(row.id)}
+                    className="text-muted-foreground/40 hover:text-destructive transition-colors flex-shrink-0"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={addCustomExclusion}
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Plus className="h-3 w-3" /> Add custom exclusion
+          </button>
+        </div>
+
         {quotes.length > 0 && (
           <div>
             <SectionLabel>Quotation pricing (shown in cover letter before capabilities)</SectionLabel>
@@ -1080,9 +1195,9 @@ export function PackBuilder({
                         </span>
                       )}
                     </div>
-                    {q.grand_total != null && (
+                    {q.total_ex_gst != null && (
                       <span className="text-xs tabular-nums text-muted-foreground flex-shrink-0">
-                        ${fmt(q.grand_total)} incl. GST
+                        ${fmt(q.total_ex_gst)} ex GST
                       </span>
                     )}
                     {selected && (

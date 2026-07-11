@@ -66,7 +66,15 @@ export async function renameProject(
 export async function updateProjectDetails(
   projectId: string,
   orgSlug: string,
-  details: { location: string | null; head_client: string | null; notes: string | null; retention_pct: number | null }
+  details: {
+    name?: string;
+    location: string | null;
+    head_client: string | null;
+    specifier: string | null;
+    contact_person: string | null;
+    notes: string | null;
+    retention_pct: number | null;
+  }
 ) {
   await requireProjectManagerRole(projectId);
   const { supabase } = await createAuthedClient();

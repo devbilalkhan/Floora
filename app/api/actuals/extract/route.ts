@@ -6,7 +6,7 @@ export const maxDuration = 60;
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const VISION_MODEL = "claude-sonnet-4-6";
+const VISION_MODEL = "claude-sonnet-5";
 const SPREADSHEET_MODEL = "claude-haiku-4-5-20251001";
 
 // Strict whitelist — never accept arbitrary MIME types
@@ -114,6 +114,34 @@ type RequestBody = {
   org_id?: string;
   project_id?: string;
   group_id?: string | null;
+};
+
+// Structured outputs schema — constrains the model to return only a valid
+// JSON array matching this shape, so it can't reply with prose instead.
+const LINE_ITEMS_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      invoice_date: { type: ["string", "null"] },
+      invoice_number: { type: ["string", "null"] },
+      supplier: { type: ["string", "null"] },
+      description: { type: "string" },
+      qty: { type: ["number", "null"] },
+      unit_price: { type: ["number", "null"] },
+      subtotal: { type: "number" },
+    },
+    required: [
+      "invoice_date",
+      "invoice_number",
+      "supplier",
+      "description",
+      "qty",
+      "unit_price",
+      "subtotal",
+    ],
+    additionalProperties: false,
+  },
 };
 
 // ── Route ──────────────────────────────────────────────────────────────────────
@@ -234,8 +262,10 @@ export async function POST(req: NextRequest) {
       response = (await anthropic.messages.create({
         model: VISION_MODEL,
         max_tokens: 4096,
+        thinking: { type: "disabled" },
         system: systemPrompt,
         messages: [{ role: "user", content: [contentBlock] }],
+        output_config: { format: { type: "json_schema", schema: LINE_ITEMS_SCHEMA } },
       })) as Anthropic.Message;
     } else {
       // Spreadsheet pathway — CSV/structured text
@@ -249,6 +279,7 @@ export async function POST(req: NextRequest) {
             content: `Invoice data:\n\n${structured_text ?? file_base64}`,
           },
         ],
+        output_config: { format: { type: "json_schema", schema: LINE_ITEMS_SCHEMA } },
       })) as Anthropic.Message;
     }
 

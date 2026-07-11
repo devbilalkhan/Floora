@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { refreshGoogleToken, sendGmailMessageWithAttachment } from "@/lib/gmail";
+import { refreshGoogleToken, sendGmailMessageWithAttachment, type EmailAttachment } from "@/lib/gmail";
 
 export async function POST(req: NextRequest) {
   const supabase = createClient();
@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
     body: string;
     pdfBase64: string;
     filename?: string;
+    secondaryAttachment?: { base64: string; filename: string; mimeType: string };
   };
   try {
     body = await req.json();
@@ -43,6 +44,20 @@ export async function POST(req: NextRequest) {
       user.user_metadata?.full_name ??
       user.user_metadata?.name ??
       "";
+    const attachments: EmailAttachment[] = [
+      {
+        base64: body.pdfBase64,
+        filename: body.filename ?? "Submission_Pack.pdf",
+        mimeType: "application/pdf",
+      },
+    ];
+    if (body.secondaryAttachment) {
+      attachments.push({
+        base64: body.secondaryAttachment.base64,
+        filename: body.secondaryAttachment.filename,
+        mimeType: body.secondaryAttachment.mimeType || "application/octet-stream",
+      });
+    }
     const result = await sendGmailMessageWithAttachment(accessToken, {
       to: body.to,
       cc: body.cc || undefined,
@@ -50,8 +65,7 @@ export async function POST(req: NextRequest) {
       body: body.body,
       fromEmail: user.email ?? "",
       fromName: fromName || undefined,
-      attachmentBase64: body.pdfBase64,
-      attachmentFilename: body.filename ?? "Submission_Pack.pdf",
+      attachments,
     });
     return NextResponse.json(result);
   } catch (err) {

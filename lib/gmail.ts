@@ -91,6 +91,12 @@ function formatFrom(email: string, name?: string): string {
   return `${encodedName} <${email}>`;
 }
 
+export type EmailAttachment = {
+  base64: string;
+  filename: string;
+  mimeType: string;
+};
+
 function buildRawEmailWithAttachment(opts: {
   from: string;
   fromName?: string;
@@ -98,8 +104,7 @@ function buildRawEmailWithAttachment(opts: {
   cc?: string;
   subject: string;
   body: string;
-  attachmentBase64: string;
-  attachmentFilename: string;
+  attachments: EmailAttachment[];
 }): string {
   const boundary = `boundary_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
   const encodedSubject = `=?utf-8?B?${Buffer.from(opts.subject, "utf-8").toString("base64")}?=`;
@@ -109,8 +114,19 @@ function buildRawEmailWithAttachment(opts: {
       .toString("base64")
       .match(/.{1,76}/g)
       ?.join("\r\n") ?? "";
-  const attachWrapped =
-    opts.attachmentBase64.match(/.{1,76}/g)?.join("\r\n") ?? opts.attachmentBase64;
+
+  const attachmentParts = opts.attachments.flatMap((att) => {
+    const wrapped = att.base64.match(/.{1,76}/g)?.join("\r\n") ?? att.base64;
+    return [
+      `--${boundary}`,
+      `Content-Type: ${att.mimeType}; name="${att.filename}"`,
+      "Content-Transfer-Encoding: base64",
+      `Content-Disposition: attachment; filename="${att.filename}"`,
+      "",
+      wrapped,
+      "",
+    ];
+  });
 
   const lines = [
     `From: ${formatFrom(opts.from, opts.fromName)}`,
@@ -126,13 +142,7 @@ function buildRawEmailWithAttachment(opts: {
     "",
     bodyB64,
     "",
-    `--${boundary}`,
-    `Content-Type: application/pdf; name="${opts.attachmentFilename}"`,
-    "Content-Transfer-Encoding: base64",
-    `Content-Disposition: attachment; filename="${opts.attachmentFilename}"`,
-    "",
-    attachWrapped,
-    "",
+    ...attachmentParts,
     `--${boundary}--`,
   ];
 
@@ -152,8 +162,7 @@ export async function sendGmailMessageWithAttachment(
     body: string;
     fromEmail: string;
     fromName?: string;
-    attachmentBase64: string;
-    attachmentFilename: string;
+    attachments: EmailAttachment[];
   }
 ): Promise<{ messageId: string; threadId: string }> {
   const raw = buildRawEmailWithAttachment({
@@ -163,8 +172,7 @@ export async function sendGmailMessageWithAttachment(
     cc: opts.cc,
     subject: opts.subject,
     body: opts.body,
-    attachmentBase64: opts.attachmentBase64,
-    attachmentFilename: opts.attachmentFilename,
+    attachments: opts.attachments,
   });
 
   const res = await fetch(`${GMAIL_API}/messages/send`, {

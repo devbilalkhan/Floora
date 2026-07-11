@@ -93,7 +93,7 @@ export async function createLineItem(groupId: string, projectId: string) {
       owner_id: user.id,
       sort_order: (last?.sort_order ?? -1) + 1,
     })
-    .select("id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source, retention_applied, included_in_totals")
+    .select("id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source, retention_applied, included_in_totals, code")
     .single();
 
   if (error) throw new Error(error.message);
@@ -114,6 +114,7 @@ export async function updateLineItem(
     subtotal?: number;
     retention_applied?: boolean;
     included_in_totals?: boolean;
+    code?: string | null;
   }
 ) {
   await assertActualsAccess(projectId);
@@ -182,7 +183,7 @@ export async function duplicateLines(
   const { data, error } = await supabase
     .from("actual_line_items")
     .insert(rows)
-    .select("id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source, retention_applied, included_in_totals");
+    .select("id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source, retention_applied, included_in_totals, code");
 
   if (error) throw new Error(error.message);
   return data ?? [];
@@ -262,7 +263,7 @@ export async function importExtractedLines(
     .from("actual_line_items")
     .insert(rows)
     .select(
-      "id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source, retention_applied, included_in_totals"
+      "id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source, retention_applied, included_in_totals, code"
     );
 
   if (error) throw new Error(error.message);

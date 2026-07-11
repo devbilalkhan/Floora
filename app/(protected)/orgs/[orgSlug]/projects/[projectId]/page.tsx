@@ -43,7 +43,7 @@ export default async function ProjectDetailPage({
     await Promise.all([
       supabase
         .from("projects")
-        .select("name, brand, status, location, head_client, notes, retention_pct")
+        .select("name, brand, status, location, head_client, specifier, contact_person, notes, retention_pct")
         .eq("id", params.projectId)
         .single(),
       supabase
@@ -201,9 +201,9 @@ export default async function ProjectDetailPage({
 
       {/* Project header */}
       <div className="bg-card/65 backdrop-blur-xl border border-border rounded-xl p-4 space-y-3">
-        <div className="flex items-start gap-4">
-          <div className="space-y-1 flex-1">
-            <div className="flex items-center gap-2">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1 flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
               <ProjectNameHeader
                 projectId={params.projectId}
                 orgSlug={params.orgSlug}
@@ -229,29 +229,48 @@ export default async function ProjectDetailPage({
                 <Badge variant="outline" className="text-muted-foreground text-xs">Archived</Badge>
               )}
             </div>
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              {project.location && <span>{project.location}</span>}
-              {project.location && project.head_client && (
-                <span className="text-border">·</span>
-              )}
-              {project.head_client && <span>{project.head_client}</span>}
-              <CopyProjectDetails
-                name={project.name}
-                location={project.location}
-                headClient={project.head_client}
-              />
-              {canWrite && (
-                <EditProjectDetailsDialog
-                  projectId={params.projectId}
-                  orgSlug={params.orgSlug}
-                  initialLocation={project.location}
-                  initialHeadClient={project.head_client}
-                  initialNotes={project.notes}
-                  initialRetentionPct={project.retention_pct ?? null}
+
+            {/* Primary meta — location · head client */}
+            {(project.location || project.head_client) && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+                {project.location && <span>{project.location}</span>}
+                {project.location && project.head_client && <span className="text-border">·</span>}
+                {project.head_client && <span>{project.head_client}</span>}
+                <CopyProjectDetails
+                  name={project.name}
+                  location={project.location}
+                  headClient={project.head_client}
                 />
-              )}
-            </div>
+              </div>
+            )}
+
+            {/* Secondary meta — specifier · contact */}
+            {(project.specifier || project.contact_person) && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                {project.specifier && (
+                  <span><span className="text-muted-foreground/50">Specifier</span> {project.specifier}</span>
+                )}
+                {project.specifier && project.contact_person && <span className="text-border">·</span>}
+                {project.contact_person && (
+                  <span><span className="text-muted-foreground/50">Contact</span> {project.contact_person}</span>
+                )}
+              </div>
+            )}
           </div>
+
+          {canWrite && (
+            <EditProjectDetailsDialog
+              projectId={params.projectId}
+              orgSlug={params.orgSlug}
+              initialName={project.name}
+              initialLocation={project.location ?? null}
+              initialHeadClient={project.head_client ?? null}
+              initialSpecifier={project.specifier ?? null}
+              initialContactPerson={project.contact_person ?? null}
+              initialNotes={project.notes ?? null}
+              initialRetentionPct={project.retention_pct ?? null}
+            />
+          )}
         </div>
         {project.notes && (
           <>

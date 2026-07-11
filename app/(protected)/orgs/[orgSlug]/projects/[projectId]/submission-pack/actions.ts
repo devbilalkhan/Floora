@@ -27,6 +27,8 @@ export type PackDraft = {
   quoteSettings: Record<string, { type: "conforming" | "non-conforming"; level: string }>;
   selectedTakeoffIds: string[];
   dedupeNotesTerms: boolean;
+  exclusionRows: { id: number; label: string; checked: boolean }[];
+  customExclusions: { id: number; text: string }[];
 };
 
 export async function savePackDraft(projectId: string, draft: PackDraft) {

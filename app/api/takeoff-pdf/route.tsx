@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     { data: takeoffList },
   ] = await Promise.all([
     supabase.from("projects").select("name, brand, location, head_client").eq("id", projectId).single(),
-    supabase.from("organizations").select("name").eq("slug", orgSlug).single(),
+    supabase.from("organizations").select("name, logo_url").eq("slug", orgSlug).single(),
     supabase.from("profiles").select("display_name").eq("id", user.id).single(),
     supabase.from("takeoffs").select("id").eq("project_id", projectId),
   ]);
@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
       projectName: project.name,
       projectLocation: project.location ?? "",
       orgName: org.name,
+      orgLogoUrl: org.logo_url ?? null,
       headClient: project.head_client ?? undefined,
       brand: project.brand ?? "spm",
       packDate,

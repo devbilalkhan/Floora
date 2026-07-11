@@ -182,7 +182,35 @@ const s = StyleSheet.create({
     marginBottom: 2,
   },
   signatoryDetail: { fontSize: 10, marginBottom: 1 },
+
+  // ── Exclusions table ──────────────────────────────────────────────────────
+  excSection: { marginBottom: 12 },
+  excHeading: { fontSize: 10, fontFamily: "Helvetica-Bold", marginBottom: 5 },
+  excTableOuter: { borderWidth: 0.5, borderColor: "#cccccc", borderStyle: "solid" },
+  excHeaderRow: {
+    flexDirection: "row",
+    backgroundColor: "#f0f0f0",
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#cccccc",
+    borderBottomStyle: "solid",
+  },
+  excRow: {
+    flexDirection: "row",
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#eeeeee",
+    borderBottomStyle: "solid",
+  },
+  excRowLast: { flexDirection: "row" },
+  excCell: { width: "33.33%", padding: 5, paddingHorizontal: 7, fontSize: 9 },
+  excCellBorder: { borderLeftWidth: 0.5, borderLeftColor: "#eeeeee", borderLeftStyle: "solid" },
+  excHeaderCell: { width: "100%", padding: 5, paddingHorizontal: 7, fontSize: 9 },
 });
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
 
 // ── HTML → react-pdf renderer (bold + bullet lists) ──────────────────────────
 
@@ -326,6 +354,7 @@ export type CoverLetterDocProps = {
   clientCompany: string;
   reSubject: string;
   refNotes: RefNote[];
+  exclusions?: string[];
   quotePricing?: QuotePricingLine[];
   capabilitiesText: string;
   approachIntro: string;
@@ -354,6 +383,7 @@ export function CoverLetterDoc({
   clientCompany,
   reSubject,
   refNotes,
+  exclusions,
   quotePricing,
   capabilitiesText,
   approachIntro,
@@ -545,6 +575,31 @@ export function CoverLetterDoc({
         {signatoryCompany ? <Text style={s.signatoryDetail}>{signatoryCompany}</Text> : null}
         {signatoryPhone ? <Text style={s.signatoryDetail}>{signatoryPhone}</Text> : null}
         {signatoryEmail ? <Text style={s.signatoryDetail}>{signatoryEmail}</Text> : null}
+
+        {exclusions && exclusions.length > 0 && (
+          <View style={{ ...s.excSection, marginTop: 20 } as AnyStyle}>
+            <Text style={s.excHeading}>Exclusions</Text>
+            <View style={s.excTableOuter}>
+              <View style={s.excHeaderRow}>
+                <Text style={[s.excHeaderCell, s.refHeaderText]}>
+                  THE FOLLOWING ARE EXCLUDED FROM THIS SUBMISSION
+                </Text>
+              </View>
+              {chunk(exclusions, 3).map((group, i, rows) => {
+                const isLast = i === rows.length - 1;
+                return (
+                  <View key={i} style={isLast ? s.excRowLast : s.excRow}>
+                    {group.map((item, j) => (
+                      <Text key={j} style={j > 0 ? [s.excCell, s.excCellBorder] : s.excCell}>
+                        {item}
+                      </Text>
+                    ))}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
       </Page>
     </Document>
   );

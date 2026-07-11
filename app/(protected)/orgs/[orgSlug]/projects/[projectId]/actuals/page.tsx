@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { ChevronRight, FileText } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { ActualsPageClient } from "./actuals-page-client";
+import { ActualsExportButton } from "./actuals-export-button";
 
 export default async function ActualsPage({
   params,
@@ -26,7 +27,7 @@ export default async function ActualsPage({
         .order("sort_order"),
       supabase
         .from("actual_line_items")
-        .select("id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source, retention_applied, included_in_totals")
+        .select("id, group_id, sort_order, invoice_date, invoice_number, supplier, description, qty, unit_price, subtotal, source, retention_applied, included_in_totals, code")
         .eq("project_id", params.projectId)
         .order("sort_order"),
     ]);
@@ -62,15 +63,23 @@ export default async function ActualsPage({
 
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">{project.name} — Actuals</h1>
-        <Link
-          href={`/print/orgs/${params.orgSlug}/projects/${params.projectId}/actuals/report`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-xs text-muted-foreground border border-border px-3 py-1.5 rounded-md hover:text-foreground hover:border-foreground/30 transition-colors"
-        >
-          <FileText className="h-3.5 w-3.5" />
-          Report
-        </Link>
+        <div className="flex items-center gap-2">
+          <ActualsExportButton
+            projectName={project.name}
+            incomeGroups={allGroups.filter(g => g.type === "income")}
+            expenseGroups={allGroups.filter(g => g.type === "expense")}
+            allLineItems={allLineItems}
+          />
+          <Link
+            href={`/print/orgs/${params.orgSlug}/projects/${params.projectId}/actuals/report`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground border border-border px-3 py-1.5 rounded-md hover:text-foreground hover:border-foreground/30 transition-colors"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Report
+          </Link>
+        </div>
       </div>
 
       <ActualsPageClient

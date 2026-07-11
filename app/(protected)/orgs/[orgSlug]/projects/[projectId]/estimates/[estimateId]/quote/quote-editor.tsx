@@ -11,24 +11,12 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } 
 import { CSS } from "@dnd-kit/utilities";
 import { QuotePdfDocument, type QuotePdfLine } from "./quote-pdf-document";
 import { saveQuote } from "./actions";
-import type { EstimateItem, Summary } from "@/lib/estimate-types";
-import { itemTotal } from "@/lib/estimate-types";
+import type { Summary } from "@/lib/estimate-types";
 import { cn } from "@/lib/utils";
+import { toPdfSafeDataUrl } from "@/lib/pdf-utils";
 
-// ── Formatters ────────────────────────────────────────────────────────────────
 const fmt = (n: number) =>
   n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-const SCOPE_LABELS: Record<string, string> = {
-  vinyl: "Vinyl Flooring",
-  carpet: "Carpet",
-  coving_skirting: "Coving / Skirting",
-  transition: "Transition Strips",
-  stairs: "Stair Nosings",
-  wall_vinyl: "Wall Vinyl",
-  matting: "Entrance Matting",
-  other: "Other",
-};
 
 type QuoteLine = {
   id: string;
@@ -40,72 +28,12 @@ type QuoteLine = {
   amount: number;
 };
 
-function levelLabel(lvl: string): string {
-  if (lvl === "GF") return "Ground Floor";
-  if (lvl === "B1") return "Basement Level 1";
-  if (lvl === "B2") return "Basement Level 2";
-  const match = lvl.match(/^L(\d+)$/);
-  if (match) return `Level ${match[1]}`;
-  return lvl;
-}
-
-function toLine(item: EstimateItem): QuoteLine {
-  const label = SCOPE_LABELS[item.scope_category] ?? item.scope_category;
-  const code = item.finish_code ? `${item.finish_code} — ` : "";
-  const desc = item.description ?? label;
-  const qty = Number(item.qty) || 0;
-  const total = itemTotal(item);
-  const rate = qty > 0 ? total / qty : 0;
-  return { id: item.id, type: "item", description: `${code}${desc}`, qty, unit: item.unit, rate, amount: total };
-}
-
-function buildLines(items: EstimateItem[], level: string, distinctLevels: string[]): QuoteLine[] {
-  if (level === "consolidated") {
-    const groups = new Map<string, EstimateItem[]>();
-    const order: string[] = [];
-    for (const item of items) {
-      const key = item.finish_code ?? `__solo_${item.id}`;
-      if (!groups.has(key)) { order.push(key); groups.set(key, []); }
-      groups.get(key)!.push(item);
-    }
-    return order.map((key) => {
-      const group = groups.get(key)!;
-      const first = group[0];
-      if (group.length === 1 || !first.finish_code) return toLine(first);
-      const totalQty = group.reduce((s, i) => s + (Number(i.qty) || 0), 0);
-      const totalAmount = group.reduce((s, i) => s + itemTotal(i), 0);
-      const rate = totalQty > 0 ? totalAmount / totalQty : 0;
-      const label = SCOPE_LABELS[first.scope_category] ?? first.scope_category;
-      const desc = first.description ?? label;
-      return { id: first.id, type: "item" as const, description: `${first.finish_code} — ${desc}`, qty: totalQty, unit: first.unit, rate, amount: totalAmount };
-    });
-  }
-  if (level !== "all") {
-    return items.filter((i) => i.level === level).map(toLine);
-  }
-  if (distinctLevels.length >= 2) {
-    const result: QuoteLine[] = [];
-    const assigned = new Set<string>();
-    for (const lvl of distinctLevels) {
-      const lvlItems = items.filter((i) => i.level === lvl);
-      if (lvlItems.length === 0) continue;
-      result.push({ id: `header-${lvl}`, type: "header", description: levelLabel(lvl), qty: 0, unit: "", rate: 0, amount: 0 });
-      lvlItems.forEach((i) => { assigned.add(i.id); result.push(toLine(i)); });
-    }
-    items.filter((i) => !assigned.has(i.id)).forEach((i) => result.push(toLine(i)));
-    return result;
-  }
-  return items.map(toLine);
-}
-
 // ── Input helpers ─────────────────────────────────────────────────────────────
 const docInput = "bg-transparent border-0 outline-none w-full text-[11px] text-gray-800 placeholder:text-gray-300 focus:bg-gray-50 focus:ring-1 focus:ring-gray-200 rounded px-1 py-0.5 transition-colors";
 const docInputSm = "bg-transparent border-0 outline-none w-full text-[11px] text-gray-800/80 placeholder:text-gray-300 focus:bg-gray-50 focus:ring-1 focus:ring-gray-200 rounded px-1 py-0.5 transition-colors";
 
-// ── Convert plain text → HTML (for initial value normalisation and AI output) ──
 function plainToHtml(text: string): string {
   if (!text) return "";
-  // Already HTML
   if (text.includes("<")) return text;
   return text
     .split("\n")
@@ -117,7 +45,6 @@ function plainToHtml(text: string): string {
     .join("");
 }
 
-// ── Scope rich-text editor (white-document themed) ────────────────────────────
 function QuoteScopeEditor({
   value,
   onChange,
@@ -155,11 +82,7 @@ function QuoteScopeEditor({
   }
 
   return (
-    <div
-      className="border border-gray-200 rounded overflow-hidden focus-within:ring-1 focus-within:ring-violet-200 transition-colors"
-      style={{ width: "70%" }}
-    >
-      {/* Toolbar */}
+    <div className="border border-gray-200 rounded overflow-hidden focus-within:ring-1 focus-within:ring-violet-200 transition-colors">
       <div className="flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-50 border-b border-gray-200 print:hidden">
         <button
           type="button"
@@ -184,8 +107,6 @@ function QuoteScopeEditor({
           <List className="h-3 w-3" />
         </button>
       </div>
-
-      {/* Editable area */}
       <div
         ref={ref}
         contentEditable={!disabled}
@@ -213,7 +134,6 @@ function QuoteScopeEditor({
   );
 }
 
-// ── Currency input: shows comma-formatted value when blurred ─────────────────
 function CurrencyInput({
   value,
   onChange,
@@ -239,7 +159,6 @@ function CurrencyInput({
   );
 }
 
-// ── Sortable row ──────────────────────────────────────────────────────────────
 function SortableQuoteLine({
   line,
   itemIdx,
@@ -256,7 +175,6 @@ function SortableQuoteLine({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: line.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
 
-  // Auto-resize textarea on mount
   const descRef = useCallback((el: HTMLTextAreaElement | null) => {
     if (el) {
       el.style.height = "auto";
@@ -385,8 +303,6 @@ export function QuoteEditor({
   projectLocation,
   clientName,
   estimateName,
-  primaryItems,
-  levels,
   summary,
   quoteNumber,
   today,
@@ -417,8 +333,6 @@ export function QuoteEditor({
   projectLocation: string;
   clientName: string;
   estimateName: string;
-  primaryItems: EstimateItem[];
-  levels: string[];
   summary: Summary;
   quoteNumber: string;
   today: string;
@@ -433,7 +347,6 @@ export function QuoteEditor({
   initialHideZeros?: boolean;
   initialName?: string;
 }) {
-  // ── Editable state ────────────────────────────────────────────────────────
   const [quoteName, setQuoteName] = useState(initialName ?? "");
   const [companyName, setCompanyName] = useState(orgName);
   const [companyAbn, setCompanyAbn] = useState(orgAbn);
@@ -453,27 +366,28 @@ export function QuoteEditor({
   const [projectRef, setProjectRef] = useState(projectName);
   const [projectLoc, setProjectLoc] = useState(initialProjectLoc ?? projectLocation);
 
+  const [userPrompt, setUserPrompt] = useState("");
   const [scopeText, setScopeText] = useState(initialScopeText ?? "");
   const [scopeEditorKey, setScopeEditorKey] = useState(0);
   const [scopeLoading, setScopeLoading] = useState(false);
 
   const [hideZeros, setHideZeros] = useState(initialHideZeros ?? false);
 
-  const [selectedLevel, setSelectedLevel] = useState<string>("consolidated");
+  const defaultLine: QuoteLine = {
+    id: "default-total",
+    type: "item",
+    description: "Supply and install flooring works as per scope",
+    qty: 1,
+    unit: "Lump Sum",
+    rate: summary.totalExGst,
+    amount: summary.totalExGst,
+  };
 
   const [lines, setLines] = useState<QuoteLine[]>(() =>
-    initialLines && initialLines.length > 0 ? initialLines : buildLines(primaryItems, "consolidated", levels)
+    initialLines && initialLines.length > 0
+      ? (initialLines as QuoteLine[])
+      : [defaultLine]
   );
-
-  function handleLevelChange(lvl: string) {
-    setSelectedLevel(lvl);
-    const newLines = buildLines(primaryItems, lvl, levels);
-    setLines(newLines);
-    const exGst = newLines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
-    setTotalExGst(exGst);
-    setGst(exGst * 0.1);
-    setGrandTotal(exGst * 1.1);
-  }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -498,10 +412,17 @@ export function QuoteEditor({
   const [quoteId, setQuoteId] = useState<string | undefined>(initialQuoteId);
   const [saving, setSaving] = useState(false);
 
-  // ── PDF preview state ─────────────────────────────────────────────────────
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+
+  // react-pdf's <Image> can't embed webp — pre-convert the logo to a PDF-safe
+  // (png/jpeg/svg) data URL. The raw orgLogoUrl is still used for on-screen <img> tags.
+  const [pdfLogoUrl, setPdfLogoUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!orgLogoUrl) return;
+    toPdfSafeDataUrl(orgLogoUrl).then(setPdfLogoUrl);
+  }, [orgLogoUrl]);
 
   async function handlePreview() {
     setPreviewLoading(true);
@@ -510,7 +431,7 @@ export function QuoteEditor({
         <QuotePdfDocument
           companyName={companyName} companyAbn={companyAbn}
           companyAddress={companyAddress} companyPhone={companyPhone}
-          companyEmail={companyEmail} orgLogoUrl={orgLogoUrl}
+          companyEmail={companyEmail} orgLogoUrl={pdfLogoUrl}
           qNumber={qNumber} qDate={qDate} qValidity={qValidity}
           toName={toName} toAddress={toAddress} toContact={toContact} toEmail={toEmail}
           projectRef={projectRef} projectLoc={projectLoc}
@@ -546,7 +467,6 @@ export function QuoteEditor({
     }
   }
 
-  // ── Save quote ────────────────────────────────────────────────────────────
   async function handleSave() {
     setSaving(true);
     try {
@@ -587,12 +507,7 @@ export function QuoteEditor({
     }
   }
 
-  // ── Scope of works generation ─────────────────────────────────────────────
   const generateScope = useCallback(async () => {
-    if (primaryItems.length === 0) {
-      toast.error("No estimate items to summarise.");
-      return;
-    }
     setScopeLoading(true);
     try {
       const res = await fetch("/api/quote-summary", {
@@ -600,18 +515,12 @@ export function QuoteEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectName,
-          items: primaryItems.map((i) => ({
-            scope_category: i.scope_category,
-            finish_code: i.finish_code,
-            description: i.description,
-            qty: i.qty,
-            unit: i.unit,
-          })),
+          estimateId,
+          userPrompt: userPrompt.trim() || undefined,
         }),
       });
       if (!res.ok) throw new Error("API error");
       const { summary: text } = await res.json();
-      // Convert plain text to HTML and remount the rich editor with the new content
       const html = plainToHtml(text ?? "");
       setScopeText(html);
       setScopeEditorKey((k) => k + 1);
@@ -621,9 +530,8 @@ export function QuoteEditor({
     } finally {
       setScopeLoading(false);
     }
-  }, [primaryItems, projectName]);
+  }, [projectName, estimateId, userPrompt]);
 
-  // ── Line item helpers ─────────────────────────────────────────────────────
   function updateLine(id: string, field: keyof QuoteLine, value: string | number) {
     setLines((prev) =>
       prev.map((l) => {
@@ -651,7 +559,6 @@ export function QuoteEditor({
     setLines((prev) => prev.filter((l) => l.id !== id));
   }
 
-  // ── GST sync when totalExGst changes ─────────────────────────────────────
   function handleTotalExGstChange(val: number) {
     setTotalExGst(val);
     const g = val * 0.1;
@@ -684,28 +591,9 @@ export function QuoteEditor({
             />
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={saving}
-              className="gap-1.5 text-xs"
-            >
+            <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1.5 text-xs">
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               {saving ? "Saving…" : quoteId ? "Save changes" : "Save quote"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={generateScope}
-              disabled={scopeLoading}
-              className="gap-1.5 text-xs"
-            >
-              {scopeLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5 text-primary" />
-              )}
-              {scopeLoading ? "Generating…" : "Generate scope with AI"}
             </Button>
             <Button
               size="sm"
@@ -722,10 +610,7 @@ export function QuoteEditor({
           </div>
         </div>
 
-        <div className="flex items-center gap-4 flex-wrap">
-          <p className="text-xs text-muted-foreground">
-            Click any field to edit. Use &ldquo;Generate scope with AI&rdquo; to auto-populate the scope of works.
-          </p>
+        <div className="flex items-center gap-4">
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
             <input
               type="checkbox"
@@ -736,45 +621,19 @@ export function QuoteEditor({
             Hide zero values
           </label>
         </div>
-
-        {levels.length >= 2 && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">Generate lines for:</span>
-            {(["consolidated", "all", ...levels] as string[]).map((lvl) => (
-              <button
-                key={lvl}
-                onClick={() => handleLevelChange(lvl)}
-                className={cn(
-                  "px-2.5 py-1 rounded text-xs border transition-colors",
-                  selectedLevel === lvl
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
-                )}
-              >
-                {lvl === "consolidated" ? "Consolidated" : lvl === "all" ? "All levels" : lvl}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* ── Quote document ──────────────────────────────────────────────────── */}
       <div className="bg-white rounded-xl shadow-xl shadow-black/20 overflow-hidden print:shadow-none print:rounded-none">
 
-        {/* Accent strip */}
         <div className="h-1 bg-gradient-to-r from-violet-500 via-purple-500 to-violet-400" />
 
         {/* Header */}
         <div className="px-5 pt-5 pb-4 border-b border-gray-100">
           <div className="flex items-start justify-between gap-8">
-            {/* Logo + company */}
             <div className="flex items-start gap-4 min-w-0">
               {orgLogoUrl && (
-                <img
-                  src={orgLogoUrl}
-                  alt={orgName}
-                  className="h-14 w-auto object-contain flex-shrink-0"
-                />
+                <img src={orgLogoUrl} alt={orgName} className="h-14 w-auto object-contain flex-shrink-0" />
               )}
               <div className="min-w-0 space-y-2">
                 <input
@@ -815,7 +674,6 @@ export function QuoteEditor({
               </div>
             </div>
 
-            {/* Quote title + meta */}
             <div className="text-right flex-shrink-0 space-y-3">
               <div className="text-3xl font-extrabold text-gray-800 tracking-tight">QUOTATION</div>
               <div className="space-y-1">
@@ -851,68 +709,48 @@ export function QuoteEditor({
         {/* Quote to + Project ref */}
         <div className="border-y border-gray-200 bg-gray-50/60">
           <div className="px-5 py-6 grid grid-cols-2 gap-8">
-          <div>
-            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Quote To</div>
-            <input
-              value={toName}
-              onChange={(e) => setToName(e.target.value)}
-              className={cn(docInput, "font-semibold text-gray-800")}
-              placeholder="Client / Company Name"
-            />
-            <input
-              value={toAddress}
-              onChange={(e) => setToAddress(e.target.value)}
-              className={docInputSm}
-              placeholder="Address"
-            />
-            <input
-              value={toContact}
-              onChange={(e) => setToContact(e.target.value)}
-              className={docInputSm}
-              placeholder="Contact name"
-            />
-            <input
-              value={toEmail}
-              onChange={(e) => setToEmail(e.target.value)}
-              className={docInputSm}
-              placeholder="Email"
-            />
-          </div>
-          <div>
-            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Project Reference</div>
-            <input
-              value={projectRef}
-              onChange={(e) => setProjectRef(e.target.value)}
-              className={cn(docInput, "font-semibold text-gray-800")}
-              placeholder="Project name"
-            />
-            <input
-              value={projectLoc}
-              onChange={(e) => setProjectLoc(e.target.value)}
-              className={docInputSm}
-              placeholder="Location / site address"
-            />
-          </div>
+            <div>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Quote To</div>
+              <input value={toName} onChange={(e) => setToName(e.target.value)} className={cn(docInput, "font-semibold text-gray-800")} placeholder="Client / Company Name" />
+              <input value={toAddress} onChange={(e) => setToAddress(e.target.value)} className={docInputSm} placeholder="Address" />
+              <input value={toContact} onChange={(e) => setToContact(e.target.value)} className={docInputSm} placeholder="Contact name" />
+              <input value={toEmail} onChange={(e) => setToEmail(e.target.value)} className={docInputSm} placeholder="Email" />
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Project Reference</div>
+              <input value={projectRef} onChange={(e) => setProjectRef(e.target.value)} className={cn(docInput, "font-semibold text-gray-800")} placeholder="Project name" />
+              <input value={projectLoc} onChange={(e) => setProjectLoc(e.target.value)} className={docInputSm} placeholder="Location / site address" />
+            </div>
           </div>
         </div>
 
         {/* Scope of works */}
         <div className="px-5 py-4 border-b border-gray-100">
-          <div className="flex items-center justify-between mb-3" style={{ width: "70%" }}>
-            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Scope of Works</div>
+          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">Scope of Works</div>
+
+          {/* AI prompt input */}
+          <div className="print:hidden mb-3 flex gap-2 items-start">
+            <textarea
+              value={userPrompt}
+              onChange={(e) => setUserPrompt(e.target.value)}
+              rows={2}
+              placeholder="Optional: describe any additions or exclusions (e.g. 'exclude stair nosings, add 2 rooms of carpet tiles')"
+              className="flex-1 text-[11px] text-gray-700 placeholder:text-gray-300 bg-gray-50 border border-gray-200 rounded px-2 py-1.5 resize-none outline-none focus:ring-1 focus:ring-violet-200 transition-colors leading-relaxed"
+            />
             <button
               onClick={generateScope}
               disabled={scopeLoading}
-              className="print:hidden flex items-center gap-1 text-[10px] text-violet-500 hover:text-violet-600 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] font-medium bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50 transition-colors flex-shrink-0 self-stretch"
             >
               {scopeLoading ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Sparkles className="h-3 w-3" />
+                <Sparkles className="h-3.5 w-3.5" />
               )}
               {scopeLoading ? "Generating…" : "Generate with AI"}
             </button>
           </div>
+
           <QuoteScopeEditor
             key={scopeEditorKey}
             value={scopeText}
@@ -955,64 +793,22 @@ export function QuoteEditor({
               <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
                 <SortableContext items={lines.map((l) => l.id)} strategy={verticalListSortingStrategy}>
                   <tbody>
-                    {(() => {
-                      let itemIdx = 0;
-                      const hasHeaders = lines.some((l) => l.type === "header");
-                      const rows: React.ReactNode[] = [];
-                      let sectionLabel = "";
-                      let sectionTotal = 0;
-                      let inSection = false;
-
-                      lines.forEach((line, i) => {
-                        const isLast = i === lines.length - 1;
-                        const nextIsHeader = !isLast && lines[i + 1].type === "header";
-
-                        rows.push(
-                          <SortableQuoteLine
-                            key={line.id}
-                            line={line}
-                            itemIdx={line.type === "header" ? 0 : itemIdx++}
-                            onUpdate={updateLine}
-                            onRemove={removeLine}
-                            hideZeros={hideZeros}
-                          />
-                        );
-
-                        if (hasHeaders) {
-                          if (line.type === "header") {
-                            sectionLabel = line.description;
-                            sectionTotal = 0;
-                            inSection = true;
-                          } else {
-                            sectionTotal += Number(line.amount) || 0;
-                            if (inSection && (isLast || nextIsHeader)) {
-                              rows.push(
-                                <tr key={`sub-${line.id}`} className="bg-gray-50 border-b border-gray-200">
-                                  <td className="print:hidden" />
-                                  <td colSpan={4} className="px-2 py-1 text-right text-[10px] text-gray-400 italic">
-                                    {sectionLabel} subtotal
-                                  </td>
-                                  <td className="px-2 py-1 text-right text-[10px] font-semibold text-gray-600 tabular-nums font-mono border-r border-gray-100">
-                                    ${fmt(sectionTotal)}
-                                  </td>
-                                  <td className="print:hidden" />
-                                </tr>
-                              );
-                              sectionTotal = 0;
-                            }
-                          }
-                        }
-                      });
-
-                      return rows;
-                    })()}
+                    {lines.map((line, i) => (
+                      <SortableQuoteLine
+                        key={line.id}
+                        line={line}
+                        itemIdx={i}
+                        onUpdate={updateLine}
+                        onRemove={removeLine}
+                        hideZeros={hideZeros}
+                      />
+                    ))}
                   </tbody>
                 </SortableContext>
               </DndContext>
             </table>
           </div>
 
-          {/* Add line / Add section header */}
           <div className="print:hidden mt-2 flex items-center gap-4">
             <button
               onClick={addLine}
@@ -1046,7 +842,6 @@ export function QuoteEditor({
                   />
                 </div>
               </div>
-
               <div className="flex justify-between items-center py-1.5">
                 <span className="text-[11px] text-gray-500">GST (10%)</span>
                 <div className="flex items-center gap-0.5">
@@ -1058,7 +853,6 @@ export function QuoteEditor({
                   />
                 </div>
               </div>
-
               <div className="flex justify-between items-center pt-2.5 mt-1 border-t border-gray-300">
                 <span className="text-[11px] font-bold text-gray-800 uppercase tracking-wide">Total (incl. GST)</span>
                 <div className="flex items-center gap-0.5">
@@ -1097,27 +891,20 @@ export function QuoteEditor({
             placeholder="Payment terms, warranty details, and other conditions of this quote…"
           />
 
-          {/* Footer */}
           <div className="mt-8 pt-4 border-t border-gray-100 flex items-center justify-between">
             {orgLogoUrl && (
-              <img
-                src={orgLogoUrl}
-                alt={companyName}
-                className="h-6 w-auto object-contain opacity-30"
-              />
+              <img src={orgLogoUrl} alt={companyName} className="h-6 w-auto object-contain opacity-30" />
             )}
             <p className="text-[10px] text-gray-400">{companyName} · {companyEmail} · {companyPhone}</p>
           </div>
         </div>
 
-        {/* Bottom accent strip */}
         <div className="h-1 bg-gradient-to-r from-violet-500 via-purple-500 to-violet-400" />
       </div>
 
       {/* ── PDF preview modal ───────────────────────────────────────────────── */}
       {previewOpen && previewUrl && (
         <div className="fixed inset-0 z-50 flex flex-col bg-black/70 backdrop-blur-sm">
-          {/* Modal toolbar */}
           <div className="flex-none flex items-center justify-between px-4 h-12 bg-card/95 backdrop-blur-xl border-b border-border shadow-lg">
             <span className="text-sm font-medium text-foreground">PDF Preview</span>
             <div className="flex items-center gap-2">
@@ -1131,14 +918,8 @@ export function QuoteEditor({
               </Button>
             </div>
           </div>
-
-          {/* PDF iframe */}
           <div className="flex-1 min-h-0">
-            <iframe
-              src={previewUrl}
-              className="w-full h-full border-0"
-              title="PDF Preview"
-            />
+            <iframe src={previewUrl} className="w-full h-full border-0" title="PDF Preview" />
           </div>
         </div>
       )}

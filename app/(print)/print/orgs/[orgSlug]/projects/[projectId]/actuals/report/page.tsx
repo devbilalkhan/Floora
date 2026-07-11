@@ -46,6 +46,18 @@ function fmtQty(n: number | null) {
   return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, "");
 }
 
+// Invoices are ordered alphabetically by supplier name (blank suppliers last);
+// ties broken by original insertion order.
+function compareInvoiceBuckets(a: LineItem[], b: LineItem[]): number {
+  const supplierA = a[0]?.supplier?.trim() || "";
+  const supplierB = b[0]?.supplier?.trim() || "";
+  if (supplierA && !supplierB) return -1;
+  if (!supplierA && supplierB) return 1;
+  const cmp = supplierA.localeCompare(supplierB, undefined, { sensitivity: "base" });
+  if (cmp !== 0) return cmp;
+  return Math.min(...a.map((x) => x.sort_order)) - Math.min(...b.map((x) => x.sort_order));
+}
+
 function bucketItems(items: LineItem[]) {
   const invoiceBuckets = new Map<string, LineItem[]>();
   const ungrouped: LineItem[] = [];
@@ -59,9 +71,7 @@ function bucketItems(items: LineItem[]) {
     }
   }
   const orderedBuckets = Array.from(invoiceBuckets.entries()).sort(
-    ([, a], [, b]) =>
-      Math.min(...a.map((x) => x.sort_order)) -
-      Math.min(...b.map((x) => x.sort_order))
+    ([, a], [, b]) => compareInvoiceBuckets(a, b)
   );
   return { orderedBuckets, ungrouped };
 }

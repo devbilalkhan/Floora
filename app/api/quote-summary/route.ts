@@ -10,29 +10,34 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const { items, projectName } = await req.json();
+    const { projectName, estimateId, userPrompt } = await req.json();
 
-    if (!items || !Array.isArray(items)) {
-      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    if (!estimateId) {
+      return NextResponse.json({ error: "Missing estimateId" }, { status: 400 });
     }
 
+    const { data: rawItems } = await supabase
+      .from("estimate_items")
+      .select("scope_category, finish_code, description, qty, unit, type")
+      .eq("estimate_id", estimateId)
+      .eq("type", "primary")
+      .order("sort_order");
+
+    const items = rawItems ?? [];
+
     const itemSummary = items
-      .map(
-        (item: {
-          scope_category: string;
-          finish_code: string | null;
-          description: string | null;
-          qty: number;
-          unit: string;
-        }) => {
-          const parts = [item.scope_category.replace(/_/g, " ")];
-          if (item.finish_code) parts.push(`(${item.finish_code})`);
-          if (item.description) parts.push(`- ${item.description}`);
-          parts.push(`${item.qty} ${item.unit}`);
-          return parts.join(" ");
-        },
-      )
+      .map((item) => {
+        const parts = [item.scope_category.replace(/_/g, " ")];
+        if (item.finish_code) parts.push(`(${item.finish_code})`);
+        if (item.description) parts.push(`- ${item.description}`);
+        parts.push(`${item.qty} ${item.unit}`);
+        return parts.join(" ");
+      })
       .join("\n");
+
+    const promptAdditions = userPrompt
+      ? `\n\nThe client has also requested the following adjustments — incorporate these naturally into the scope:\n${userPrompt}`
+      : "";
 
     const message = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
@@ -45,7 +50,7 @@ export async function POST(req: NextRequest) {
 You are writing the "Scope of Works" section for a professional flooring installation quote for project "${projectName}".
 
 Based on these estimate line items:
-${itemSummary}
+${itemSummary}${promptAdditions}
 
 Write a concise, professional Scope of Works in email style for a builder/client.
 

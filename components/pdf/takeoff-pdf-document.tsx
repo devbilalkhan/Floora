@@ -1,4 +1,4 @@
-import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, View, Text, Image, StyleSheet } from "@react-pdf/renderer";
 import { CATEGORIES, type TakeoffRow } from "@/lib/takeoff-types";
 
 type S = any;
@@ -43,6 +43,7 @@ const s = StyleSheet.create({
   },
   headerLeft:  { flexDirection: "column" },
   headerRight: { flexDirection: "column", alignItems: "flex-end" },
+  logo: { width: 80, height: 28, objectFit: "contain", marginBottom: 6 },
   brandLabel:  { fontSize: 7, color: MUTED, letterSpacing: 1.2, marginBottom: 3 },
   projectName: { fontSize: 13, fontFamily: "Helvetica-Bold", color: TEXT, letterSpacing: 0.5, marginBottom: 1 },
   subText:     { fontSize: 8, color: TEXT2, marginTop: 1 },
@@ -153,6 +154,7 @@ export function TakeoffPdfDocument({
   projectName,
   projectLocation,
   orgName,
+  orgLogoUrl,
   headClient,
   brand,
   packDate,
@@ -162,6 +164,7 @@ export function TakeoffPdfDocument({
   projectName: string;
   projectLocation: string;
   orgName: string;
+  orgLogoUrl?: string | null;
   headClient?: string;
   brand?: string;
   packDate: string;
@@ -213,6 +216,7 @@ export function TakeoffPdfDocument({
             {headClient ? <Text style={s.subText}>Client: {headClient}</Text> : null}
           </View>
           <View style={s.headerRight}>
+            {orgLogoUrl && <Image src={orgLogoUrl} style={s.logo} />}
             <View style={s.metaRow}>
               <Text style={s.metaLabel}>Date: </Text><Text style={s.metaValue}>{packDate}</Text>
             </View>
