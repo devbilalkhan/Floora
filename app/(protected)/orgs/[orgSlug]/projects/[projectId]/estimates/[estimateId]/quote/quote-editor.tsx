@@ -134,31 +134,6 @@ function QuoteScopeEditor({
   );
 }
 
-function CurrencyInput({
-  value,
-  onChange,
-  className,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-  className?: string;
-}) {
-  const [focused, setFocused] = useState(false);
-  const [draft, setDraft] = useState("");
-
-  return (
-    <input
-      type="text"
-      inputMode="decimal"
-      value={focused ? draft : fmt(value)}
-      onFocus={() => { setDraft(value.toFixed(2)); setFocused(true); }}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => { setFocused(false); onChange(parseFloat(draft.replace(/,/g, "")) || 0); }}
-      className={className}
-    />
-  );
-}
-
 function SortableQuoteLine({
   line,
   itemIdx,
@@ -402,9 +377,11 @@ export function QuoteEditor({
     });
   }
 
-  const [totalExGst, setTotalExGst] = useState(summary.totalExGst);
-  const [gst, setGst] = useState(summary.gst);
-  const [grandTotal, setGrandTotal] = useState(summary.grandTotal);
+  const totalExGst = lines
+    .filter((l) => l.type !== "header")
+    .reduce((sum, l) => sum + Number(l.amount || 0), 0);
+  const gst = totalExGst * 0.1;
+  const grandTotal = totalExGst + gst;
 
   const [notes, setNotes] = useState(quoteNotes);
   const [terms, setTerms] = useState(quoteTerms);
@@ -557,13 +534,6 @@ export function QuoteEditor({
 
   function removeLine(id: string) {
     setLines((prev) => prev.filter((l) => l.id !== id));
-  }
-
-  function handleTotalExGstChange(val: number) {
-    setTotalExGst(val);
-    const g = val * 0.1;
-    setGst(g);
-    setGrandTotal(val + g);
   }
 
   return (
@@ -835,33 +805,27 @@ export function QuoteEditor({
                 <span className="text-[11px] text-gray-500">Total (ex GST)</span>
                 <div className="flex items-center gap-0.5">
                   <span className="text-[10px] text-gray-400">$</span>
-                  <CurrencyInput
-                    value={totalExGst}
-                    onChange={handleTotalExGstChange}
-                    className="text-[11px] text-gray-800/80 tabular-nums font-mono text-right bg-transparent border-0 outline-none w-28 focus:bg-gray-50 rounded px-1 py-0.5 transition-colors"
-                  />
+                  <span className="text-[11px] text-gray-800/80 tabular-nums font-mono text-right w-28 px-1 py-0.5">
+                    {fmt(totalExGst)}
+                  </span>
                 </div>
               </div>
               <div className="flex justify-between items-center py-1.5">
                 <span className="text-[11px] text-gray-500">GST (10%)</span>
                 <div className="flex items-center gap-0.5">
                   <span className="text-[10px] text-gray-400">$</span>
-                  <CurrencyInput
-                    value={gst}
-                    onChange={setGst}
-                    className="text-[11px] text-gray-800/80 tabular-nums font-mono text-right bg-transparent border-0 outline-none w-28 focus:bg-gray-50 rounded px-1 py-0.5 transition-colors"
-                  />
+                  <span className="text-[11px] text-gray-800/80 tabular-nums font-mono text-right w-28 px-1 py-0.5">
+                    {fmt(gst)}
+                  </span>
                 </div>
               </div>
               <div className="flex justify-between items-center pt-2.5 mt-1 border-t border-gray-300">
                 <span className="text-[11px] font-bold text-gray-800 uppercase tracking-wide">Total (incl. GST)</span>
                 <div className="flex items-center gap-0.5">
                   <span className="text-[11px] text-gray-700 font-semibold">$</span>
-                  <CurrencyInput
-                    value={grandTotal}
-                    onChange={setGrandTotal}
-                    className="text-[13px] text-gray-900 font-bold tabular-nums font-mono text-right bg-transparent border-0 outline-none w-28 focus:bg-gray-50 rounded px-1 py-0.5 transition-colors"
-                  />
+                  <span className="text-[13px] text-gray-900 font-bold tabular-nums font-mono text-right w-28 px-1 py-0.5">
+                    {fmt(grandTotal)}
+                  </span>
                 </div>
               </div>
             </div>
