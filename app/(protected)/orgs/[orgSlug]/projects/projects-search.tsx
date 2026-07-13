@@ -38,25 +38,25 @@ export function ProjectsSearch({
   return (
     <div className="relative">
       {loading ? (
-        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none flex items-center">
-          <Loader2 className="h-3.5 w-3.5 text-muted-foreground/50 animate-spin" />
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none flex items-center">
+          <Loader2 className="h-4 w-4 text-muted-foreground/50 animate-spin" />
         </span>
       ) : (
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50 pointer-events-none" />
       )}
       <input
         type="text"
         value={value}
         onChange={e => handleChange(e.target.value)}
         placeholder="Search projects…"
-        className="h-8 pl-8 pr-7 text-[11px] bg-input border border-border rounded-md text-foreground/70 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/40 w-52"
+        className="h-10 pl-9 pr-8 text-[12px] bg-input border border-border rounded-md text-foreground/70 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/40 w-full"
       />
       {value && (
         <button
           onClick={() => handleChange("")}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors"
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors"
         >
-          <X className="h-3 w-3" />
+          <X className="h-3.5 w-3.5" />
         </button>
       )}
     </div>

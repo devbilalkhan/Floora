@@ -45,7 +45,7 @@ export default async function OrgProjectsPage({
 
   let dataQuery = supabase
     .from("projects")
-    .select("id, name, location, head_client, status, brand, updated_at, estimates(count)")
+    .select("id, name, location, head_client, status, updated_at, estimates(count), quotes(count), submission_pack_sends(count)")
     .eq("organization_id", org.id);
 
   let countQuery = supabase
@@ -81,8 +81,9 @@ export default async function OrgProjectsPage({
     <div className="max-w-6xl mx-auto py-6 px-4 space-y-4">
       <div className="flex items-center gap-3">
         <h1 className="text-xl font-semibold shrink-0">Projects</h1>
-        <div className="flex-1" />
-        <ProjectsSearch initialValue={q} basePath={basePath} />
+        <div className="flex-1">
+          <ProjectsSearch initialValue={q} basePath={basePath} />
+        </div>
         {canWrite && (
           <>
             <ImportTakeoffDialog
@@ -137,13 +138,14 @@ export default async function OrgProjectsPage({
           <table className="w-full">
             <thead>
               <tr className="border-b border-black/10 dark:border-white/10 bg-muted/40">
-                <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Project</th>
-                <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Location</th>
-                <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Client</th>
-                <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Brand</th>
-                <th className="text-right px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Estimates</th>
-                <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</th>
-                <th className="text-left px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Updated</th>
+                <th className="text-left px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Project</th>
+                <th className="text-left px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Location</th>
+                <th className="text-left px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Client</th>
+                <th className="text-right px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Estimates</th>
+                <th className="text-right px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Quotes</th>
+                <th className="text-left px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Submission Pack</th>
+                <th className="text-left px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Status</th>
+                <th className="text-left px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Updated</th>
                 <th className="w-8 px-2" />
               </tr>
             </thead>
@@ -151,9 +153,13 @@ export default async function OrgProjectsPage({
               {projects.map((p) => {
                 const estimateCount =
                   (p.estimates as unknown as { count: number }[])[0]?.count ?? 0;
+                const quoteCount =
+                  (p.quotes as unknown as { count: number }[])[0]?.count ?? 0;
+                const packSentCount =
+                  (p.submission_pack_sends as unknown as { count: number }[])[0]?.count ?? 0;
                 return (
                   <tr key={p.id} className="border-b border-black/10 dark:border-white/10 last:border-0 hover:bg-muted/10 transition-colors group">
-                    <td className="px-2 py-1.5 text-xs">
+                    <td className="px-2 py-1.5 text-[11px]">
                       <Link
                         href={`/orgs/${params.orgSlug}/projects/${p.id}`}
                         className="font-medium text-foreground/70 hover:text-primary transition-colors block"
@@ -161,33 +167,42 @@ export default async function OrgProjectsPage({
                         {p.name}
                       </Link>
                     </td>
-                    <td className="px-2 py-1.5 text-xs text-foreground/80">
+                    <td className="px-2 py-1.5 text-[11px] text-foreground/80">
                       {p.location || "—"}
                     </td>
-                    <td className="px-2 py-1.5 text-xs text-foreground/80">
+                    <td className="px-2 py-1.5 text-[11px] text-foreground/80">
                       {p.head_client || "—"}
                     </td>
-                    <td className="px-2 py-1.5 text-xs text-foreground/80 uppercase tracking-wide">
-                      {p.brand === "dfo" ? "DFO" : "SPM"}
-                    </td>
-                    <td className="px-2 py-1.5 text-xs text-right tabular-nums text-foreground/70">
+                    <td className="px-2 py-1.5 text-[11px] text-right tabular-nums text-foreground/70">
                       {estimateCount}
+                    </td>
+                    <td className="px-2 py-1.5 text-[11px] text-right tabular-nums text-foreground/70">
+                      {quoteCount}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      {packSentCount > 0 ? (
+                        <Badge className="bg-success/15 text-success border-success/30 text-[10px]">
+                          Sent{packSentCount > 1 ? ` (${packSentCount})` : ""}
+                        </Badge>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground/50">Not sent</span>
+                      )}
                     </td>
                     <td className="px-2 py-1.5">
                       {p.status === "active" && (
-                        <Badge className="bg-success/15 text-success border-success/30 text-[11px]">Active</Badge>
+                        <Badge className="bg-success/15 text-success border-success/30 text-[10px]">Active</Badge>
                       )}
                       {p.status === "completed" && (
-                        <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-[11px]">Completed</Badge>
+                        <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-[10px]">Completed</Badge>
                       )}
                       {p.status === "rejected" && (
-                        <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-[11px]">Rejected</Badge>
+                        <Badge className="bg-destructive/15 text-destructive border-destructive/30 text-[10px]">Rejected</Badge>
                       )}
                       {p.status === "archived" && (
-                        <Badge variant="outline" className="text-muted-foreground text-[11px]">Archived</Badge>
+                        <Badge variant="outline" className="text-muted-foreground text-[10px]">Archived</Badge>
                       )}
                     </td>
-                    <td className="px-2 py-1.5 text-xs text-foreground/80">
+                    <td className="px-2 py-1.5 text-[11px] text-foreground/80">
                       {formatDate(p.updated_at)}
                     </td>
                     <td className="px-2 py-1.5">
