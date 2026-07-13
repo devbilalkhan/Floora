@@ -39,7 +39,7 @@ export default async function ProjectDetailPage({
 }) {
   const supabase = createClient();
 
-  const [{ data: project }, { data: rawEstimates }, { data: drawings }, { data: rawTakeoffs }, { data: rawPriceRequests }, { data: rawQuotes }, { data: userRole }, { data: rawActualsGroups }, { data: rawActualsItems }] =
+  const [{ data: project }, { data: rawEstimates }, { data: drawings }, { data: rawTakeoffs }, { data: rawPriceRequests }, { data: rawQuotes }, { data: userRole }, { data: rawActualsGroups }, { data: rawActualsItems }, { data: rawSubmissionSends }, { data: rawOtherProjects }] =
     await Promise.all([
       supabase
         .from("projects")
@@ -80,6 +80,17 @@ export default async function ProjectDetailPage({
         .from("actual_line_items")
         .select("group_id, invoice_date, subtotal, qty, unit_price, included_in_totals")
         .eq("project_id", params.projectId),
+      supabase
+        .from("submission_pack_sends")
+        .select("id, recipient_name, sent_at")
+        .eq("project_id", params.projectId)
+        .order("sent_at", { ascending: false }),
+      supabase
+        .from("projects")
+        .select("id, name, organizations!inner(slug)")
+        .eq("organizations.slug", params.orgSlug)
+        .neq("id", params.projectId)
+        .order("name"),
     ]);
 
   const isViewer = userRole === "viewer";
@@ -174,6 +185,8 @@ export default async function ProjectDetailPage({
   const priceRequests = rawPriceRequests ?? [];
   const pendingReplies = priceRequests.filter((r) => r.status === "sent").length;
   const quotes = rawQuotes ?? [];
+  const submissionSends = rawSubmissionSends ?? [];
+  const otherProjects = (rawOtherProjects ?? []).map((p) => ({ id: p.id, name: p.name }));
 
   const takeoffItems = (rawTakeoffs ?? []).map((t: any) => ({
     id: t.id as string,
@@ -371,10 +384,22 @@ export default async function ProjectDetailPage({
             <div className="flex items-center gap-2">
             <Link
               href={`/orgs/${params.orgSlug}/projects/${params.projectId}/submission-pack`}
+              title={
+                submissionSends.length > 0
+                  ? submissionSends
+                      .map((s) => `Sent to ${s.recipient_name} on ${formatDate(s.sent_at)}`)
+                      .join("\n")
+                  : undefined
+              }
               className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors"
             >
               <Package className="h-3 w-3 shrink-0" />
               <span>Submission Pack</span>
+              {submissionSends.length > 0 && (
+                <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-emerald-500/20 px-1.5 text-[10px] font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                  {submissionSends.length}
+                </span>
+              )}
             </Link>
             <Link
               href={`/orgs/${params.orgSlug}/projects/${params.projectId}/price-requests`}
@@ -464,6 +489,7 @@ export default async function ProjectDetailPage({
                           orgSlug={params.orgSlug}
                           projectId={params.projectId}
                           currentStatus={q.status ?? "draft"}
+                          otherProjects={otherProjects}
                         />
                       </td>
                     </tr>

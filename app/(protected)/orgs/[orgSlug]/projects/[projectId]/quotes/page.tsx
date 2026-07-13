@@ -23,16 +23,24 @@ export default async function QuotesListPage({
   });
   if (!userRole) redirect(`/orgs/${params.orgSlug}/projects`);
 
-  const [{ data: project }, { data: quotes }] = await Promise.all([
+  const [{ data: project }, { data: quotes }, { data: rawOtherProjects }] = await Promise.all([
     supabase.from("projects").select("id, name").eq("id", params.projectId).single(),
     supabase
       .from("quotes")
       .select("id, name, quote_number, quote_date, to_name, project_ref, total_ex_gst, grand_total, status, estimate_id, created_at")
       .eq("project_id", params.projectId)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("projects")
+      .select("id, name, organizations!inner(slug)")
+      .eq("organizations.slug", params.orgSlug)
+      .neq("id", params.projectId)
+      .order("name"),
   ]);
 
   if (!project) notFound();
+
+  const otherProjects = (rawOtherProjects ?? []).map((p) => ({ id: p.id, name: p.name }));
 
   const fmt = (n: number) =>
     n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -123,6 +131,7 @@ export default async function QuotesListPage({
                       projectId={params.projectId}
                       currentStatus={q.status}
                       currentName={q.name ?? ""}
+                      otherProjects={otherProjects}
                     />
                   </td>
                 </tr>

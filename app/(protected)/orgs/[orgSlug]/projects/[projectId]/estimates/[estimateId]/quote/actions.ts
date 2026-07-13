@@ -105,3 +105,75 @@ export async function renameQuote(quoteId: string, name: string, orgSlug: string
   if (error) throw new Error(error.message);
   revalidatePath(`/orgs/${orgSlug}/projects/${projectId}/quotes`);
 }
+
+export async function copyQuoteToProject(
+  orgSlug: string,
+  sourceQuoteId: string,
+  targetProjectId: string
+): Promise<{ id: string; projectId: string }> {
+  const { supabase } = await createAuthedClient();
+
+  const { data: source, error: sourceError } = await supabase
+    .from("quotes")
+    .select(
+      "org_id, name, valid_for, company_name, company_abn, company_address, company_phone, company_email, to_name, to_address, to_contact, to_email, scope_text, notes, terms, lines, total_ex_gst, gst, grand_total, hide_zeros"
+    )
+    .eq("id", sourceQuoteId)
+    .single();
+  if (sourceError) throw new Error(sourceError.message);
+
+  const { data: targetProject, error: projectError } = await supabase
+    .from("projects")
+    .select("name, location")
+    .eq("id", targetProjectId)
+    .single();
+  if (projectError) throw new Error(projectError.message);
+
+  const { data: quoteNumber, error: numberError } = await supabase.rpc("next_quote_number", {
+    org_id: source.org_id,
+  });
+  if (numberError) throw new Error(numberError.message);
+
+  const quoteDate = new Date().toLocaleDateString("en-AU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+
+  const row = {
+    org_id: source.org_id,
+    project_id: targetProjectId,
+    estimate_id: null,
+    name: source.name ? `${source.name} (Copy)` : null,
+    quote_number: quoteNumber as string,
+    quote_date: quoteDate,
+    valid_for: source.valid_for,
+    company_name: source.company_name,
+    company_abn: source.company_abn,
+    company_address: source.company_address,
+    company_phone: source.company_phone,
+    company_email: source.company_email,
+    to_name: source.to_name,
+    to_address: source.to_address,
+    to_contact: source.to_contact,
+    to_email: source.to_email,
+    project_ref: targetProject.name,
+    project_loc: targetProject.location ?? "",
+    scope_text: source.scope_text,
+    notes: source.notes,
+    terms: source.terms,
+    lines: source.lines,
+    total_ex_gst: source.total_ex_gst,
+    gst: source.gst,
+    grand_total: source.grand_total,
+    hide_zeros: source.hide_zeros,
+    status: "draft",
+  };
+
+  const { data, error } = await supabase.from("quotes").insert(row).select("id").single();
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/orgs/${orgSlug}/projects/${targetProjectId}/quotes`);
+  revalidatePath(`/orgs/${orgSlug}/projects/${targetProjectId}`);
+  return { id: data.id as string, projectId: targetProjectId };
+}
