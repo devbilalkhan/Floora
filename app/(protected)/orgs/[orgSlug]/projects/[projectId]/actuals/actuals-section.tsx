@@ -830,7 +830,7 @@ function InvoiceSubGroup({
               </button>
             )}
             {fmtDate(first.invoice_date) && (
-              <span className="text-[10px] text-muted-foreground/50 tabular-nums">
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded tabular-nums bg-muted/40 text-muted-foreground">
                 {fmtDate(first.invoice_date)}
               </span>
             )}
