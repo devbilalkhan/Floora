@@ -27,6 +27,8 @@ export async function POST(req: NextRequest) {
     pdfBase64: string;
     filename?: string;
     secondaryAttachment?: { base64: string; filename: string; mimeType: string };
+    projectId?: string;
+    recipientName?: string;
   };
   try {
     body = await req.json();
@@ -67,6 +69,19 @@ export async function POST(req: NextRequest) {
       fromName: fromName || undefined,
       attachments,
     });
+
+    if (body.projectId) {
+      const { error: recordError } = await supabase.from("submission_pack_sends").insert({
+        project_id: body.projectId,
+        recipient_name: body.recipientName?.trim() || body.to,
+        recipient_email: body.to,
+        cc: body.cc || null,
+        subject: body.subject,
+        sent_by: user.id,
+      });
+      if (recordError) console.error("[send-submission] failed to record send", recordError);
+    }
+
     return NextResponse.json(result);
   } catch (err) {
     console.error("[send-submission]", err);

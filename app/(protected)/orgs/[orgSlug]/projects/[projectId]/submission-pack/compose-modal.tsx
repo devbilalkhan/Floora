@@ -14,6 +14,9 @@ type Props = {
   defaultTo: string;
   defaultSubject: string;
   defaultBody: string;
+  projectId: string;
+  recipientName: string;
+  onSent: () => void;
 };
 
 export function ComposeModal({
@@ -25,6 +28,9 @@ export function ComposeModal({
   defaultTo,
   defaultSubject,
   defaultBody,
+  projectId,
+  recipientName,
+  onSent,
 }: Props) {
   const [to, setTo] = useState(defaultTo);
   const [cc, setCc] = useState("");
@@ -124,6 +130,8 @@ export function ComposeModal({
           pdfBase64,
           filename,
           secondaryAttachment: secondaryAttachmentPayload,
+          projectId,
+          recipientName,
         }),
       });
 
@@ -133,6 +141,7 @@ export function ComposeModal({
       }
 
       toast.success("Submission pack sent successfully.");
+      onSent();
       onClose();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to send email.");

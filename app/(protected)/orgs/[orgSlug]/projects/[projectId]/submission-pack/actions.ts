@@ -39,3 +39,19 @@ export async function savePackDraft(projectId: string, draft: PackDraft) {
     .eq("id", projectId);
   if (error) throw new Error(error.message);
 }
+
+export async function markPackSent(
+  projectId: string,
+  recipientName: string,
+  sentAt: string
+) {
+  const { supabase, user } = await createAuthedClient();
+  const { error } = await supabase.from("submission_pack_sends").insert({
+    project_id: projectId,
+    recipient_name: recipientName,
+    sent_by: user.id,
+    sent_at: sentAt,
+    manual: true,
+  });
+  if (error) throw new Error(error.message);
+}

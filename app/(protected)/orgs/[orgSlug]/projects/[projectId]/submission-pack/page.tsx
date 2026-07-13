@@ -16,6 +16,7 @@ export default async function SubmissionPackPage({
     { data: org },
     { data: quotes },
     { data: takeoffList },
+    { data: rawSends },
     { data: { user } },
   ] = await Promise.all([
     supabase.rpc("user_project_role", { proj_id: params.projectId }),
@@ -40,6 +41,11 @@ export default async function SubmissionPackPage({
       .eq("project_id", params.projectId)
       .order("sort_order")
       .order("created_at"),
+    supabase
+      .from("submission_pack_sends")
+      .select("id, recipient_name, recipient_email, sent_at, manual")
+      .eq("project_id", params.projectId)
+      .order("sent_at", { ascending: false }),
     supabase.auth.getUser(),
   ]);
 
@@ -87,6 +93,7 @@ export default async function SubmissionPackPage({
       today={today}
       draft={project.submission_pack_draft ?? null}
       hasGmail={Boolean(gmailToken)}
+      sends={rawSends ?? []}
     />
   );
 }

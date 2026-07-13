@@ -2,7 +2,8 @@
 
 import React, { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import Link from "next/link";
-import { ChevronRight, Download, X, Loader2, Plus, Trash2, ChevronUp, ChevronDown, FileText, Send } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronRight, Download, X, Loader2, Plus, Trash2, ChevronUp, ChevronDown, FileText, Send, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { pdf, usePDF } from "@react-pdf/renderer";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { toPdfSafeDataUrl } from "@/lib/pdf-utils";
 import { RichEditor } from "@/components/rich-editor";
 import { savePackDraft, type PackDraft } from "./actions";
 import { ComposeModal } from "./compose-modal";
+import { MarkSentDialog } from "./mark-sent-dialog";
 
 const fmtMoney = (n: number) =>
   `$${n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -161,6 +163,14 @@ type QuoteRow = {
 
 type AttachedDoc = { id: string; file: File; title: string };
 
+type SentRecord = {
+  id: string;
+  recipient_name: string;
+  recipient_email: string | null;
+  sent_at: string;
+  manual: boolean;
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const fmt = (n: number) =>
@@ -168,6 +178,25 @@ const fmt = (n: number) =>
 
 function slugify(s: string) {
   return s.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_|_$/g, "");
+}
+
+function formatSentAt(iso: string) {
+  return new Date(iso).toLocaleString("en-AU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatSentDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-AU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 // ── Section input ─────────────────────────────────────────────────────────────
@@ -251,6 +280,7 @@ export function PackBuilder({
   today,
   draft,
   hasGmail,
+  sends,
 }: {
   orgSlug: string;
   project: Project;
@@ -261,7 +291,10 @@ export function PackBuilder({
   today: string;
   draft: PackDraft | null;
   hasGmail: boolean;
+  sends: SentRecord[];
 }) {
+  const router = useRouter();
+
   // Derive sensible defaults from quote data (used only when no draft)
   const firstQuote = quotes[0];
   const defaultClient = firstQuote?.to_name ?? project.head_client ?? "";
@@ -847,6 +880,7 @@ export function PackBuilder({
           )}
         </div>
         <div className="flex items-center gap-2">
+          <MarkSentDialog projectId={project.id} defaultRecipientName={clientName} />
           <Button
             onClick={handleOpenCompose}
             disabled={generating !== null}
@@ -874,6 +908,27 @@ export function PackBuilder({
           </Button>
         </div>
       </div>
+
+      {/* Sent history — record of who this pack has been sent to */}
+      {sends.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {sends.map((s) => (
+            <span
+              key={s.id}
+              title={
+                s.manual
+                  ? `Marked as sent on ${formatSentDate(s.sent_at)}`
+                  : `Sent to ${s.recipient_email} on ${formatSentAt(s.sent_at)}`
+              }
+              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] text-emerald-700 dark:text-emerald-400"
+            >
+              <CheckCircle2 className="h-3 w-3 shrink-0" />
+              {s.manual ? "Marked as sent to" : "Sent to"} {s.recipient_name} ·{" "}
+              {s.manual ? formatSentDate(s.sent_at) : formatSentAt(s.sent_at)}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-[3fr_2fr] gap-6 items-start">
         {/* Left: form cards */}
@@ -1432,9 +1487,12 @@ export function PackBuilder({
       <ComposeModal
         open={composeOpen}
         onClose={() => setComposeOpen(false)}
+        onSent={() => router.refresh()}
         pdfBlob={composePdfBlob}
         filename={`SPM_${slugify(clientName)}_${slugify(projectNameState)}_Submission.pdf`}
         hasGmail={hasGmail}
+        projectId={project.id}
+        recipientName={clientName}
         defaultTo={selectedQuotes[0]?.to_email ?? ""}
         defaultSubject={`SPM Submission — ${packageName} — ${projectNameState}`}
         defaultBody={buildComposeBody({
