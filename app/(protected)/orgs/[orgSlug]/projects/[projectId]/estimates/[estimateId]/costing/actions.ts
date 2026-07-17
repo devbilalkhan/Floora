@@ -546,7 +546,8 @@ export async function syncSectionConsumables(
   estimateId: string,
   scopeCategory: string,
   totalArea: number,
-  gluableArea: number
+  gluableArea: number,
+  force: string[] = []
 ): Promise<EstimateItem[]> {
   await assertEstimateAccess(estimateId);
   const [{ supabase }, { MAT, LAB }] = await Promise.all([createAuthedClient(), getEffectiveRates(estimateId)]);
@@ -567,10 +568,10 @@ export async function syncSectionConsumables(
 
   // Build expected rows
   const expected = new Map<string, { qty: number; sort_order: number; unit: string; mat_rate: number; lab_rate: number; coverage_m2: number | null }>();
-  if (gluableArea > 0) {
+  if (gluableArea > 0 || force.includes("Glue Sheet/Plank")) {
     expected.set("Glue Sheet/Plank",     { qty: ceil(gluableArea / COVERAGE), sort_order: 9000, unit: "drum", mat_rate: MAT.glueSheet,     lab_rate: 0,                 coverage_m2: COVERAGE });
   }
-  if (totalArea > 0) {
+  if (totalArea > 0 || force.includes("Feather Finish 20kg")) {
     expected.set("Feather Finish 20kg",  { qty: ceil(totalArea  / COVERAGE), sort_order: 9001, unit: "bag",  mat_rate: MAT.featherFinish, lab_rate: 0,                 coverage_m2: COVERAGE });
     expected.set("Feather Finish Labour", { qty: totalArea,                   sort_order: 9002, unit: "m2",  mat_rate: 0,                 lab_rate: LAB.featherFinish, coverage_m2: null     });
   }

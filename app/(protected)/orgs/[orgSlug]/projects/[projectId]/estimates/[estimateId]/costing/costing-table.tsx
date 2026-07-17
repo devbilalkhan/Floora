@@ -961,6 +961,26 @@ export function CostingTable({
     [items, estimate.id]
   );
 
+  // Manually restore a section-level consumable (Glue / Feather Finish) after it's been deleted
+  const restoreSectionConsumable = useCallback(
+    async (scopeCategory: string, description: string) => {
+      const primaries = items.filter(i => i.scope_category === scopeCategory && i.type === "primary" && !i.parent_item_id);
+      const totalArea   = primaries.reduce((s, p) => s + (Number(p.qty) || 0), 0);
+      const gluableArea = primaries.filter(p => p.product_type !== "plank_floating").reduce((s, p) => s + (Number(p.qty) || 0), 0);
+      try {
+        const rows = await syncSectionConsumables(estimate.id, scopeCategory, totalArea, gluableArea, [description]);
+        setItems(prev => {
+          const existingIds = new Set(prev.map(i => i.id));
+          const newOnes = rows.filter(r => !existingIds.has(r.id));
+          return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+        });
+      } catch {
+        toast.error("Failed to add item.");
+      }
+    },
+    [items, estimate.id]
+  );
+
   const settingsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const updateSettings = useCallback(
     (patch: Partial<EstimateSettings>) => {
@@ -1383,9 +1403,12 @@ export function CostingTable({
 
                     {/* Section-level consumables (FF + Glue consolidated across all items) */}
                     {(() => {
+                      const isVinylScope = VINYL_SCOPES.has(cat.key);
                       const sectionRows = (grouped.sectionConsumables.get(cat.key) ?? [])
                         .sort((a, b) => a.sort_order - b.sort_order);
-                      if (sectionRows.length === 0) return null;
+                      if (sectionRows.length === 0 && !isVinylScope) return null;
+                      const hasGlue = sectionRows.some(r => r.description === "Glue Sheet/Plank");
+                      const hasFeatherFinish = sectionRows.some(r => r.description === "Feather Finish 20kg");
                       return (
                         <>
                           <tr className="bg-muted/10 border-t border-black/10 dark:border-white/10">
@@ -1398,6 +1421,22 @@ export function CostingTable({
                                 <span className="text-[9px] text-muted-foreground/45 select-none">
                                   — consolidated across all {cat.label.toLowerCase()} items
                                 </span>
+                                {isVinylScope && !hasGlue && (
+                                  <button
+                                    onClick={() => restoreSectionConsumable(cat.key, "Glue Sheet/Plank")}
+                                    className="shrink-0 text-[9px] text-primary/50 hover:text-primary transition-colors"
+                                  >
+                                    +glue
+                                  </button>
+                                )}
+                                {isVinylScope && !hasFeatherFinish && (
+                                  <button
+                                    onClick={() => restoreSectionConsumable(cat.key, "Feather Finish 20kg")}
+                                    className="shrink-0 text-[9px] text-primary/50 hover:text-primary transition-colors"
+                                  >
+                                    +feather finish
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
