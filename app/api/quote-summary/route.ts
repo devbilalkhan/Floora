@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
 
     const { data: rawItems } = await supabase
       .from("estimate_items")
-      .select("scope_category, finish_code, description, qty, unit, type")
+      .select("scope_category, finish_code, description, qty, unit, type, waste_pct, cov_area")
       .eq("estimate_id", estimateId)
       .eq("type", "primary")
       .order("sort_order");
@@ -30,7 +30,8 @@ export async function POST(req: NextRequest) {
         const parts = [item.scope_category.replace(/_/g, " ")];
         if (item.finish_code) parts.push(`(${item.finish_code})`);
         if (item.description) parts.push(`- ${item.description}`);
-        parts.push(`${item.qty} ${item.unit}`);
+        const qtyWithWastage = (item.qty + (item.cov_area ?? 0)) * (1 + item.waste_pct / 100);
+        parts.push(`${qtyWithWastage.toFixed(2)} ${item.unit}`);
         return parts.join(" ");
       })
       .join("\n");
