@@ -1746,7 +1746,16 @@ export function CostingTable({
                 {totalProfitMargin >= 0 ? "+" : ""}${fmt(totalProfitMargin)}
               </td>
             </tr>
-            <SummaryRow label="Subtotal after Mark-up" value={summary.subtotalAfterMarkup} subtotal />
+            <SummaryRow
+              label="Subtotal after Mark-up"
+              value={summary.subtotalAfterMarkup}
+              subtotal
+              badge={
+                <span className={cn("px-1.5 py-0.5 rounded text-[9px] font-semibold border tabular-nums", markupBadgeCls)}>
+                  {fmtPct(settings.net_markup_pct)}%
+                </span>
+              }
+            />
             <SummaryRow label="Additional Costs" value={summary.additionalCosts} />
             {summary.floorPrepBags > 0 && (
               <SummaryRow label={`Floor Prep material & labour (${summary.floorPrepBags} bags)`} value={summary.floorPrepCost} />
@@ -1833,6 +1842,7 @@ function SummaryRow({
   subtotal,
   highlight,
   primary,
+  badge,
 }: {
   label: string;
   value: number;
@@ -1841,6 +1851,7 @@ function SummaryRow({
   subtotal?: boolean;
   highlight?: "warning";
   primary?: boolean;
+  badge?: React.ReactNode;
 }) {
   return (
     <tr className={cn(
@@ -1859,7 +1870,10 @@ function SummaryRow({
           highlight === "warning" && "text-warning"
         )}
       >
-        {label}
+        <span className="inline-flex items-center gap-1.5">
+          {label}
+          {badge}
+        </span>
       </td>
       <td
         className={cn(
