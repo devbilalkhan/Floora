@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { COVERAGE_M2 } from "@/lib/default-rates";
+import { EstimateAuditModal } from "./estimate-audit-modal";
 import {
   updateEstimateItem,
   deleteEstimateItem,
@@ -1203,6 +1204,8 @@ export function CostingTable({
         </label>
 
         <div className="ml-auto flex items-center gap-2">
+          <EstimateAuditModal items={items} catTotals={catTotals} />
+
           {saveStatus === "saving" && (
             <span className="text-[10px] text-muted-foreground animate-pulse">Saving…</span>
           )}
