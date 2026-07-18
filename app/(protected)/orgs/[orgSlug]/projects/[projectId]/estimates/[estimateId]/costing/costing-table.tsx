@@ -403,7 +403,7 @@ function PrimaryRow({
             <button
               onClick={handleAddWeldRod}
               disabled={addingWeldRod}
-              className="shrink-0 inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/45 hover:text-primary/60 px-1 py-0.5 transition-colors disabled:opacity-50 disabled:cursor-wait"
+              className="shrink-0 inline-flex items-center gap-0.5 text-[10px] text-secondary/45 hover:text-secondary/70 px-1 py-0.5 transition-colors disabled:opacity-50 disabled:cursor-wait"
             >
               {addingWeldRod && <RefreshCw className="h-2 w-2 animate-spin" />}
               +weld rod
