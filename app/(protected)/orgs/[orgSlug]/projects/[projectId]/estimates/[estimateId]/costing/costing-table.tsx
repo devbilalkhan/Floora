@@ -1099,7 +1099,8 @@ export function CostingTable({
     return { mat, lab, total: mat + lab };
   }, [activeItems]);
 
-  // Mirrors report-document: primaries + parent-attached children only, no section consumables.
+  // Mirrors report-document: primaries + parent-attached children + section-level consumables
+  // (Glue, Feather Finish) so category cost weighting reflects the full category spend.
   // Excludes toggled-off categories so per-unit badges and grand total stay consistent.
   const reportCatTotals = useMemo(() => {
     const map: Record<string, number> = {};
@@ -1110,6 +1111,11 @@ export function CostingTable({
         const cost = itemMatCost(p) + itemLabCost(p) + ch.reduce((s, c) => s + itemMatCost(c) + itemLabCost(c), 0);
         map[p.scope_category] = (map[p.scope_category] ?? 0) + cost;
       });
+    grouped.sectionConsumables.forEach((scs, scope) => {
+      if (excludedCategories.has(scope)) return;
+      const cost = scs.reduce((s, c) => s + itemMatCost(c) + itemLabCost(c), 0);
+      map[scope] = (map[scope] ?? 0) + cost;
+    });
     return map;
   }, [grouped, excludedCategories]);
 

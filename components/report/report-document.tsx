@@ -205,8 +205,15 @@ export function ReportDocument({
   const primaries = items.filter((i) => i.type === "primary");
   const consumables = items.filter((i) => i.type === "consumable");
   const childrenByParent = new Map<string, EstimateItem[]>();
+  // Section-level consumables (Glue, Feather Finish) — parent_item_id null, shared across a scope's primaries
+  const sectionConsumablesByScope = new Map<string, EstimateItem[]>();
   consumables.forEach((c) => {
-    if (!c.parent_item_id) return;
+    if (!c.parent_item_id) {
+      const arr = sectionConsumablesByScope.get(c.scope_category) ?? [];
+      arr.push(c);
+      sectionConsumablesByScope.set(c.scope_category, arr);
+      return;
+    }
     const arr = childrenByParent.get(c.parent_item_id) ?? [];
     arr.push(c);
     childrenByParent.set(c.parent_item_id, arr);
@@ -216,14 +223,15 @@ export function ReportDocument({
     const rows = primaries
       .filter((p) => p.scope_category === cat.key)
       .sort((a, b) => a.sort_order - b.sort_order);
+    const sectionRows = (sectionConsumablesByScope.get(cat.key) ?? []).sort((a, b) => a.sort_order - b.sort_order);
     const catMat = rows.reduce((s, p) => {
       const ch = childrenByParent.get(p.id) ?? [];
       return s + itemMatCost(p) + ch.reduce((cs, c) => cs + itemMatCost(c), 0);
-    }, 0);
+    }, 0) + sectionRows.reduce((s, c) => s + itemMatCost(c), 0);
     const catLab = rows.reduce((s, p) => {
       const ch = childrenByParent.get(p.id) ?? [];
       return s + itemLabCost(p) + ch.reduce((cs, c) => cs + itemLabCost(c), 0);
-    }, 0);
+    }, 0) + sectionRows.reduce((s, c) => s + itemLabCost(c), 0);
     const m2Rows = rows.filter((p) => p.unit === "m2");
     const netSqm = m2Rows.reduce((s, p) => s + p.qty + (p.cov_area ?? 0), 0);
     const grossSqm = m2Rows.reduce((s, p) => s + itemMatQty(p), 0);
@@ -234,7 +242,7 @@ export function ReportDocument({
     const primaryRows = rows.filter((p) => p.unit === primaryUnit);
     const netQty = primaryRows.reduce((s, p) => s + p.qty + (p.cov_area ?? 0), 0);
     const grossQty = primaryRows.reduce((s, p) => s + itemMatQty(p), 0);
-    return { cat, rows, catMat, catLab, catTotal: catMat + catLab, netSqm, grossSqm, primaryUnit, netQty, grossQty };
+    return { cat, rows, sectionRows, catMat, catLab, catTotal: catMat + catLab, netSqm, grossSqm, primaryUnit, netQty, grossQty };
   }).filter((g) => g.rows.length > 0);
 
   const itemsGrandTotal = categoryStats.reduce((s, c) => s + c.catTotal, 0);
@@ -625,7 +633,7 @@ export function ReportDocument({
       {/* ── Detailed line items ───────────────────────────────────────── */}
       {mode === "detailed" && categoryStats.length > 0 && (
         <div className="space-y-3">
-          {categoryStats.map(({ cat, rows, catMat, catLab, catTotal }) => (
+          {categoryStats.map(({ cat, rows, sectionRows, catMat, catLab, catTotal }) => (
             <div
               key={cat.key}
               className="bg-card/65 backdrop-blur-xl border border-border rounded-sm overflow-hidden print:bg-white print:border-gray-200 print:rounded-none print:break-inside-avoid"
@@ -740,6 +748,32 @@ export function ReportDocument({
                       </React.Fragment>
                     );
                   })}
+
+                  {sectionRows.length > 0 && (
+                    <>
+                      <tr className="border-b border-border print:border-gray-100 bg-muted/10 print:bg-gray-50">
+                        <td colSpan={8} className="px-3 py-1 text-[9px] font-semibold text-muted-foreground print:text-gray-500 uppercase tracking-widest">
+                          Section Prep — consolidated across all {cat.label.toLowerCase()} items
+                        </td>
+                      </tr>
+                      {sectionRows.map((sc) => {
+                        const scMat = itemMatCost(sc);
+                        const scLab = itemLabCost(sc);
+                        return (
+                          <tr key={sc.id} className="border-b border-border print:border-gray-100 hover:bg-muted/10 print:hover:bg-transparent">
+                            <Td>—</Td>
+                            <Td>—</Td>
+                            <Td>{sc.description ?? "—"}</Td>
+                            <Td right>{sc.qty > 0 ? `${sc.qty} ${uLabel(sc.unit)}` : "—"}</Td>
+                            <Td>{uLabel(sc.unit)}</Td>
+                            <Td right>{scMat > 0 ? `$${fmt(scMat)}` : "—"}</Td>
+                            <Td right>{scLab > 0 ? `$${fmt(scLab)}` : "—"}</Td>
+                            <Td right>{itemTotal(sc) > 0 ? `$${fmt(itemTotal(sc))}` : "—"}</Td>
+                          </tr>
+                        );
+                      })}
+                    </>
+                  )}
 
                   <tr className="bg-muted/25 print:bg-gray-100 border-t-2 border-border print:border-gray-300">
                     <td colSpan={5} className="px-3 py-2 text-right text-[10px] font-bold text-muted-foreground print:text-gray-500 uppercase tracking-wide">
