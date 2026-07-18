@@ -27,7 +27,7 @@ function CheckRow({ c }: { c: AuditCheck }) {
         ) : (
           <XCircle className="h-3 w-3 text-destructive shrink-0" />
         )}
-        <span className="text-xs font-medium text-foreground/85">
+        <span className="text-[11px] font-medium text-foreground/85">
           {c.itemLabel} — {c.check}
         </span>
       </div>
@@ -65,7 +65,7 @@ function SectionGroup({
         <span className="text-[10px] font-mono text-muted-foreground/70 ml-auto">{total}</span>
         <ChevronDown className="h-3 w-3 text-muted-foreground/50 transition-transform group-open:rotate-180 shrink-0" />
       </summary>
-      <div className="divide-y divide-border/50">
+      <div className="divide-y divide-border">
         {checks.map((c, idx) => (
           <CheckRow key={idx} c={c} />
         ))}

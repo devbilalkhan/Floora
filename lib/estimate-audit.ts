@@ -58,6 +58,12 @@ export type EstimateAuditReport = {
 function close(a: number, b: number): boolean {
   return Math.abs(a - b) < CENT;
 }
+// A passing check whose value is $0/0 tells the user nothing (e.g. a labour
+// cost check on a material-only consumable) — skip it to cut noise. A failing
+// check is never skipped, no matter how small the numbers are.
+function isTrivialZero(pass: boolean, value: number): boolean {
+  return pass && close(value, 0);
+}
 function money(n: number): string {
   return `$${n.toFixed(2)}`;
 }
@@ -148,38 +154,47 @@ function auditScope(items: EstimateItem[], scope: string): ScopeAuditReport {
 
     const mat = materialCostWorking(it);
     const offMat = itemMatCost(it);
-    checks.push({
-      itemLabel: label(it),
-      check: "Material cost",
-      working: mat.working,
-      expected: money(mat.value),
-      actual: money(offMat),
-      pass: close(mat.value, offMat),
-    });
+    const matPass = close(mat.value, offMat);
+    if (!isTrivialZero(matPass, mat.value)) {
+      checks.push({
+        itemLabel: label(it),
+        check: "Material cost",
+        working: mat.working,
+        expected: money(mat.value),
+        actual: money(offMat),
+        pass: matPass,
+      });
+    }
 
     const lab = labourCostWorking(it);
     const offLab = itemLabCost(it);
-    checks.push({
-      itemLabel: label(it),
-      check: "Labour cost",
-      working: lab.working,
-      expected: money(lab.value),
-      actual: money(offLab),
-      pass: close(lab.value, offLab),
-    });
+    const labPass = close(lab.value, offLab);
+    if (!isTrivialZero(labPass, lab.value)) {
+      checks.push({
+        itemLabel: label(it),
+        check: "Labour cost",
+        working: lab.working,
+        expected: money(lab.value),
+        actual: money(offLab),
+        pass: labPass,
+      });
+    }
 
     if (it.type === "consumable" && it.is_auto && it.parent_item_id) {
       const parent = byId.get(it.parent_item_id);
       const qty = parent ? childQtyWorking(it, parent) : null;
       if (qty) {
-        checks.push({
-          itemLabel: `${label(parent!)} — ${it.description}`,
-          check: "Quantity formula",
-          working: qty.working,
-          expected: `${qty.value} ${it.unit}`,
-          actual: `${it.qty} ${it.unit}`,
-          pass: Number(it.qty) === qty.value,
-        });
+        const qtyPass = Number(it.qty) === qty.value;
+        if (!isTrivialZero(qtyPass, qty.value)) {
+          checks.push({
+            itemLabel: `${label(parent!)} — ${it.description}`,
+            check: "Quantity formula",
+            working: qty.working,
+            expected: `${qty.value} ${it.unit}`,
+            actual: `${it.qty} ${it.unit}`,
+            pass: qtyPass,
+          });
+        }
       }
     }
   }
@@ -193,37 +208,46 @@ function auditScope(items: EstimateItem[], scope: string): ScopeAuditReport {
     const glueRow = sectionRows.find((r) => r.description === "Glue Sheet/Plank");
     if (glueRow) {
       const value = Math.ceil(gluableArea / COVERAGE_M2);
-      checks.push({
-        itemLabel: "Section — Glue Sheet/Plank",
-        check: "Quantity formula",
-        working: `ceil(${num(gluableArea)} gluable m² / ${COVERAGE_M2}) = ${value} drum`,
-        expected: `${value} drum`,
-        actual: `${glueRow.qty} drum`,
-        pass: Number(glueRow.qty) === value,
-      });
+      const pass = Number(glueRow.qty) === value;
+      if (!isTrivialZero(pass, value)) {
+        checks.push({
+          itemLabel: "Section — Glue Sheet/Plank",
+          check: "Quantity formula",
+          working: `ceil(${num(gluableArea)} gluable m² / ${COVERAGE_M2}) = ${value} drum`,
+          expected: `${value} drum`,
+          actual: `${glueRow.qty} drum`,
+          pass,
+        });
+      }
     }
     const ffMatRow = sectionRows.find((r) => r.description === "Feather Finish 20kg");
     if (ffMatRow) {
       const value = Math.ceil(totalArea / COVERAGE_M2);
-      checks.push({
-        itemLabel: "Section — Feather Finish 20kg",
-        check: "Quantity formula",
-        working: `ceil(${num(totalArea)} total m² / ${COVERAGE_M2}) = ${value} bag`,
-        expected: `${value} bag`,
-        actual: `${ffMatRow.qty} bag`,
-        pass: Number(ffMatRow.qty) === value,
-      });
+      const pass = Number(ffMatRow.qty) === value;
+      if (!isTrivialZero(pass, value)) {
+        checks.push({
+          itemLabel: "Section — Feather Finish 20kg",
+          check: "Quantity formula",
+          working: `ceil(${num(totalArea)} total m² / ${COVERAGE_M2}) = ${value} bag`,
+          expected: `${value} bag`,
+          actual: `${ffMatRow.qty} bag`,
+          pass,
+        });
+      }
     }
     const ffLabRow = sectionRows.find((r) => r.description === "Feather Finish Labour");
     if (ffLabRow) {
-      checks.push({
-        itemLabel: "Section — Feather Finish Labour",
-        check: "Quantity formula",
-        working: `= ${num(totalArea)} total m²`,
-        expected: `${totalArea} m²`,
-        actual: `${ffLabRow.qty} m²`,
-        pass: Number(ffLabRow.qty) === totalArea,
-      });
+      const pass = Number(ffLabRow.qty) === totalArea;
+      if (!isTrivialZero(pass, totalArea)) {
+        checks.push({
+          itemLabel: "Section — Feather Finish Labour",
+          check: "Quantity formula",
+          working: `= ${num(totalArea)} total m²`,
+          expected: `${totalArea} m²`,
+          actual: `${ffLabRow.qty} m²`,
+          pass,
+        });
+      }
     }
   }
 
@@ -279,7 +303,9 @@ function auditGrandTotal(
 
   const checks: AuditCheck[] = [];
   const push = (check: string, working: string, ind: number, off: number) => {
-    checks.push({ itemLabel: "Estimate", check, working, expected: money(ind), actual: money(off), pass: close(ind, off) });
+    const pass = close(ind, off);
+    if (isTrivialZero(pass, ind)) return;
+    checks.push({ itemLabel: "Estimate", check, working, expected: money(ind), actual: money(off), pass });
   };
 
   push(
