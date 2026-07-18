@@ -715,7 +715,7 @@ function AddSectionRow({
     return (
       <tr className="border-t border-border">
         <td colSpan={13} className="px-3 py-2">
-          <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1.5 text-[11px] text-primary">
             <RefreshCw className="h-2.5 w-2.5 animate-spin" />
             Adding {label}…
           </span>
@@ -1279,6 +1279,13 @@ export function CostingTable({
               {items.length === 0 ? "Import" : "Re-import"}
             </button>
           )}
+
+          <button
+            onClick={() => window.location.reload()}
+            className="text-[10px] text-primary/50 hover:text-primary transition-colors underline underline-offset-2"
+          >
+            reset page
+          </button>
         </div>
       </div>
 
@@ -1680,6 +1687,9 @@ export function CostingTable({
             {effectiveSettings.grind_area > 0 && (
               <SummaryRow label={`Grinding labour (${fmt(settings.grind_area)} m²)`} value={summary.grindCost} />
             )}
+            {(summary.floorPrepBags > 0 || effectiveSettings.grind_area > 0) && (
+              <SummaryRow label="Total Cost" value={totalCostsInclPrepGrind} subtotal />
+            )}
             <tr className={cn(
               "border-b border-border",
               markupWarning ? "bg-warning/[0.07]" : "bg-secondary/[0.07]"
@@ -1765,16 +1775,6 @@ export function CostingTable({
                 {totalProfitMargin >= 0 ? "+" : ""}${fmt(totalProfitMargin)}
               </td>
             </tr>
-            <SummaryRow
-              label="Subtotal after Mark-up"
-              value={summary.subtotalAfterMarkup}
-              subtotal
-              badge={
-                <span className={cn("px-1.5 py-0.5 rounded text-[9px] font-semibold border tabular-nums", markupBadgeCls)}>
-                  {fmtPct(settings.net_markup_pct)}%
-                </span>
-              }
-            />
             <SummaryRow label="Additional Costs" value={summary.additionalCosts} />
             <SummaryRow label="Total ex-GST" value={summary.totalExGst} primary />
             <SummaryRow label="GST (10%)" value={summary.gst} muted />
