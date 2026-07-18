@@ -22,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { COVERAGE_M2 } from "@/lib/default-rates";
@@ -37,6 +38,7 @@ import {
   addCovingToItem,
   removeCovingFromItem,
   restoreAutoConsumables,
+  resetEstimate,
 } from "./actions";
 
 // Coving children are excluded from floor-area-based qty recalculation
@@ -816,6 +818,8 @@ export function CostingTable({
   const [importing, setImporting] = useState(false);
   const [addingCategory, setAddingCategory] = useState<string | null>(null);
   const [restoringConsumable, setRestoringConsumable] = useState<string | null>(null);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1057,6 +1061,17 @@ export function CostingTable({
     }
   };
 
+  const handleResetEstimate = async () => {
+    setResetting(true);
+    try {
+      await resetEstimate(estimate.id);
+      window.location.reload();
+    } catch {
+      toast.error("Failed to reset estimate.");
+      setResetting(false);
+    }
+  };
+
   // Distinct levels present in primary items, sorted by LEVELS order
   const levels = useMemo(() => {
     const set = new Set(items.filter(i => !i.parent_item_id && i.level).map(i => i.level as string));
@@ -1281,13 +1296,44 @@ export function CostingTable({
           )}
 
           <button
-            onClick={() => window.location.reload()}
-            className="text-[10px] text-primary/50 hover:text-primary transition-colors underline underline-offset-2"
+            onClick={() => setResetDialogOpen(true)}
+            className="text-[10px] text-destructive/60 hover:text-destructive transition-colors underline underline-offset-2"
           >
-            reset page
+            reset estimate
           </button>
         </div>
       </div>
+
+      {/* Reset estimate confirmation */}
+      <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm text-destructive">Reset Estimate</DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="text-xs text-muted-foreground">
+            This permanently deletes every line item ({items.length}), wet area ({wetAreas.length}), and file
+            attachment on this estimate, and resets accounting/admin rates, mark-up, freight, floor prep, and
+            grinding back to defaults. This cannot be undone.
+          </DialogDescription>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <button
+              onClick={() => setResetDialogOpen(false)}
+              disabled={resetting}
+              className="flex-1 text-xs border border-border rounded px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleResetEstimate}
+              disabled={resetting}
+              className="flex-1 text-xs bg-destructive text-destructive-foreground rounded px-3 py-2 font-medium hover:bg-destructive/90 transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+            >
+              {resetting && <RefreshCw className="h-3 w-3 animate-spin" />}
+              Reset Estimate
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Line items table ───────────────────────────────────────────────── */}
       <div className="border border-border rounded-sm overflow-hidden bg-card/65 backdrop-blur-xl">

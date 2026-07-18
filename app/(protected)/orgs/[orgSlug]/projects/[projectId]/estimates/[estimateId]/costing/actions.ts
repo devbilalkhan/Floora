@@ -764,3 +764,48 @@ export async function deleteEstimateAttachment(attachmentId: string, estimateId:
   await supabase.storage.from(ATTACHMENT_BUCKET).remove([row.storage_path]);
   await supabase.from("estimate_attachments").delete().eq("id", attachmentId);
 }
+
+// ── Full reset — wipe an estimate's contents back to a blank slate ────────────
+// Deletes every line item, wet area, and attachment, and resets rates/mark-up/
+// freight/floor-prep/grind settings to their DB defaults. Irreversible — the
+// caller is responsible for confirming with the user before invoking this.
+export async function resetEstimate(estimateId: string): Promise<void> {
+  await assertEstimateAccess(estimateId);
+  const { supabase } = await createAuthedClient();
+
+  const { data: attachments } = await supabase
+    .from("estimate_attachments")
+    .select("storage_path")
+    .eq("estimate_id", estimateId);
+  if (attachments && attachments.length > 0) {
+    await supabase.storage.from(ATTACHMENT_BUCKET).remove(attachments.map((a) => a.storage_path));
+  }
+
+  await Promise.all([
+    supabase.from("estimate_items").delete().eq("estimate_id", estimateId),
+    supabase.from("estimate_wet_areas").delete().eq("estimate_id", estimateId),
+    supabase.from("estimate_attachments").delete().eq("estimate_id", estimateId),
+  ]);
+
+  await supabase
+    .from("estimates")
+    .update({
+      source_takeoff_id: null,
+      accounting_rate: 0.02,
+      admin_rate: 0.05,
+      net_markup_pct: 0.23,
+      freight: 0,
+      accommodation: 0,
+      travel_allowance: 0,
+      bailing_fee: 0,
+      floor_prep_area: 0,
+      floor_prep_depth_mm: 3,
+      floor_prep_charge_per_bag: 0,
+      floor_prep_mat_per_bag: 33,
+      floor_prep_lab_per_bag: 40,
+      grind_area: 0,
+      grind_labor_rate: 0,
+      grind_charge_rate: 0,
+    })
+    .eq("id", estimateId);
+}
