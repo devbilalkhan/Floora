@@ -126,7 +126,7 @@ export function EstimateAuditModal({
                     Overhead / Mark-up / GST chain
                   </span>
                   <span className="text-[10px] font-mono text-muted-foreground/70 ml-auto">
-                    ${report.grandTotal.independentGrandTotal.toFixed(2)} incl. GST
+                    ${report.grandTotal.independentTotalExGst.toFixed(2)} ex-GST · ${report.grandTotal.independentGrandTotal.toFixed(2)} incl. GST
                   </span>
                 </div>
                 {report.grandTotal.mismatches.length > 0 && (
