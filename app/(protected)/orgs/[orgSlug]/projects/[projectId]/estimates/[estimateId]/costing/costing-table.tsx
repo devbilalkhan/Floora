@@ -1170,6 +1170,7 @@ export function CostingTable({
 
   const grossMarginPct = summary.grossMarginPct;
   const markupWarning = grossMarginPct < 0.18;
+  const totalProfitMargin = summary.markupAmount + summary.floorPrepProfit + summary.grindProfit;
 
   const markupBadgeCls = settings.net_markup_pct >= 0.333
     ? "bg-success/15 text-success border-success/30"
@@ -1734,6 +1735,17 @@ export function CostingTable({
                 </td>
               </tr>
             )}
+            <tr className="bg-muted/15 border-b border-border">
+              <td className="pl-9 pr-4 py-1.5 text-xs font-semibold text-muted-foreground">
+                Total Profit / Margin
+              </td>
+              <td className={cn(
+                "px-4 py-1.5 text-xs text-right tabular-nums font-semibold",
+                totalProfitMargin >= 0 ? "text-success" : "text-destructive"
+              )}>
+                {totalProfitMargin >= 0 ? "+" : ""}${fmt(totalProfitMargin)}
+              </td>
+            </tr>
             <SummaryRow label="Subtotal after Mark-up" value={summary.subtotalAfterMarkup} subtotal />
             <SummaryRow label="Additional Costs" value={summary.additionalCosts} />
             {summary.floorPrepBags > 0 && (
