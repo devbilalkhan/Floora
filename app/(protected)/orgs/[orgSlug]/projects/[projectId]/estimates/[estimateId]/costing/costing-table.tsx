@@ -1384,7 +1384,8 @@ export function CostingTable({
                       const itemChildren = (grouped.children.get(item.id) ?? []).sort((a, b) => a.sort_order - b.sort_order);
                       const groupMat = itemMatCost(item) + itemChildren.reduce((s, c) => s + itemMatCost(c), 0);
                       const groupLab = itemLabCost(item) + itemChildren.reduce((s, c) => s + itemLabCost(c), 0);
-                      const itemLabel = item.finish_code || item.description || `#${idx + 1}`;
+                      const rawItemLabel = item.finish_code || item.description || `#${idx + 1}`;
+                      const itemLabel = rawItemLabel.length > 40 ? `${rawItemLabel.slice(0, 40).trimEnd()}…` : rawItemLabel;
                       const hasWeldRod = itemChildren.some((c) => c.description === "Weld Rod");
                       return (
                         <React.Fragment key={item.id}>
