@@ -1204,7 +1204,12 @@ export function CostingTable({
         </label>
 
         <div className="ml-auto flex items-center gap-2">
-          <EstimateAuditModal items={items} catTotals={catTotals} />
+          <EstimateAuditModal
+            items={activeItems}
+            settings={effectiveSettings}
+            wetAreas={includeWetAreas ? wetAreas : []}
+            summary={summary}
+          />
 
           {saveStatus === "saving" && (
             <span className="text-[10px] text-muted-foreground animate-pulse">Saving…</span>
