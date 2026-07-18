@@ -1171,6 +1171,9 @@ export function CostingTable({
   const grossMarginPct = summary.grossMarginPct;
   const markupWarning = grossMarginPct < 0.18;
   const totalProfitMargin = summary.markupAmount + summary.floorPrepProfit + summary.grindProfit;
+  // Total costs = base items + overhead + floor prep + grind (the full cost base, pass-through costs included)
+  const totalCostsInclPrepGrind = summary.subtotalAfterOverhead + summary.floorPrepCost + summary.grindCost;
+  const totalProfitMarginPct = totalCostsInclPrepGrind > 0 ? totalProfitMargin / totalCostsInclPrepGrind : 0;
 
   const markupBadgeCls = settings.net_markup_pct >= 0.333
     ? "bg-success/15 text-success border-success/30"
@@ -1671,6 +1674,12 @@ export function CostingTable({
               </td>
             </tr>
             <SummaryRow label="Subtotal after Overheads" value={summary.subtotalAfterOverhead} subtotal />
+            {summary.floorPrepBags > 0 && (
+              <SummaryRow label={`Floor Prep material & labour (${summary.floorPrepBags} bags)`} value={summary.floorPrepCost} />
+            )}
+            {effectiveSettings.grind_area > 0 && (
+              <SummaryRow label={`Grinding labour (${fmt(settings.grind_area)} m²)`} value={summary.grindCost} />
+            )}
             <tr className={cn(
               "border-b border-border",
               markupWarning ? "bg-warning/[0.07]" : "bg-secondary/[0.07]"
@@ -1737,7 +1746,17 @@ export function CostingTable({
             )}
             <tr className="bg-muted/15 border-b border-border">
               <td className="pl-9 pr-4 py-1.5 text-xs font-semibold text-muted-foreground">
-                Total Profit / Margin
+                <span className="inline-flex items-center gap-1.5">
+                  Total Profit / Margin
+                  <span className={cn(
+                    "px-1.5 py-0.5 rounded text-[9px] font-semibold border tabular-nums",
+                    totalProfitMargin >= 0
+                      ? "bg-success/10 text-success border-success/30"
+                      : "bg-destructive/10 text-destructive border-destructive/30"
+                  )}>
+                    {fmtPct(totalProfitMarginPct)}%
+                  </span>
+                </span>
               </td>
               <td className={cn(
                 "px-4 py-1.5 text-xs text-right tabular-nums font-semibold",
@@ -1757,12 +1776,6 @@ export function CostingTable({
               }
             />
             <SummaryRow label="Additional Costs" value={summary.additionalCosts} />
-            {summary.floorPrepBags > 0 && (
-              <SummaryRow label={`Floor Prep material & labour (${summary.floorPrepBags} bags)`} value={summary.floorPrepCost} />
-            )}
-            {effectiveSettings.grind_area > 0 && (
-              <SummaryRow label={`Grinding labour (${fmt(settings.grind_area)} m²)`} value={summary.grindCost} />
-            )}
             <SummaryRow label="Total ex-GST" value={summary.totalExGst} primary />
             <SummaryRow label="GST (10%)" value={summary.gst} muted />
           </tbody>
