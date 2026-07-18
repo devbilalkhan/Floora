@@ -1204,19 +1204,19 @@ export function CostingTable({
         </label>
 
         <div className="ml-auto flex items-center gap-2">
-          <EstimateAuditModal
-            items={activeItems}
-            settings={effectiveSettings}
-            wetAreas={includeWetAreas ? wetAreas : []}
-            summary={summary}
-          />
-
           {saveStatus === "saving" && (
             <span className="text-[10px] text-muted-foreground animate-pulse">Saving…</span>
           )}
           {saveStatus === "saved" && (
             <span className="text-[10px] text-success">Saved</span>
           )}
+
+          <EstimateAuditModal
+            items={activeItems}
+            settings={effectiveSettings}
+            wetAreas={includeWetAreas ? wetAreas : []}
+            summary={summary}
+          />
 
           {/* Import / re-import from takeoff */}
           {takeoffs.length > 0 && (
