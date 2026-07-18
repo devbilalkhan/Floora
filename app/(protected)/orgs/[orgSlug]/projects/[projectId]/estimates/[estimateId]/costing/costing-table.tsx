@@ -1297,9 +1297,9 @@ export function CostingTable({
 
           <button
             onClick={() => setResetDialogOpen(true)}
-            className="text-[10px] text-destructive/60 hover:text-destructive transition-colors underline underline-offset-2"
+            className="text-[10px] text-destructive/60 hover:text-destructive transition-colors hover:underline underline-offset-2"
           >
-            reset estimate
+            reset
           </button>
         </div>
       </div>
