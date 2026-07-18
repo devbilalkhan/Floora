@@ -155,6 +155,9 @@ function PrimaryRow({
   // Manufacturer badge edit state
   const [editingBrand, setEditingBrand] = useState(false);
 
+  const [addingWeldRod, setAddingWeldRod] = useState(false);
+  const [applyingCoving, setApplyingCoving] = useState(false);
+
   useEffect(() => {
     setLocal((prev) => ({ ...prev, ...item }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -204,21 +207,31 @@ function PrimaryRow({
   };
 
   const handleAddWeldRod = async () => {
-    const newItems = await restoreAutoConsumables(item.id, estimateId, local.scope_category, local.qty);
-    if (newItems.length > 0) onConsumableAdded(newItems);
+    setAddingWeldRod(true);
+    try {
+      const newItems = await restoreAutoConsumables(item.id, estimateId, local.scope_category, local.qty);
+      if (newItems.length > 0) onConsumableAdded(newItems);
+    } finally {
+      setAddingWeldRod(false);
+    }
   };
 
   const handleApplyCoving = async () => {
     if (!covFormLm) { setCovingOpen(false); return; }
-    const children = await addCovingToItem(
-      item.id, estimateId, local.scope_category,
-      covFormLm, covFormHeight,
-      /* startSortOrder rough estimate */ local.sort_order + 100
-    );
-    const covArea = covFormLm * (covFormHeight / 1000);
-    setLocal(prev => ({ ...prev, cov_lm: covFormLm, cov_area: covArea, cov_height_mm: covFormHeight }));
-    onCovingAdded(item.id, children, covFormLm, covArea, covFormHeight);
-    setCovingOpen(false);
+    setApplyingCoving(true);
+    try {
+      const children = await addCovingToItem(
+        item.id, estimateId, local.scope_category,
+        covFormLm, covFormHeight,
+        /* startSortOrder rough estimate */ local.sort_order + 100
+      );
+      const covArea = covFormLm * (covFormHeight / 1000);
+      setLocal(prev => ({ ...prev, cov_lm: covFormLm, cov_area: covArea, cov_height_mm: covFormHeight }));
+      onCovingAdded(item.id, children, covFormLm, covArea, covFormHeight);
+      setCovingOpen(false);
+    } finally {
+      setApplyingCoving(false);
+    }
   };
 
   const handleRemoveCoving = async () => {
@@ -294,9 +307,10 @@ function PrimaryRow({
             </button>
             <button
               onClick={handleApplyCoving}
-              disabled={!covFormLm}
-              className="flex-1 text-xs bg-primary text-primary-foreground rounded px-3 py-2 font-medium hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={!covFormLm || applyingCoving}
+              className="flex-1 text-xs bg-primary text-primary-foreground rounded px-3 py-2 font-medium hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
             >
+              {applyingCoving && <RefreshCw className="h-3 w-3 animate-spin" />}
               Apply
             </button>
           </DialogFooter>
@@ -384,7 +398,12 @@ function PrimaryRow({
 
           {/* Weld rod restore — sheet only, shown when missing */}
           {isVinyl && !isPlankType && !hasWeldRod && (
-            <button onClick={handleAddWeldRod} className="shrink-0 text-[10px] text-muted-foreground/45 hover:text-primary/60 px-1 py-0.5 transition-colors">
+            <button
+              onClick={handleAddWeldRod}
+              disabled={addingWeldRod}
+              className="shrink-0 inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/45 hover:text-primary/60 px-1 py-0.5 transition-colors disabled:opacity-50 disabled:cursor-wait"
+            >
+              {addingWeldRod && <RefreshCw className="h-2 w-2 animate-spin" />}
               +weld rod
             </button>
           )}
@@ -682,12 +701,28 @@ function ConsumableRow({
 function AddSectionRow({
   usedCategories,
   onAdd,
+  addingCategory,
 }: {
   usedCategories: Set<string>;
   onAdd: (key: string) => void;
+  addingCategory: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const available = CATEGORIES.filter((c) => !usedCategories.has(c.key));
+
+  if (addingCategory && !usedCategories.has(addingCategory)) {
+    const label = CATEGORIES.find((c) => c.key === addingCategory)?.label ?? addingCategory;
+    return (
+      <tr className="border-t border-border">
+        <td colSpan={13} className="px-3 py-2">
+          <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+            Adding {label}…
+          </span>
+        </td>
+      </tr>
+    );
+  }
 
   if (available.length === 0) return null;
 
@@ -779,6 +814,8 @@ export function CostingTable({
     grind_charge_rate: estimate.grind_charge_rate ?? 0,
   });
   const [importing, setImporting] = useState(false);
+  const [addingCategory, setAddingCategory] = useState<string | null>(null);
+  const [restoringConsumable, setRestoringConsumable] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -936,6 +973,7 @@ export function CostingTable({
 
   const addRow = useCallback(
     async (scopeCategory: string) => {
+      setAddingCategory(scopeCategory);
       const inScope = items.filter((i) => i.scope_category === scopeCategory);
       const nextOrder = inScope.length ? Math.max(...inScope.map((i) => i.sort_order)) + 1 : 0;
       try {
@@ -957,6 +995,8 @@ export function CostingTable({
         }
       } catch {
         toast.error("Failed to add row.");
+      } finally {
+        setAddingCategory(null);
       }
     },
     [items, estimate.id]
@@ -965,6 +1005,7 @@ export function CostingTable({
   // Manually restore a section-level consumable (Glue / Feather Finish) after it's been deleted
   const restoreSectionConsumable = useCallback(
     async (scopeCategory: string, description: string) => {
+      setRestoringConsumable(`${scopeCategory}:${description}`);
       const primaries = items.filter(i => i.scope_category === scopeCategory && i.type === "primary" && !i.parent_item_id);
       const totalArea   = primaries.reduce((s, p) => s + (Number(p.qty) || 0), 0);
       const gluableArea = primaries.filter(p => p.product_type !== "plank_floating").reduce((s, p) => s + (Number(p.qty) || 0), 0);
@@ -977,6 +1018,8 @@ export function CostingTable({
         });
       } catch {
         toast.error("Failed to add item.");
+      } finally {
+        setRestoringConsumable(null);
       }
     },
     [items, estimate.id]
@@ -1439,16 +1482,20 @@ export function CostingTable({
                                 {isVinylScope && !hasGlue && (
                                   <button
                                     onClick={() => restoreSectionConsumable(cat.key, "Glue Sheet/Plank")}
-                                    className="shrink-0 text-[9px] text-primary/50 hover:text-primary transition-colors"
+                                    disabled={restoringConsumable === `${cat.key}:Glue Sheet/Plank`}
+                                    className="shrink-0 inline-flex items-center gap-0.5 text-[9px] text-primary/50 hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-wait"
                                   >
+                                    {restoringConsumable === `${cat.key}:Glue Sheet/Plank` && <RefreshCw className="h-2 w-2 animate-spin" />}
                                     +glue
                                   </button>
                                 )}
                                 {isVinylScope && !hasFeatherFinish && (
                                   <button
                                     onClick={() => restoreSectionConsumable(cat.key, "Feather Finish 20kg")}
-                                    className="shrink-0 text-[9px] text-primary/50 hover:text-primary transition-colors"
+                                    disabled={restoringConsumable === `${cat.key}:Feather Finish 20kg`}
+                                    className="shrink-0 inline-flex items-center gap-0.5 text-[9px] text-primary/50 hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-wait"
                                   >
+                                    {restoringConsumable === `${cat.key}:Feather Finish 20kg` && <RefreshCw className="h-2 w-2 animate-spin" />}
                                     +feather finish
                                   </button>
                                 )}
@@ -1471,10 +1518,15 @@ export function CostingTable({
                       <td colSpan={13} className="px-3 py-1">
                         <button
                           onClick={() => addRow(cat.key)}
-                          className="flex items-center gap-1 text-[11px] text-primary/50 hover:text-primary transition-colors py-0.5"
+                          disabled={addingCategory === cat.key}
+                          className="flex items-center gap-1 text-[11px] text-primary/50 hover:text-primary transition-colors py-0.5 disabled:opacity-50 disabled:cursor-wait"
                         >
-                          <Plus className="h-2.5 w-2.5" />
-                          Add row
+                          {addingCategory === cat.key ? (
+                            <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                          ) : (
+                            <Plus className="h-2.5 w-2.5" />
+                          )}
+                          {addingCategory === cat.key ? "Adding…" : "Add row"}
                         </button>
                       </td>
                     </tr>
@@ -1486,6 +1538,7 @@ export function CostingTable({
               <AddSectionRow
                 usedCategories={new Set(grouped.primaries.map((i) => i.scope_category))}
                 onAdd={addRow}
+                addingCategory={addingCategory}
               />
 
 
