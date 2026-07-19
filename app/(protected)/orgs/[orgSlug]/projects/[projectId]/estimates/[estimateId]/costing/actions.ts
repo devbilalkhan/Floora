@@ -375,12 +375,14 @@ export async function addEstimateItem(
   const unit =
     scopeCategory === "coving_skirting" || scopeCategory === "transition" || scopeCategory === "stairs"
       ? "ea"
+    : scopeCategory === "carpet" && productType === "broadloom"
+      ? "blm"
       : "m2";
 
   const labRate =
     scopeCategory === "vinyl"         ? LAB.vinyl
     : scopeCategory === "wall_vinyl"  ? LAB.wallVinyl
-    : scopeCategory === "carpet"      ? LAB.carpet
+    : scopeCategory === "carpet"      ? (unit === "blm" ? LAB.carpetBlm : LAB.carpet)
     : scopeCategory === "stairs"      ? LAB.stairs
     : scopeCategory === "transition"  ? LAB.transition
     : scopeCategory === "coving_skirting" ? LAB.vinylSkirting
@@ -507,7 +509,8 @@ export async function restoreAutoConsumables(
   primaryId: string,
   estimateId: string,
   scopeCategory: string,
-  parentQty: number
+  parentQty: number,
+  only?: string
 ): Promise<EstimateItem[]> {
   await assertEstimateAccess(estimateId);
   const [{ supabase }, rates] = await Promise.all([createAuthedClient(), getEffectiveRates(estimateId)]);
@@ -522,7 +525,7 @@ export async function restoreAutoConsumables(
   const maxOrder = (existing ?? []).reduce((m, c) => Math.max(m, c.sort_order as number), 0);
 
   const allExpected = buildAutoChildren(estimateId, primaryId, scopeCategory, maxOrder + 1, null, rates);
-  const missing = allExpected.filter((c) => !existingDescs.has(c.description ?? ""));
+  const missing = allExpected.filter((c) => !existingDescs.has(c.description ?? "") && (!only || c.description === only));
   if (missing.length === 0) return [];
 
   // Apply correct qty based on parent qty (mirrors calcAutoChildQty logic)
@@ -552,20 +555,6 @@ export async function syncSectionConsumables(
   await assertEstimateAccess(estimateId);
   const [{ supabase }, { MAT, LAB }] = await Promise.all([createAuthedClient(), getEffectiveRates(estimateId)]);
 
-  const base = {
-    estimate_id: estimateId,
-    parent_item_id: null,
-    scope_category: scopeCategory,
-    type: "consumable" as const,
-    finish_code: null,
-    waste_pct: 0,
-    cov_lm: null, cov_area: null, cov_height_mm: null,
-    manufacturer: null,
-    is_auto: true,
-    level: null,
-    product_type: null,
-  };
-
   // Build expected rows
   const expected = new Map<string, { qty: number; sort_order: number; unit: string; mat_rate: number; lab_rate: number; coverage_m2: number | null }>();
   if (gluableArea > 0 || force.includes("Glue Sheet/Plank")) {
@@ -576,7 +565,8 @@ export async function syncSectionConsumables(
     expected.set("Feather Finish Labour", { qty: totalArea,                   sort_order: 9002, unit: "m2",  mat_rate: 0,                 lab_rate: LAB.featherFinish, coverage_m2: null     });
   }
 
-  // Fetch existing section-level consumables for this scope
+  // Fetch existing section-level consumables for this scope (used for
+  // deletion + to skip a round-trip when a row's qty hasn't changed)
   const { data: existing } = await supabase
     .from("estimate_items")
     .select(ESTIMATE_ITEMS_COLS)
@@ -587,37 +577,38 @@ export async function syncSectionConsumables(
 
   const existingMap = new Map((existing ?? []).map((r) => [r.description as string, r as EstimateItem]));
 
-  const toInsert: Omit<EstimateItem, "id" | "created_at" | "updated_at">[] = [];
-  const toUpdate: { id: string; qty: number }[] = [];
-  const toDelete: string[] = [];
+  const toDelete = (existing ?? [])
+    .filter((r) => !expected.has(r.description as string))
+    .map((r) => r.id);
 
-  Array.from(expected.entries()).forEach(([desc, row]) => {
-    const ex = existingMap.get(desc);
-    if (ex) {
-      if (Number(ex.qty) !== row.qty) toUpdate.push({ id: ex.id, qty: row.qty });
-    } else {
-      toInsert.push({ ...base, description: desc, ...row });
-    }
-  });
-  Array.from(existingMap.entries()).forEach(([desc, ex]) => {
-    if (!expected.has(desc)) toDelete.push(ex.id);
-  });
-
-  await Promise.all([
-    ...toUpdate.map(({ id, qty }) => supabase.from("estimate_items").update({ qty }).eq("id", id)),
+  // Insert-or-update each expected row atomically via upsert_section_consumable
+  // (partial-unique-index + ON CONFLICT in the DB — see migration 060). This
+  // avoids the read-then-write race the previous select/insert split had,
+  // where two overlapping calls could both see "no row yet" and both insert.
+  const [upserted] = await Promise.all([
+    Promise.all(
+      Array.from(expected.entries()).map(async ([desc, row]) => {
+        const ex = existingMap.get(desc);
+        if (ex && Number(ex.qty) === row.qty) return ex;
+        const { data, error } = await supabase.rpc("upsert_section_consumable", {
+          p_estimate_id: estimateId,
+          p_scope_category: scopeCategory,
+          p_description: desc,
+          p_qty: row.qty,
+          p_sort_order: row.sort_order,
+          p_unit: row.unit,
+          p_mat_rate: row.mat_rate,
+          p_lab_rate: row.lab_rate,
+          p_coverage_m2: row.coverage_m2,
+        });
+        if (error) throw error;
+        return data as EstimateItem;
+      })
+    ),
     toDelete.length > 0 ? supabase.from("estimate_items").delete().in("id", toDelete) : Promise.resolve(),
   ]);
 
-  let inserted: EstimateItem[] = [];
-  if (toInsert.length > 0) {
-    const { data } = await supabase.from("estimate_items").insert(toInsert).select(ESTIMATE_ITEMS_COLS);
-    inserted = (data ?? []) as EstimateItem[];
-  }
-
-  // Return all section consumables now in DB (updated existing + newly inserted)
-  const updatedExisting = toUpdate.map(({ id, qty }) => ({ ...(existingMap.get(Array.from(existingMap.keys()).find(k => existingMap.get(k)!.id === id)!)!), qty }));
-  const kept = Array.from(existingMap.values()).filter(r => !toDelete.includes(r.id) && !toUpdate.some(u => u.id === r.id));
-  return [...kept, ...updatedExisting, ...inserted];
+  return upserted;
 }
 
 // ── Wet area CRUD ─────────────────────────────────────────────────────────────

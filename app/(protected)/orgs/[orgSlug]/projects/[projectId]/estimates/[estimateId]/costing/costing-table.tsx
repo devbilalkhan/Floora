@@ -131,6 +131,8 @@ function PrimaryRow({
   onCovingAdded,
   onCovingRemoved,
   hasWeldRod,
+  hasGlueCarpet,
+  hasCarpetUnderlay,
   onConsumableAdded,
   confirmedPrice,
 }: {
@@ -142,6 +144,8 @@ function PrimaryRow({
   onCovingAdded: (primaryId: string, children: EstimateItem[], covLm: number, covArea: number, covHeightMm: number) => void;
   onCovingRemoved: (primaryId: string) => void;
   hasWeldRod: boolean;
+  hasGlueCarpet: boolean;
+  hasCarpetUnderlay: boolean;
   onConsumableAdded: (items: EstimateItem[]) => void;
   confirmedPrice?: number;
 }) {
@@ -158,6 +162,8 @@ function PrimaryRow({
   const [editingBrand, setEditingBrand] = useState(false);
 
   const [addingWeldRod, setAddingWeldRod] = useState(false);
+  const [addingGlueCarpet, setAddingGlueCarpet] = useState(false);
+  const [addingUnderlay, setAddingUnderlay] = useState(false);
   const [applyingCoving, setApplyingCoving] = useState(false);
 
   useEffect(() => {
@@ -199,6 +205,7 @@ function PrimaryRow({
   const total = itemTotal(local);
 
   const isVinyl = local.scope_category === "vinyl" || local.scope_category === "wall_vinyl";
+  const isCarpet = local.scope_category === "carpet";
   const isPlankType = local.product_type === "plank_glued" || local.product_type === "plank_floating";
   const hasCov = (local.cov_lm ?? 0) > 0;
 
@@ -211,10 +218,30 @@ function PrimaryRow({
   const handleAddWeldRod = async () => {
     setAddingWeldRod(true);
     try {
-      const newItems = await restoreAutoConsumables(item.id, estimateId, local.scope_category, local.qty);
+      const newItems = await restoreAutoConsumables(item.id, estimateId, local.scope_category, local.qty, "Weld Rod");
       if (newItems.length > 0) onConsumableAdded(newItems);
     } finally {
       setAddingWeldRod(false);
+    }
+  };
+
+  const handleAddGlueCarpet = async () => {
+    setAddingGlueCarpet(true);
+    try {
+      const newItems = await restoreAutoConsumables(item.id, estimateId, local.scope_category, local.qty, "Glue Carpet");
+      if (newItems.length > 0) onConsumableAdded(newItems);
+    } finally {
+      setAddingGlueCarpet(false);
+    }
+  };
+
+  const handleAddUnderlay = async () => {
+    setAddingUnderlay(true);
+    try {
+      const newItems = await restoreAutoConsumables(item.id, estimateId, local.scope_category, local.qty, "Carpet Underlay");
+      if (newItems.length > 0) onConsumableAdded(newItems);
+    } finally {
+      setAddingUnderlay(false);
     }
   };
 
@@ -407,6 +434,30 @@ function PrimaryRow({
             >
               {addingWeldRod && <RefreshCw className="h-2 w-2 animate-spin" />}
               +weld rod
+            </button>
+          )}
+
+          {/* Glue Carpet restore — shown when missing */}
+          {isCarpet && !hasGlueCarpet && (
+            <button
+              onClick={handleAddGlueCarpet}
+              disabled={addingGlueCarpet}
+              className="shrink-0 inline-flex items-center gap-0.5 text-[10px] text-secondary/45 hover:text-secondary/70 px-1 py-0.5 transition-colors disabled:opacity-50 disabled:cursor-wait"
+            >
+              {addingGlueCarpet && <RefreshCw className="h-2 w-2 animate-spin" />}
+              +glue
+            </button>
+          )}
+
+          {/* Carpet Underlay restore — broadloom only, shown when missing */}
+          {isCarpet && (!local.product_type || local.product_type === "broadloom") && !hasCarpetUnderlay && (
+            <button
+              onClick={handleAddUnderlay}
+              disabled={addingUnderlay}
+              className="shrink-0 inline-flex items-center gap-0.5 text-[10px] text-secondary/45 hover:text-secondary/70 px-1 py-0.5 transition-colors disabled:opacity-50 disabled:cursor-wait"
+            >
+              {addingUnderlay && <RefreshCw className="h-2 w-2 animate-spin" />}
+              +underlay
             </button>
           )}
         </div>
@@ -818,6 +869,12 @@ export function CostingTable({
   const [importing, setImporting] = useState(false);
   const [addingCategory, setAddingCategory] = useState<string | null>(null);
   const [restoringConsumable, setRestoringConsumable] = useState<string | null>(null);
+  const [syncingScopes, setSyncingScopes] = useState<Set<string>>(new Set());
+  // Synchronous lock (state updates are async and can't prevent a race between
+  // two rapid-fire qty commits both seeing "no section rows yet").
+  const syncingScopesRef = useRef<Set<string>>(new Set());
+  // Latest totalArea/gluableArea seen while a create is already in flight for a scope.
+  const pendingSectionSyncRef = useRef<Map<string, { totalArea: number; gluableArea: number }>>(new Map());
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
@@ -874,6 +931,30 @@ export function CostingTable({
     statusTimer.current = setTimeout(() => setSaveStatus("idle"), 1800);
   };
 
+  // Creates section-level consumables (Glue/Feather Finish) for a vinyl scope.
+  // Guarded so overlapping calls for the same scope can't both see "no rows
+  // yet" and insert duplicates — a second call while one is in flight is
+  // queued and re-run with the latest area once the first completes.
+  const runSectionConsumableCreate = useCallback(
+    (scope: string, totalArea: number, gluableArea: number) => {
+      syncingScopesRef.current.add(scope);
+      setSyncingScopes(prev => new Set(prev).add(scope));
+      syncSectionConsumables(estimate.id, scope, totalArea, gluableArea)
+        .then(rows => { if (rows.length > 0) setItems(prev => [...prev, ...rows]); })
+        .catch(() => {})
+        .finally(() => {
+          syncingScopesRef.current.delete(scope);
+          setSyncingScopes(prev => { const next = new Set(prev); next.delete(scope); return next; });
+          const pending = pendingSectionSyncRef.current.get(scope);
+          if (pending) {
+            pendingSectionSyncRef.current.delete(scope);
+            runSectionConsumableCreate(scope, pending.totalArea, pending.gluableArea);
+          }
+        });
+    },
+    [estimate.id]
+  );
+
   const updateItem = useCallback(
     (id: string, patch: Partial<EstimateItem>) => {
       setItems((prev) => {
@@ -917,11 +998,13 @@ export function CostingTable({
                 if (sc.description === "Glue Sheet/Plank")     qty = gluableArea > 0 ? Math.ceil(gluableArea / COVERAGE_M2) : 0;
                 if (qty !== null) updateEstimateItem(sc.id, { qty }).catch(() => {});
               }
+            } else if (syncingScopesRef.current.has(scope)) {
+              // A create is already in flight for this scope — queue the
+              // latest area instead of firing a second concurrent create.
+              pendingSectionSyncRef.current.set(scope, { totalArea, gluableArea });
             } else {
-              // No section rows exist yet (first qty entry) — create them
-              syncSectionConsumables(estimate.id, scope, totalArea, gluableArea)
-                .then(rows => { if (rows.length > 0) setItems(prev => [...prev, ...rows]); })
-                .catch(() => {});
+              // No section rows exist yet (first qty entry) — create them.
+              runSectionConsumableCreate(scope, totalArea, gluableArea);
             }
           }
         }
@@ -929,7 +1012,7 @@ export function CostingTable({
       markSaving();
       updateEstimateItem(id, patch).then(markSaved).catch(() => toast.error("Save failed."));
     },
-    [items, estimate.id]
+    [items, estimate.id, runSectionConsumableCreate]
   );
 
   const deleteItem = useCallback((id: string) => {
@@ -976,12 +1059,12 @@ export function CostingTable({
   }, []);
 
   const addRow = useCallback(
-    async (scopeCategory: string) => {
+    async (scopeCategory: string, productType: string | null = null) => {
       setAddingCategory(scopeCategory);
       const inScope = items.filter((i) => i.scope_category === scopeCategory);
       const nextOrder = inScope.length ? Math.max(...inScope.map((i) => i.sort_order)) + 1 : 0;
       try {
-        const { primary, children } = await addEstimateItem(estimate.id, scopeCategory, nextOrder);
+        const { primary, children } = await addEstimateItem(estimate.id, scopeCategory, nextOrder, productType);
         setItems((prev) => [...prev, primary, ...children]);
         // For vinyl, ensure section consumable rows exist (created on first non-zero qty, but scaffold them now)
         if (VINYL_SCOPES.has(scopeCategory)) {
@@ -1487,6 +1570,8 @@ export function CostingTable({
                       const rawItemLabel = item.finish_code || item.description || `#${idx + 1}`;
                       const itemLabel = rawItemLabel.length > 40 ? `${rawItemLabel.slice(0, 40).trimEnd()}…` : rawItemLabel;
                       const hasWeldRod = itemChildren.some((c) => c.description === "Weld Rod");
+                      const hasGlueCarpet = itemChildren.some((c) => c.description === "Glue Carpet");
+                      const hasCarpetUnderlay = itemChildren.some((c) => c.description === "Carpet Underlay");
                       return (
                         <React.Fragment key={item.id}>
                           <PrimaryRow
@@ -1498,6 +1583,8 @@ export function CostingTable({
                             onCovingAdded={handleCovingAdded}
                             onCovingRemoved={handleCovingRemoved}
                             hasWeldRod={hasWeldRod}
+                            hasGlueCarpet={hasGlueCarpet}
+                            hasCarpetUnderlay={hasCarpetUnderlay}
                             onConsumableAdded={(newItems) => setItems((prev) => [...prev, ...newItems])}
                             confirmedPrice={item.finish_code ? confirmedPrices[item.finish_code] : undefined}
                           />
@@ -1524,6 +1611,7 @@ export function CostingTable({
                       if (sectionRows.length === 0 && !isVinylScope) return null;
                       const hasGlue = sectionRows.some(r => r.description === "Glue Sheet/Plank");
                       const hasFeatherFinish = sectionRows.some(r => r.description === "Feather Finish 20kg");
+                      const isSyncing = syncingScopes.has(cat.key);
                       return (
                         <>
                           <tr className="bg-muted/10 border-t border-black/10 dark:border-white/10">
@@ -1536,7 +1624,13 @@ export function CostingTable({
                                 <span className="text-[9px] text-muted-foreground/45 select-none">
                                   — consolidated across all {cat.label.toLowerCase()} items
                                 </span>
-                                {isVinylScope && !hasGlue && (
+                                {isSyncing && (
+                                  <span className="shrink-0 inline-flex items-center gap-0.5 text-[9px] text-muted-foreground/60">
+                                    <RefreshCw className="h-2 w-2 animate-spin" />
+                                    calculating…
+                                  </span>
+                                )}
+                                {isVinylScope && !hasGlue && !isSyncing && (
                                   <button
                                     onClick={() => restoreSectionConsumable(cat.key, "Glue Sheet/Plank")}
                                     disabled={restoringConsumable === `${cat.key}:Glue Sheet/Plank`}
@@ -1546,7 +1640,7 @@ export function CostingTable({
                                     +glue
                                   </button>
                                 )}
-                                {isVinylScope && !hasFeatherFinish && (
+                                {isVinylScope && !hasFeatherFinish && !isSyncing && (
                                   <button
                                     onClick={() => restoreSectionConsumable(cat.key, "Feather Finish 20kg")}
                                     disabled={restoringConsumable === `${cat.key}:Feather Finish 20kg`}
@@ -1573,18 +1667,43 @@ export function CostingTable({
 
                     <tr>
                       <td colSpan={13} className="px-3 py-1">
-                        <button
-                          onClick={() => addRow(cat.key)}
-                          disabled={addingCategory === cat.key}
-                          className="flex items-center gap-1 text-[11px] text-primary/50 hover:text-primary transition-colors py-0.5 disabled:opacity-50 disabled:cursor-wait"
-                        >
-                          {addingCategory === cat.key ? (
-                            <RefreshCw className="h-2.5 w-2.5 animate-spin" />
-                          ) : (
-                            <Plus className="h-2.5 w-2.5" />
-                          )}
-                          {addingCategory === cat.key ? "Adding…" : "Add row"}
-                        </button>
+                        {cat.key === "carpet" ? (
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => addRow(cat.key, "broadloom")}
+                              disabled={addingCategory === cat.key}
+                              className="flex items-center gap-1 text-[11px] text-primary/50 hover:text-primary transition-colors py-0.5 disabled:opacity-50 disabled:cursor-wait"
+                            >
+                              {addingCategory === cat.key ? (
+                                <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                              ) : (
+                                <Plus className="h-2.5 w-2.5" />
+                              )}
+                              {addingCategory === cat.key ? "Adding…" : "Add broadloom"}
+                            </button>
+                            <button
+                              onClick={() => addRow(cat.key, "tiles")}
+                              disabled={addingCategory === cat.key}
+                              className="flex items-center gap-1 text-[11px] text-primary/50 hover:text-primary transition-colors py-0.5 disabled:opacity-50 disabled:cursor-wait"
+                            >
+                              <Plus className="h-2.5 w-2.5" />
+                              Add tile
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => addRow(cat.key)}
+                            disabled={addingCategory === cat.key}
+                            className="flex items-center gap-1 text-[11px] text-primary/50 hover:text-primary transition-colors py-0.5 disabled:opacity-50 disabled:cursor-wait"
+                          >
+                            {addingCategory === cat.key ? (
+                              <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                            ) : (
+                              <Plus className="h-2.5 w-2.5" />
+                            )}
+                            {addingCategory === cat.key ? "Adding…" : "Add row"}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   </React.Fragment>

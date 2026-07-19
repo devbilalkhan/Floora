@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { EstimateExcelExportButton } from "@/components/estimate-excel-export-button";
+import type { Estimate, EstimateItem, WetArea } from "@/lib/estimate-types";
 
 export function ReportControls({
   orgSlug,
@@ -11,6 +13,11 @@ export function ReportControls({
   mode,
   levels,
   level,
+  orgName,
+  projectName,
+  estimate,
+  items,
+  wetAreas,
 }: {
   orgSlug: string;
   projectId: string;
@@ -18,6 +25,11 @@ export function ReportControls({
   mode: "summary" | "detailed";
   levels: string[];
   level: string;
+  orgName: string;
+  projectName: string;
+  estimate: Estimate;
+  items: EstimateItem[];
+  wetAreas: WetArea[];
 }) {
   const base = `/orgs/${orgSlug}/projects/${projectId}/estimates/${estimateId}/report`;
 
@@ -85,6 +97,14 @@ export function ReportControls({
         <Printer className="h-3.5 w-3.5" />
         Print
       </button>
+
+      <EstimateExcelExportButton
+        orgName={orgName}
+        projectName={projectName}
+        estimate={estimate}
+        items={items}
+        wetAreas={wetAreas}
+      />
     </div>
   );
 }

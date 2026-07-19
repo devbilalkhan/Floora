@@ -9,6 +9,7 @@ import { EstimateSwitcher } from "./estimate-switcher";
 import { EstimateStatusBadge } from "./estimate-status-badge";
 import { EstimateAttachmentsPanel } from "./estimate-attachments-panel";
 import type { EstimateAttachment } from "./actions";
+import { EstimateExcelExportButton } from "@/components/estimate-excel-export-button";
 
 export default async function CostingPage({
   params,
@@ -31,6 +32,7 @@ export default async function CostingPage({
     { data: allEstimates },
     { data: rawPriceRequests },
     { data: rawAttachments },
+    { data: org },
   ] = await Promise.all([
     supabase
       .from("estimates")
@@ -72,6 +74,11 @@ export default async function CostingPage({
       .select("id, name, mime_type, size_bytes, created_at")
       .eq("estimate_id", params.estimateId)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("organizations")
+      .select("name")
+      .eq("slug", params.orgSlug)
+      .single(),
   ]);
 
   if (!estimate || !project) notFound();
@@ -133,6 +140,13 @@ export default async function CostingPage({
           projectId={params.projectId}
         />
         <div className="ml-auto flex items-center gap-2">
+          <EstimateExcelExportButton
+            orgName={org?.name ?? params.orgSlug}
+            projectName={project.name}
+            estimate={estimate as Estimate}
+            items={(rawItems ?? []) as EstimateItem[]}
+            wetAreas={(rawWetAreas ?? []) as WetArea[]}
+          />
           <Link
             href={`/orgs/${params.orgSlug}/projects/${params.projectId}/estimates/${params.estimateId}/quote`}
             className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-3 py-1.5 text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
