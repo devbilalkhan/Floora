@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, MoreHorizontal, Pencil, Loader2, Copy } from "lucide-react";
+import { Trash2, MoreHorizontal, Pencil, Loader2, Copy, ChevronDown, Search } from "lucide-react";
 import { toast } from "sonner";
 import { deleteQuote, updateQuoteStatus, renameQuote, copyQuoteToProject } from "../estimates/[estimateId]/quote/actions";
 import {
@@ -13,13 +13,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 const STATUSES = ["draft", "sent", "accepted", "declined"] as const;
 
@@ -36,7 +29,7 @@ export function QuoteActions({
   projectId: string;
   currentStatus: string;
   currentName?: string;
-  otherProjects?: { id: string; name: string }[];
+  otherProjects?: { id: string; name: string; head_client: string | null }[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -47,6 +40,21 @@ export function QuoteActions({
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [copyTargetId, setCopyTargetId] = useState("");
   const [copying, setCopying] = useState(false);
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
+  const [projectSearch, setProjectSearch] = useState("");
+
+  const selectedProject = (otherProjects ?? []).find((p) => p.id === copyTargetId);
+
+  const filteredProjects = useMemo(() => {
+    const q = projectSearch.trim().toLowerCase();
+    const list = otherProjects ?? [];
+    if (!q) return list;
+    return list.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.head_client ?? "").toLowerCase().includes(q)
+    );
+  }, [otherProjects, projectSearch]);
 
   function close() {
     setOpen(false);
@@ -210,8 +218,8 @@ export function QuoteActions({
         </>
       )}
 
-      <Dialog open={copyDialogOpen} onOpenChange={(next) => { if (!copying) setCopyDialogOpen(next); }}>
-        <DialogContent className="sm:max-w-sm bg-card/85 backdrop-blur-xl">
+      <Dialog open={copyDialogOpen} onOpenChange={(next) => { if (!copying) { setCopyDialogOpen(next); setProjectPickerOpen(false); } }}>
+        <DialogContent className="sm:max-w-lg bg-card/85 backdrop-blur-xl">
           <DialogHeader>
             <DialogTitle>Copy quote to project</DialogTitle>
           </DialogHeader>
@@ -219,18 +227,65 @@ export function QuoteActions({
             Creates a new draft quote in the target project with the same line items, client
             and company details. It won&apos;t be linked to that project&apos;s estimate.
           </p>
-          <Select value={copyTargetId} onValueChange={setCopyTargetId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select a project…" />
-            </SelectTrigger>
-            <SelectContent>
-              {(otherProjects ?? []).map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => { setProjectPickerOpen((o) => !o); setProjectSearch(""); }}
+              className="flex h-8 w-full items-center gap-2 rounded-md border border-input bg-input px-3 text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <span className={`flex-1 min-w-0 truncate text-left ${selectedProject ? "text-foreground/70" : "text-muted-foreground"}`}>
+                {selectedProject ? selectedProject.name : "Select a project…"}
+              </span>
+              {selectedProject?.head_client && (
+                <span className="shrink-0 max-w-[35%] truncate text-[10px] text-muted-foreground">
+                  {selectedProject.head_client}
+                </span>
+              )}
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+            </button>
+
+            {projectPickerOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setProjectPickerOpen(false)} />
+                <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-md border bg-popover shadow-lg">
+                  <div className="border-b border-black/10 dark:border-white/10 p-1.5">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground/50" />
+                      <input
+                        autoFocus
+                        value={projectSearch}
+                        onChange={(e) => setProjectSearch(e.target.value)}
+                        placeholder="Search projects or builder…"
+                        className="w-full rounded border border-border bg-background py-1 pl-6 pr-2 text-xs outline-none focus:ring-1 focus:ring-primary/50"
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {filteredProjects.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => { setCopyTargetId(p.id); setProjectPickerOpen(false); }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/40 transition-colors"
+                      >
+                        <span className="flex-1 min-w-0 truncate text-xs text-foreground/70">{p.name}</span>
+                        {p.head_client && (
+                          <span className="shrink-0 max-w-[40%] truncate text-[10px] text-muted-foreground">
+                            {p.head_client}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                    {filteredProjects.length === 0 && (
+                      <p className="px-3 py-1.5 text-xs text-muted-foreground">
+                        {projectSearch ? `No projects match "${projectSearch}"` : "No projects found"}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
           <DialogFooter>
             <Button type="button" variant="ghost" size="sm" onClick={() => setCopyDialogOpen(false)} disabled={copying}>
               Cancel

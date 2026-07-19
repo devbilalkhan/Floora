@@ -32,7 +32,7 @@ export default async function QuotesListPage({
       .order("created_at", { ascending: false }),
     supabase
       .from("projects")
-      .select("id, name, organizations!inner(slug)")
+      .select("id, name, head_client, organizations!inner(slug)")
       .eq("organizations.slug", params.orgSlug)
       .neq("id", params.projectId)
       .order("name"),
@@ -40,7 +40,7 @@ export default async function QuotesListPage({
 
   if (!project) notFound();
 
-  const otherProjects = (rawOtherProjects ?? []).map((p) => ({ id: p.id, name: p.name }));
+  const otherProjects = (rawOtherProjects ?? []).map((p) => ({ id: p.id, name: p.name, head_client: p.head_client }));
 
   const fmt = (n: number) =>
     n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
