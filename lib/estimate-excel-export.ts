@@ -156,7 +156,7 @@ function buildDetailSheet(
   titleBlock(ws, [
     { text: orgName, size: 15, bold: true, color: ACCENT },
     { text: `${projectName} — ${estimate.name}`, size: 11, bold: true },
-    { text: `Cost Estimate — Detail   ·   Generated ${today}`, size: 9, color: "FF64748B" },
+    { text: `Cost Estimate   ·   Generated ${today}`, size: 9, color: "FF64748B" },
   ]);
 
   const headerRowNum = headerRow(ws);
@@ -259,148 +259,106 @@ function buildDetailSheet(
   return { categorySubtotals, wetAreasTotalRow, itemsSubtotalRow: grandRowNum };
 }
 
-function labelValueRow(ws: Sheet, label: string, value: CellInput, opts: { fmt?: string; bold?: boolean; fill?: string; size?: number; topBorder?: boolean } = {}) {
+// Cost Build-Up rows share the item table's columns: label merged across A:J,
+// single value in column K (the same "Total $" column used above), so the
+// section reads as a continuation of the item table rather than a new layout.
+function costBuildUpRow(ws: Sheet, label: string, value: CellInput, opts: { fmt?: string; bold?: boolean; fill?: string; size?: number; topBorder?: boolean } = {}) {
   const row: Row = ws.addRow([label]);
-  row.getCell(2).value = value;
+  row.getCell(11).value = value;
+  ws.mergeCells(`A${row.number}:J${row.number}`);
   row.getCell(1).font = { bold: !!opts.bold, size: opts.size ?? 10 };
-  row.getCell(2).font = { bold: !!opts.bold, size: opts.size ?? 10 };
-  row.getCell(2).numFmt = opts.fmt ?? CURRENCY_FMT;
-  row.getCell(2).alignment = { horizontal: "right" };
+  row.getCell(11).font = { bold: !!opts.bold, size: opts.size ?? 10 };
+  row.getCell(11).numFmt = opts.fmt ?? CURRENCY_FMT;
+  row.getCell(11).alignment = { horizontal: "right" };
   if (opts.fill) {
-    [1, 2].forEach((c) => (row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: opts.fill! } }));
+    [1, 11].forEach((c) => (row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: opts.fill! } }));
   }
   if (opts.topBorder) {
-    [1, 2].forEach((c) => (row.getCell(c).border = { top: { style: "thin", color: { argb: BORDER_GREY } } }));
+    [1, 11].forEach((c) => (row.getCell(c).border = { top: { style: "thin", color: { argb: BORDER_GREY } } }));
   }
   return row;
 }
 
-function buildSummarySheet(
-  ws: Sheet,
-  orgName: string,
-  projectName: string,
-  estimate: Estimate,
-  items: EstimateItem[],
-  wetAreas: WetArea[],
-  today: string,
-  detail: DetailResult
-) {
-  ws.columns = [{ width: 40 }, { width: 18 }];
-
-  titleBlock(ws, [
-    { text: orgName, size: 15, bold: true, color: ACCENT },
-    { text: `${projectName} — ${estimate.name}`, size: 11, bold: true },
-    { text: `Cost Estimate — Summary   ·   Generated ${today}`, size: 9, color: "FF64748B" },
-  ]);
-
-  // Category totals — pulled live from the Detail sheet's category subtotal rows
-  const catHeaderRow: Row = ws.addRow(["Category", "Mat $", "Lab $", "Total $"]);
-  catHeaderRow.eachCell((cell: Cell) => {
-    cell.font = { bold: true, color: { argb: SLATE_DARK }, size: 10 };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ACCENT_LIGHT } };
-  });
-  ws.getColumn(3).width = 14;
-  ws.getColumn(4).width = 14;
-
-  const firstCatRow = catHeaderRow.number + 1;
-  for (const c of detail.categorySubtotals) {
-    const row: Row = ws.addRow([c.label]);
-    row.getCell(2).value = { formula: `Detail!I${c.row}`, result: c.mat };
-    row.getCell(3).value = { formula: `Detail!J${c.row}`, result: c.lab };
-    row.getCell(4).value = { formula: `B${row.number}+C${row.number}`, result: c.mat + c.lab };
-    [2, 3, 4].forEach((col) => (row.getCell(col).numFmt = CURRENCY_FMT));
-  }
-  const lastCatRow = firstCatRow + detail.categorySubtotals.length - 1;
-  const baseMat = detail.categorySubtotals.reduce((s, c) => s + c.mat, 0);
-  const baseLab = detail.categorySubtotals.reduce((s, c) => s + c.lab, 0);
-
-  const catTotalRow: Row = ws.addRow(["Items total"]);
-  if (detail.categorySubtotals.length > 0) {
-    catTotalRow.getCell(2).value = { formula: `SUM(B${firstCatRow}:B${lastCatRow})`, result: baseMat };
-    catTotalRow.getCell(3).value = { formula: `SUM(C${firstCatRow}:C${lastCatRow})`, result: baseLab };
-  } else {
-    catTotalRow.getCell(2).value = 0;
-    catTotalRow.getCell(3).value = 0;
-  }
-  catTotalRow.getCell(4).value = { formula: `B${catTotalRow.number}+C${catTotalRow.number}`, result: baseMat + baseLab };
-  catTotalRow.eachCell((cell: Cell) => { cell.font = { bold: true }; cell.border = { top: { style: "thin", color: { argb: BORDER_GREY } } }; });
-  [2, 3, 4].forEach((c) => (catTotalRow.getCell(c).numFmt = CURRENCY_FMT));
+// Appends the Cost Build-Up section directly below the item table, in the same
+// worksheet. Material/Labour cost reference the ITEMS SUBTOTAL row's Mat $ / Lab $
+// cells directly (both already live in this sheet), so no separate category
+// recap table is needed — it would just duplicate the per-category subtotal
+// rows already above it.
+function appendCostBuildUp(ws: Sheet, estimate: Estimate, items: EstimateItem[], wetAreas: WetArea[], detail: DetailResult) {
   ws.addRow([]);
-  ws.addRow([]);
+  categoryBandRow(ws, "Cost Build-Up");
 
-  // P&L breakdown
   const s = computeSummary(items, estimate, wetAreas);
-  const pnlHeader: Row = ws.addRow(["Cost Build-Up"]);
-  ws.mergeCells(`A${pnlHeader.number}:D${pnlHeader.number}`);
-  pnlHeader.getCell(1).font = { bold: true, size: 11, color: { argb: ACCENT } };
+  const baseMat = detail.categorySubtotals.reduce((sum, c) => sum + c.mat, 0);
+  const baseLab = detail.categorySubtotals.reduce((sum, c) => sum + c.lab, 0);
 
-  const matRow = labelValueRow(ws, "Material cost", { formula: `B${catTotalRow.number}`, result: baseMat });
-  const wetTerm = detail.wetAreasTotalRow ? `+Detail!J${detail.wetAreasTotalRow}` : "";
-  const labRow = labelValueRow(ws, "Labour cost", { formula: `C${catTotalRow.number}${wetTerm}`, result: baseLab + s.wetAreasProfit });
-  const accRow = labelValueRow(
+  const matRow = costBuildUpRow(ws, "Material cost", { formula: `I${detail.itemsSubtotalRow}`, result: baseMat });
+  const wetTerm = detail.wetAreasTotalRow ? `+J${detail.wetAreasTotalRow}` : "";
+  const labRow = costBuildUpRow(ws, "Labour cost", { formula: `J${detail.itemsSubtotalRow}${wetTerm}`, result: baseLab + s.wetAreasProfit });
+  const accRow = costBuildUpRow(
     ws,
     `Accounting cost (${(estimate.accounting_rate * 100).toFixed(2)}%)`,
-    { formula: `(B${matRow.number}+B${labRow.number})*${estimate.accounting_rate}`, result: s.accountingCost }
+    { formula: `(K${matRow.number}+K${labRow.number})*${estimate.accounting_rate}`, result: s.accountingCost }
   );
-  const adminRow = labelValueRow(
+  const adminRow = costBuildUpRow(
     ws,
     `Admin cost (${(estimate.admin_rate * 100).toFixed(2)}%)`,
-    { formula: `(B${matRow.number}+B${labRow.number})*${estimate.admin_rate}`, result: s.adminCost }
+    { formula: `(K${matRow.number}+K${labRow.number})*${estimate.admin_rate}`, result: s.adminCost }
   );
-  const overheadRow = labelValueRow(
+  const overheadRow = costBuildUpRow(
     ws,
     "Subtotal after overhead",
-    { formula: `B${matRow.number}+B${labRow.number}+B${accRow.number}+B${adminRow.number}`, result: s.subtotalAfterOverhead },
+    { formula: `K${matRow.number}+K${labRow.number}+K${accRow.number}+K${adminRow.number}`, result: s.subtotalAfterOverhead },
     { bold: true, topBorder: true }
   );
-  const markupRow = labelValueRow(
+  const markupRow = costBuildUpRow(
     ws,
     `Net markup (${(estimate.net_markup_pct * 100).toFixed(2)}%)`,
-    { formula: `B${overheadRow.number}*${estimate.net_markup_pct}`, result: s.markupAmount }
+    { formula: `K${overheadRow.number}*${estimate.net_markup_pct}`, result: s.markupAmount }
   );
 
-  const floorPrepProfitRow = s.floorPrepBags > 0 ? labelValueRow(ws, "Floor prep profit", s.floorPrepProfit) : null;
-  const grindProfitRow = s.grindRevenue > 0 ? labelValueRow(ws, "Grinding profit", s.grindProfit) : null;
+  const floorPrepProfitRow = s.floorPrepBags > 0 ? costBuildUpRow(ws, "Floor prep profit", s.floorPrepProfit) : null;
+  const grindProfitRow = s.grindRevenue > 0 ? costBuildUpRow(ws, "Grinding profit", s.grindProfit) : null;
 
-  const afterMarkupTerms = [`B${overheadRow.number}`, `B${markupRow.number}`];
-  if (floorPrepProfitRow) afterMarkupTerms.push(`B${floorPrepProfitRow.number}`);
-  if (grindProfitRow) afterMarkupTerms.push(`B${grindProfitRow.number}`);
-  const afterMarkupRow = labelValueRow(
+  const afterMarkupTerms = [`K${overheadRow.number}`, `K${markupRow.number}`];
+  if (floorPrepProfitRow) afterMarkupTerms.push(`K${floorPrepProfitRow.number}`);
+  if (grindProfitRow) afterMarkupTerms.push(`K${grindProfitRow.number}`);
+  const afterMarkupRow = costBuildUpRow(
     ws,
     "Subtotal after markup",
     { formula: afterMarkupTerms.join("+"), result: s.subtotalAfterMarkup },
     { bold: true, topBorder: true }
   );
 
-  const addCostsRow = s.additionalCosts > 0 ? labelValueRow(ws, "Additional costs (freight / accom. / travel / bailing)", s.additionalCosts) : null;
-  const floorPrepCostRow = s.floorPrepCost > 0 ? labelValueRow(ws, "Floor prep cost recovery", s.floorPrepCost) : null;
-  const grindCostRow = s.grindCost > 0 ? labelValueRow(ws, "Grinding cost recovery", s.grindCost) : null;
+  const addCostsRow = s.additionalCosts > 0 ? costBuildUpRow(ws, "Additional costs (freight / accom. / travel / bailing)", s.additionalCosts) : null;
+  const floorPrepCostRow = s.floorPrepCost > 0 ? costBuildUpRow(ws, "Floor prep cost recovery", s.floorPrepCost) : null;
+  const grindCostRow = s.grindCost > 0 ? costBuildUpRow(ws, "Grinding cost recovery", s.grindCost) : null;
 
-  const exGstTerms = [`B${afterMarkupRow.number}`];
-  if (addCostsRow) exGstTerms.push(`B${addCostsRow.number}`);
-  if (floorPrepCostRow) exGstTerms.push(`B${floorPrepCostRow.number}`);
-  if (grindCostRow) exGstTerms.push(`B${grindCostRow.number}`);
-  const exGstRow = labelValueRow(
+  const exGstTerms = [`K${afterMarkupRow.number}`];
+  if (addCostsRow) exGstTerms.push(`K${addCostsRow.number}`);
+  if (floorPrepCostRow) exGstTerms.push(`K${floorPrepCostRow.number}`);
+  if (grindCostRow) exGstTerms.push(`K${grindCostRow.number}`);
+  const exGstRow = costBuildUpRow(
     ws,
     "Total (ex GST)",
     { formula: exGstTerms.join("+"), result: s.totalExGst },
     { bold: true, size: 13, fill: ACCENT_LIGHT, topBorder: true }
   );
-  const gstRow = labelValueRow(ws, "GST (10%)", { formula: `B${exGstRow.number}*0.1`, result: s.gst });
-  labelValueRow(
+  const gstRow = costBuildUpRow(ws, "GST (10%)", { formula: `K${exGstRow.number}*0.1`, result: s.gst });
+  costBuildUpRow(
     ws,
     "GRAND TOTAL",
-    { formula: `B${exGstRow.number}+B${gstRow.number}`, result: s.grandTotal },
+    { formula: `K${exGstRow.number}+K${gstRow.number}`, result: s.grandTotal },
     { bold: true, size: 13, fill: ACCENT_LIGHT, topBorder: true }
   );
 
-  const marginTerms = [`B${markupRow.number}`];
-  if (floorPrepProfitRow) marginTerms.push(`B${floorPrepProfitRow.number}`);
-  if (grindProfitRow) marginTerms.push(`B${grindProfitRow.number}`);
-  labelValueRow(
+  const marginTerms = [`K${markupRow.number}`];
+  if (floorPrepProfitRow) marginTerms.push(`K${floorPrepProfitRow.number}`);
+  if (grindProfitRow) marginTerms.push(`K${grindProfitRow.number}`);
+  costBuildUpRow(
     ws,
     "Gross margin",
-    { formula: `(${marginTerms.join("+")})/B${exGstRow.number}`, result: s.grossMarginPct },
+    { formula: `(${marginTerms.join("+")})/K${exGstRow.number}`, result: s.grossMarginPct },
     { fmt: PCT_FRACTION_FMT }
   );
 }
@@ -425,11 +383,9 @@ export async function exportEstimateExcel({
 
   const today = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
 
-  const detailSheet = wb.addWorksheet("Detail");
-  const detailResult = buildDetailSheet(detailSheet, orgName, projectName, estimate, items, wetAreas, today);
-
-  const summarySheet = wb.addWorksheet("Summary");
-  buildSummarySheet(summarySheet, orgName, projectName, estimate, items, wetAreas, today, detailResult);
+  const sheet = wb.addWorksheet("Cost Estimate");
+  const detailResult = buildDetailSheet(sheet, orgName, projectName, estimate, items, wetAreas, today);
+  appendCostBuildUp(sheet, estimate, items, wetAreas, detailResult);
 
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
