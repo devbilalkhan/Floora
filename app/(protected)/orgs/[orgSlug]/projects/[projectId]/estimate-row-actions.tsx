@@ -28,9 +28,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MoreHorizontal, Trash2, ShieldCheck, Pencil } from "lucide-react";
+import { MoreHorizontal, Trash2, ShieldCheck, Pencil, Copy } from "lucide-react";
 import { toast } from "sonner";
-import { deleteEstimate, renameEstimate } from "./actions";
+import { deleteEstimate, duplicateEstimate, renameEstimate } from "./actions";
 
 export function EstimateRowActions({
   estimateId,
@@ -59,6 +59,19 @@ export function EstimateRowActions({
       router.refresh();
     } catch {
       toast.error("Failed to delete estimate.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleDuplicate() {
+    setPending(true);
+    try {
+      await duplicateEstimate(estimateId, projectId, orgSlug, `${estimateName} (Copy)`);
+      toast.success("Estimate duplicated.");
+      router.refresh();
+    } catch {
+      toast.error("Failed to duplicate estimate.");
     } finally {
       setPending(false);
     }
@@ -115,6 +128,15 @@ export function EstimateRowActions({
                 }}
               >
                 <Pencil className="h-3.5 w-3.5" /> Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="gap-2 text-sm cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDuplicate();
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" /> Duplicate
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="gap-2 text-sm text-destructive cursor-pointer focus:text-destructive"

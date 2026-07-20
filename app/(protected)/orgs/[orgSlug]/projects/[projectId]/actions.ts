@@ -237,3 +237,22 @@ export async function deleteEstimate(
   if (error) throw new Error(friendlyError(error.message));
   revalidatePath(`/orgs/${orgSlug}/projects/${projectId}`);
 }
+
+export async function duplicateEstimate(
+  estimateId: string,
+  projectId: string,
+  orgSlug: string,
+  newName: string
+): Promise<{ id: string }> {
+  await requireProjectManagerRole(projectId);
+  const { supabase } = await createAuthedClient();
+
+  const { data, error } = await supabase.rpc("duplicate_estimate", {
+    p_estimate_id: estimateId,
+    p_new_name: newName,
+  });
+
+  if (error) throw new Error(friendlyError(error.message));
+  revalidatePath(`/orgs/${orgSlug}/projects/${projectId}`);
+  return { id: data as string };
+}
