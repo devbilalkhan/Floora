@@ -464,12 +464,12 @@ export default async function ProjectDetailPage({
                       </td>
                       <td className="px-2 py-2 text-xs text-right tabular-nums text-foreground/70">
                         {q.total_ex_gst != null
-                          ? `$${q.total_ex_gst.toLocaleString("en-AU", { minimumFractionDigits: 2 })}`
+                          ? `$${q.total_ex_gst.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                           : "—"}
                       </td>
                       <td className="px-2 py-2 text-xs text-right tabular-nums text-muted-foreground">
                         {q.grand_total != null
-                          ? `$${q.grand_total.toLocaleString("en-AU", { minimumFractionDigits: 2 })}`
+                          ? `$${q.grand_total.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                           : "—"}
                       </td>
                       <td className="px-2 py-2 text-center">

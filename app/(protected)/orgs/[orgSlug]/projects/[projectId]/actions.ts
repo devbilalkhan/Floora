@@ -245,7 +245,11 @@ export async function duplicateEstimate(
   newName: string
 ): Promise<{ id: string }> {
   await requireProjectManagerRole(projectId);
-  const { supabase } = await createAuthedClient();
+
+  // Must use the anon client (user JWT) so auth.uid() works inside the
+  // SECURITY DEFINER function. The service role client sends no JWT, which
+  // makes auth.uid() return NULL and fail the created_by not-null constraint.
+  const supabase = createClient();
 
   const { data, error } = await supabase.rpc("duplicate_estimate", {
     p_estimate_id: estimateId,
