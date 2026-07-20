@@ -368,6 +368,7 @@ export function Composer({
       try {
         await sendPriceRequest({
           projectId,
+          projectName,
           orgSlug,
           takeoffId: activeTakeoffId || null,
           supplierName: supplierName.trim(),

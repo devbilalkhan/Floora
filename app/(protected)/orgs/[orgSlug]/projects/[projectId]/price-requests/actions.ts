@@ -8,7 +8,42 @@ import {
   getGmailThread,
   extractMessageText,
   getHeader,
+  listGmailLabels,
+  createGmailLabel,
+  applyGmailLabel,
 } from "@/lib/gmail";
+
+// Gmail label names can't contain "/" without creating unintended nesting,
+// so strip any slashes out of project/supplier names before building the path.
+function labelSegment(value: string): string {
+  return value.replace(/\//g, "-").trim();
+}
+
+async function getOrCreateLabelId(
+  supabase: Awaited<ReturnType<typeof createAuthedClient>>["supabase"],
+  accessToken: string,
+  userId: string,
+  labelPath: string
+): Promise<string> {
+  const { data: cached } = await supabase
+    .from("gmail_labels")
+    .select("gmail_label_id")
+    .eq("user_id", userId)
+    .eq("label_path", labelPath)
+    .maybeSingle();
+
+  if (cached) return cached.gmail_label_id;
+
+  const existing = await listGmailLabels(accessToken);
+  const found = existing.find((l) => l.name === labelPath);
+  const labelId = found?.id ?? (await createGmailLabel(accessToken, labelPath));
+
+  await supabase
+    .from("gmail_labels")
+    .upsert({ user_id: userId, label_path: labelPath, gmail_label_id: labelId });
+
+  return labelId;
+}
 
 async function requireProjectManagerRole(projectId: string) {
   const userDb = createClient();
@@ -29,6 +64,7 @@ export type ProductSnapshot = {
 
 export async function sendPriceRequest(input: {
   projectId: string;
+  projectName: string;
   orgSlug: string;
   takeoffId: string | null;
   supplierName: string;
@@ -66,6 +102,15 @@ export async function sendPriceRequest(input: {
     body: input.emailBody,
     fromEmail,
   });
+
+  try {
+    const labelPath = `Price Requests/${labelSegment(input.projectName)}/${labelSegment(input.supplierName)}`;
+    const labelId = await getOrCreateLabelId(supabase, accessToken, user.id, labelPath);
+    await applyGmailLabel(accessToken, messageId, labelId);
+  } catch {
+    // Non-fatal: labeling requires the gmail.modify scope, which existing
+    // users won't have until they reconnect Google — don't block the send.
+  }
 
   const { error } = await supabase.from("price_requests").insert({
     project_id: input.projectId,

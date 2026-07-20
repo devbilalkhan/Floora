@@ -222,6 +222,60 @@ export async function sendGmailMessage(
   return { messageId: data.id as string, threadId: data.threadId as string };
 }
 
+export async function listGmailLabels(
+  accessToken: string
+): Promise<{ id: string; name: string }[]> {
+  const res = await fetch(`${GMAIL_API}/labels`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error("Failed to list Gmail labels");
+  const data = await res.json();
+  return data.labels ?? [];
+}
+
+export async function createGmailLabel(
+  accessToken: string,
+  name: string
+): Promise<string> {
+  const res = await fetch(`${GMAIL_API}/labels`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name,
+      labelListVisibility: "labelShow",
+      messageListVisibility: "show",
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message ?? "Failed to create Gmail label");
+  }
+  const data = await res.json();
+  return data.id as string;
+}
+
+export async function applyGmailLabel(
+  accessToken: string,
+  messageId: string,
+  labelId: string
+): Promise<void> {
+  const res = await fetch(`${GMAIL_API}/messages/${messageId}/modify`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ addLabelIds: [labelId] }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message ?? "Failed to apply Gmail label");
+  }
+}
+
 type GmailMessage = {
   id: string;
   internalDate: string;
