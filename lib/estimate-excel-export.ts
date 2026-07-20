@@ -259,22 +259,41 @@ function buildDetailSheet(
   return { categorySubtotals, wetAreasTotalRow, itemsSubtotalRow: grandRowNum };
 }
 
-// Cost Build-Up rows share the item table's columns: label merged across A:J,
-// single value in column K (the same "Total $" column used above), so the
-// section reads as a continuation of the item table rather than a new layout.
-function costBuildUpRow(ws: Sheet, label: string, value: CellInput, opts: { fmt?: string; bold?: boolean; fill?: string; size?: number; topBorder?: boolean } = {}) {
+// Cost Build-Up rows share the item table's columns: label merged across A:J
+// (or A:I when a rate cell is present), single value in column K (the same
+// "Total $" column used above), so the section reads as a continuation of the
+// item table rather than a new layout.
+//
+// `rate`, when given, writes a live editable percentage into column J — the
+// $ value formula (built by the caller) references that cell directly rather
+// than embedding the rate as a literal, so changing the rate in Excel
+// recalculates this row and everything downstream that depends on it.
+function costBuildUpRow(
+  ws: Sheet,
+  label: string,
+  value: CellInput,
+  opts: { fmt?: string; bold?: boolean; fill?: string; size?: number; topBorder?: boolean; rate?: number } = {}
+) {
   const row: Row = ws.addRow([label]);
+  if (opts.rate !== undefined) {
+    row.getCell(10).value = opts.rate;
+    row.getCell(10).numFmt = PCT_FRACTION_FMT;
+    row.getCell(10).font = { bold: !!opts.bold, size: opts.size ?? 10, color: { argb: ACCENT }, italic: true };
+    row.getCell(10).alignment = { horizontal: "right" };
+    ws.mergeCells(`A${row.number}:I${row.number}`);
+  } else {
+    ws.mergeCells(`A${row.number}:J${row.number}`);
+  }
   row.getCell(11).value = value;
-  ws.mergeCells(`A${row.number}:J${row.number}`);
   row.getCell(1).font = { bold: !!opts.bold, size: opts.size ?? 10 };
   row.getCell(11).font = { bold: !!opts.bold, size: opts.size ?? 10 };
   row.getCell(11).numFmt = opts.fmt ?? CURRENCY_FMT;
   row.getCell(11).alignment = { horizontal: "right" };
   if (opts.fill) {
-    [1, 11].forEach((c) => (row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: opts.fill! } }));
+    [1, 10, 11].forEach((c) => (row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: opts.fill! } }));
   }
   if (opts.topBorder) {
-    [1, 11].forEach((c) => (row.getCell(c).border = { top: { style: "thin", color: { argb: BORDER_GREY } } }));
+    [1, 10, 11].forEach((c) => (row.getCell(c).border = { top: { style: "thin", color: { argb: BORDER_GREY } } }));
   }
   return row;
 }
@@ -295,26 +314,35 @@ function appendCostBuildUp(ws: Sheet, estimate: Estimate, items: EstimateItem[],
   const matRow = costBuildUpRow(ws, "Material cost", { formula: `I${detail.itemsSubtotalRow}`, result: baseMat });
   const wetTerm = detail.wetAreasTotalRow ? `+J${detail.wetAreasTotalRow}` : "";
   const labRow = costBuildUpRow(ws, "Labour cost", { formula: `J${detail.itemsSubtotalRow}${wetTerm}`, result: baseLab + s.wetAreasProfit });
+  const accRowNum = ws.rowCount + 1;
   const accRow = costBuildUpRow(
     ws,
-    `Accounting cost (${(estimate.accounting_rate * 100).toFixed(2)}%)`,
-    { formula: `(K${matRow.number}+K${labRow.number})*${estimate.accounting_rate}`, result: s.accountingCost }
+    "Accounting cost",
+    { formula: `(K${matRow.number}+K${labRow.number})*J${accRowNum}`, result: s.accountingCost },
+    { rate: estimate.accounting_rate }
   );
+
+  const adminRowNum = ws.rowCount + 1;
   const adminRow = costBuildUpRow(
     ws,
-    `Admin cost (${(estimate.admin_rate * 100).toFixed(2)}%)`,
-    { formula: `(K${matRow.number}+K${labRow.number})*${estimate.admin_rate}`, result: s.adminCost }
+    "Admin cost",
+    { formula: `(K${matRow.number}+K${labRow.number})*J${adminRowNum}`, result: s.adminCost },
+    { rate: estimate.admin_rate }
   );
+
   const overheadRow = costBuildUpRow(
     ws,
     "Subtotal after overhead",
     { formula: `K${matRow.number}+K${labRow.number}+K${accRow.number}+K${adminRow.number}`, result: s.subtotalAfterOverhead },
     { bold: true, topBorder: true }
   );
+
+  const markupRowNum = ws.rowCount + 1;
   const markupRow = costBuildUpRow(
     ws,
-    `Net markup (${(estimate.net_markup_pct * 100).toFixed(2)}%)`,
-    { formula: `K${overheadRow.number}*${estimate.net_markup_pct}`, result: s.markupAmount }
+    "Net markup",
+    { formula: `K${overheadRow.number}*J${markupRowNum}`, result: s.markupAmount },
+    { rate: estimate.net_markup_pct }
   );
 
   const floorPrepProfitRow = s.floorPrepBags > 0 ? costBuildUpRow(ws, "Floor prep profit", s.floorPrepProfit) : null;
@@ -344,7 +372,13 @@ function appendCostBuildUp(ws: Sheet, estimate: Estimate, items: EstimateItem[],
     { formula: exGstTerms.join("+"), result: s.totalExGst },
     { bold: true, size: 13, fill: ACCENT_LIGHT, topBorder: true }
   );
-  const gstRow = costBuildUpRow(ws, "GST (10%)", { formula: `K${exGstRow.number}*0.1`, result: s.gst });
+  const gstRowNum = ws.rowCount + 1;
+  const gstRow = costBuildUpRow(
+    ws,
+    "GST",
+    { formula: `K${exGstRow.number}*J${gstRowNum}`, result: s.gst },
+    { rate: 0.1 }
+  );
   costBuildUpRow(
     ws,
     "GRAND TOTAL",
