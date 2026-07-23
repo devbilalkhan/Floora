@@ -55,9 +55,9 @@ export function EstimateNotesPanel({
   }, []);
 
   return (
-    <div className="bg-card/65 backdrop-blur-xl border border-border rounded-sm overflow-hidden">
+    <div className="bg-card/65 backdrop-blur-xl border border-black/10 dark:border-white/10 rounded-sm overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b border-border">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b border-black/10 dark:border-white/10">
         <div className="flex items-center gap-2">
           <div className="w-0.5 h-3.5 rounded-full bg-primary/60 shrink-0" />
           <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">

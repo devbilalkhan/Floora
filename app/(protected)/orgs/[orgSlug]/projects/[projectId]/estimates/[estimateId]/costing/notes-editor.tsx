@@ -57,7 +57,7 @@ export function NotesEditor({
 
   return (
     <div>
-      <div className="flex items-center gap-0.5 px-3 py-1.5 border-b border-border/60">
+      <div className="flex items-center gap-0.5 px-3 py-1.5 border-b border-black/10 dark:border-white/10">
         <ToolbarButton
           active={editor.isActive("bold")}
           onClick={() => editor.chain().focus().toggleBold().run()}

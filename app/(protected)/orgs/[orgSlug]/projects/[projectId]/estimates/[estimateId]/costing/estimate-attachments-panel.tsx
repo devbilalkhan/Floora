@@ -102,9 +102,9 @@ export function EstimateAttachmentsPanel({
   const viewerAtt = attachments.find((a) => a.id === viewerId);
 
   return (
-    <div className="bg-card/65 backdrop-blur-xl border border-border rounded-sm overflow-hidden">
+    <div className="bg-card/65 backdrop-blur-xl border border-black/10 dark:border-white/10 rounded-sm overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b border-border">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b border-black/10 dark:border-white/10">
         <div className="flex items-center gap-2">
           <div className="w-0.5 h-3.5 rounded-full bg-primary/60 shrink-0" />
           <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -143,7 +143,7 @@ export function EstimateAttachmentsPanel({
       {/* List */}
       {attachments.length === 0 ? (
         <div
-          className="py-6 text-center border-2 border-dashed border-border/40 m-3 rounded-sm cursor-pointer hover:border-primary/30 hover:bg-primary/[0.02] transition-colors"
+          className="py-6 text-center border-2 border-dashed border-black/10 dark:border-white/10 m-3 rounded-sm cursor-pointer hover:border-primary/30 hover:bg-primary/[0.02] transition-colors"
           onClick={() => fileRef.current?.click()}
         >
           <Upload className="h-5 w-5 mx-auto mb-1.5 text-muted-foreground/30" />
@@ -156,7 +156,7 @@ export function EstimateAttachmentsPanel({
         </div>
       ) : (
         <TooltipProvider delayDuration={400}>
-          <div className="divide-y divide-border/40">
+          <div className="divide-y divide-black/5 dark:divide-white/5">
             {attachments.map((att) => {
               if (confirmDeleteId === att.id) {
                 return (
