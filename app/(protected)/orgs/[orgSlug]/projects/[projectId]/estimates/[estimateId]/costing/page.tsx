@@ -8,6 +8,7 @@ import { CostingTable } from "./costing-table";
 import { EstimateSwitcher } from "./estimate-switcher";
 import { EstimateStatusBadge } from "./estimate-status-badge";
 import { EstimateAttachmentsPanel } from "./estimate-attachments-panel";
+import { EstimateNotesPanel } from "./estimate-notes-panel";
 import type { EstimateAttachment } from "./actions";
 import { EstimateExcelExportButton } from "@/components/estimate-excel-export-button";
 
@@ -191,11 +192,17 @@ export default async function CostingPage({
         confirmedPrices={confirmedPrices}
       />
 
-      <EstimateAttachmentsPanel
-        estimateId={params.estimateId}
-        projectId={params.projectId}
-        initialAttachments={(rawAttachments ?? []) as EstimateAttachment[]}
-      />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <EstimateNotesPanel
+          estimateId={params.estimateId}
+          initialNotes={estimate.description}
+        />
+        <EstimateAttachmentsPanel
+          estimateId={params.estimateId}
+          projectId={params.projectId}
+          initialAttachments={(rawAttachments ?? []) as EstimateAttachment[]}
+        />
+      </div>
     </div>
   );
 }

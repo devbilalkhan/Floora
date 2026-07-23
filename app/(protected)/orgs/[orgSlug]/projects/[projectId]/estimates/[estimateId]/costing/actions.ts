@@ -649,6 +649,17 @@ export async function updateEstimateStatus(estimateId: string, status: string) {
   if (error) throw new Error(error.message);
 }
 
+// ── Update estimate notes ─────────────────────────────────────────────────────
+export async function updateEstimateNotes(estimateId: string, notes: string) {
+  await assertEstimateAccess(estimateId);
+  const { supabase } = await createAuthedClient();
+  const { error } = await supabase
+    .from("estimates")
+    .update({ description: notes || null })
+    .eq("id", estimateId);
+  if (error) throw new Error(error.message);
+}
+
 // ── Update estimate-level settings ───────────────────────────────────────────
 export async function updateEstimateSettings(
   estimateId: string,
