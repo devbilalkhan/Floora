@@ -1386,6 +1386,7 @@ export function CostingTable({
             estimate={{ ...estimate, ...settings }}
             items={items}
             wetAreas={wetAreas}
+            variant="compact"
           />
 
           {/* Import / re-import from takeoff */}
