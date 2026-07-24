@@ -1892,8 +1892,17 @@ export function CostingTable({
                     <span className={cn("text-xs", markupWarning ? "text-warning" : "text-muted-foreground")}>
                       Mark-up
                     </span>
-                    <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-semibold border tabular-nums", markupBadgeCls)}>
-                      {fmtPct(settings.net_markup_pct)}%
+                    <span className={cn("inline-flex items-center gap-0.5 pl-1.5 pr-1 py-0.5 rounded border", markupBadgeCls)}>
+                      <input
+                        type="number"
+                        value={r2(Number(settings.net_markup_pct) * 100)}
+                        onChange={(e) => updateSettings({ net_markup_pct: (parseFloat(e.target.value) || 0) / 100 })}
+                        className="w-9 bg-transparent text-[10px] font-semibold tabular-nums text-right focus:outline-none"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                      />
+                      <span className="text-[10px] font-semibold">%</span>
                     </span>
                   </div>
                   <span className={cn("tabular-nums font-bold text-base", markupTextCls)}>
