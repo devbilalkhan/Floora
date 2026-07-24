@@ -44,6 +44,7 @@ export type EstimateItem = {
   lab_rate: number;
   coverage_m2: number | null;
   is_auto: boolean;
+  qty_manually_set: boolean;
   manufacturer: string | null;
   level: string | null;
   product_type: string | null;

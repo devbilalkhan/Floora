@@ -41,7 +41,7 @@ export default async function CostingPage({
       .single(),
     supabase
       .from("estimate_items")
-      .select("id, estimate_id, parent_item_id, sort_order, type, scope_category, finish_code, description, qty, unit, waste_pct, cov_lm, cov_area, cov_height_mm, mat_rate, lab_rate, coverage_m2, is_auto, manufacturer, level, product_type")
+      .select("id, estimate_id, parent_item_id, sort_order, type, scope_category, finish_code, description, qty, unit, waste_pct, cov_lm, cov_area, cov_height_mm, mat_rate, lab_rate, coverage_m2, is_auto, qty_manually_set, manufacturer, level, product_type")
       .eq("estimate_id", params.estimateId)
       .order("sort_order"),
     supabase

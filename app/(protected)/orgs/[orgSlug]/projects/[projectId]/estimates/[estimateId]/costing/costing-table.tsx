@@ -54,6 +54,7 @@ function applySectionConsumableQtys(items: EstimateItem[], scope: string): Estim
   const gluableArea = primaries.filter(p => p.product_type !== "plank_floating").reduce((s, p) => s + (Number(p.qty) || 0), 0);
   return items.map(i => {
     if (!(i.scope_category === scope && i.is_auto && !i.parent_item_id && i.type === "consumable")) return i;
+    if (i.qty_manually_set) return i; // user corrected this row — don't overwrite it
     let qty = i.qty;
     if (i.description === "Feather Finish 20kg")   qty = totalArea   > 0 ? Math.ceil(totalArea   / COVERAGE_M2) : 0;
     if (i.description === "Feather Finish Labour")  qty = totalArea;
@@ -76,6 +77,7 @@ const FLOOR_PREP_DEFAULTS = {
 // Client-side mirror of the server sync logic
 function calcAutoChildQty(child: EstimateItem, parentQty: number): number {
   if (COVING_DESCS.has(child.description ?? "")) return child.qty; // coving geometry — leave alone
+  if (child.qty_manually_set) return child.qty; // user corrected this row — don't overwrite it
   if (child.coverage_m2) return Math.ceil(parentQty / child.coverage_m2);
   if (child.unit === "m2") return parentQty;
   return child.qty;
@@ -961,7 +963,16 @@ export function CostingTable({
   );
 
   const updateItem = useCallback(
-    (id: string, patch: Partial<EstimateItem>) => {
+    (id: string, rawPatch: Partial<EstimateItem>) => {
+      // A direct edit to an auto-managed consumable's own qty is a manual
+      // override — flag it so future parent qty changes stop recalculating
+      // it from the formula and silently discarding the user's correction.
+      const target = items.find((i) => i.id === id);
+      const patch: Partial<EstimateItem> =
+        "qty" in rawPatch && target?.is_auto && target.type === "consumable"
+          ? { ...rawPatch, qty_manually_set: true }
+          : rawPatch;
+
       setItems((prev) => {
         const updated = prev.map((i) => (i.id === id ? { ...i, ...patch } : i));
         if ("qty" in patch) {
@@ -997,6 +1008,7 @@ export function CostingTable({
             const sectionRows = items.filter(i => i.scope_category === scope && i.is_auto && !i.parent_item_id && i.type === "consumable");
             if (sectionRows.length > 0) {
               for (const sc of sectionRows) {
+                if (sc.qty_manually_set) continue; // user corrected this row — don't overwrite it
                 let qty: number | null = null;
                 if (sc.description === "Feather Finish 20kg")  qty = totalArea > 0 ? Math.ceil(totalArea / COVERAGE_M2) : 0;
                 if (sc.description === "Feather Finish Labour") qty = totalArea;

@@ -6,7 +6,7 @@ import type { EstimateItem, EstimateSettings, WetArea } from "@/lib/estimate-typ
 import { MAT as MAT_DEFAULTS, LAB as LAB_DEFAULTS, COVERAGE_M2 as COVERAGE, FILLET_LM } from "@/lib/default-rates";
 
 const ESTIMATE_ITEMS_COLS =
-  "id, estimate_id, parent_item_id, sort_order, type, scope_category, finish_code, description, qty, unit, waste_pct, cov_lm, cov_area, cov_height_mm, mat_rate, lab_rate, coverage_m2, is_auto, manufacturer, level, product_type";
+  "id, estimate_id, parent_item_id, sort_order, type, scope_category, finish_code, description, qty, unit, waste_pct, cov_lm, cov_area, cov_height_mm, mat_rate, lab_rate, coverage_m2, is_auto, qty_manually_set, manufacturer, level, product_type";
 
 const TAKEOFF_ROW_COLS =
   "id, takeoff_id, scope_category, finish_code, description, manufacturer, colour, location, level, product_type, qty, unit, waste_pct, notes, sort_order, parent_finish_code, cove_height_mm";
@@ -189,7 +189,7 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
         type: "consumable" as const, scope_category: scope,
         finish_code: null, waste_pct: 0,
         cov_lm: null, cov_area: null, cov_height_mm: null,
-        manufacturer: null, is_auto: true, level: null,
+        manufacturer: null, is_auto: true, qty_manually_set: false, level: null,
       };
 
       // Weld rod — sheet only (planks are clicked/glued, not welded)
@@ -210,7 +210,7 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
         type: "consumable" as const, scope_category: scope,
         finish_code: null, waste_pct: 0,
         cov_lm: null, cov_area: null, cov_height_mm: null,
-        manufacturer: null, is_auto: true, level: null,
+        manufacturer: null, is_auto: true, qty_manually_set: false, level: null,
       };
 
       children.push({ ...base, sort_order: sortOrder++, description: "Glue Carpet", qty: ceil(floorArea / COVERAGE), unit: "drum", mat_rate: MAT.glueCarpet, lab_rate: 0, coverage_m2: COVERAGE });
@@ -242,6 +242,7 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
         coverage_m2: COVERAGE,
         manufacturer: null,
         is_auto: true,
+        qty_manually_set: false,
       });
 
       children.push({
@@ -263,6 +264,7 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
         coverage_m2: null,
         manufacturer: null,
         is_auto: true,
+        qty_manually_set: false,
       });
     }
 
@@ -299,7 +301,7 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
 // ── Update a single estimate item field ───────────────────────────────────────
 export async function updateEstimateItem(
   itemId: string,
-  patch: Partial<Pick<EstimateItem, "finish_code" | "description" | "qty" | "unit" | "waste_pct" | "mat_rate" | "lab_rate" | "coverage_m2" | "manufacturer">>
+  patch: Partial<Pick<EstimateItem, "finish_code" | "description" | "qty" | "unit" | "waste_pct" | "mat_rate" | "lab_rate" | "coverage_m2" | "manufacturer" | "qty_manually_set">>
 ) {
   await assertItemAccess(itemId);
   const { supabase } = await createAuthedClient();
@@ -341,6 +343,7 @@ function buildAutoChildren(
     cov_height_mm: null,
     manufacturer: null,
     is_auto: true,
+    qty_manually_set: false,
     level: null,
     product_type: null,
   };
@@ -423,14 +426,15 @@ export async function syncAutoConsumables(parentId: string, parentQty: number) {
   const { supabase } = await createAuthedClient();
   const { data: children } = await supabase
     .from("estimate_items")
-    .select("id, coverage_m2, unit, description")
+    .select("id, coverage_m2, unit, description, qty_manually_set")
     .eq("parent_item_id", parentId)
     .eq("is_auto", true);
 
   if (!children || children.length === 0) return;
 
-  // Exclude coving children — their qty depends on coving geometry, not floor area
-  const syncable = children.filter(c => !COVING_DESCS.has(c.description ?? ""));
+  // Exclude coving children (qty depends on coving geometry, not floor area)
+  // and rows the user has manually corrected — don't clobber their override.
+  const syncable = children.filter(c => !COVING_DESCS.has(c.description ?? "") && !c.qty_manually_set);
   if (syncable.length === 0) return;
 
   await Promise.all(
@@ -476,6 +480,7 @@ export async function addCovingToItem(
     cov_lm: null, cov_area: null, cov_height_mm: null,
     manufacturer: null,
     is_auto: true,
+    qty_manually_set: false,
     level: null,
     product_type: null,
   };
@@ -590,6 +595,8 @@ export async function syncSectionConsumables(
       Array.from(expected.entries()).map(async ([desc, row]) => {
         const ex = existingMap.get(desc);
         if (ex && Number(ex.qty) === row.qty) return ex;
+        // User manually corrected this row's qty — don't overwrite it.
+        if (ex && ex.qty_manually_set) return ex;
         const { data, error } = await supabase.rpc("upsert_section_consumable", {
           p_estimate_id: estimateId,
           p_scope_category: scopeCategory,
