@@ -27,6 +27,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { COVERAGE_M2 } from "@/lib/default-rates";
 import { EstimateAuditModal } from "./estimate-audit-modal";
+import { EstimateExcelExportButton } from "@/components/estimate-excel-export-button";
 import {
   updateEstimateItem,
   deleteEstimateItem,
@@ -825,6 +826,8 @@ export function CostingTable({
   orgSlug,
   projectId,
   confirmedPrices = {},
+  orgName,
+  projectName,
 }: {
   estimate: Estimate;
   initialItems: EstimateItem[];
@@ -833,6 +836,8 @@ export function CostingTable({
   orgSlug: string;
   projectId: string;
   confirmedPrices?: Record<string, number>;
+  orgName: string;
+  projectName: string;
 }) {
   const [items, setItems] = useState<EstimateItem[]>(initialItems);
   const [wetAreas, setWetAreas] = useState<WetArea[]>(initialWetAreas);
@@ -1361,6 +1366,14 @@ export function CostingTable({
             settings={effectiveSettings}
             wetAreas={includeWetAreas ? wetAreas : []}
             summary={summary}
+          />
+
+          <EstimateExcelExportButton
+            orgName={orgName}
+            projectName={projectName}
+            estimate={{ ...estimate, ...settings }}
+            items={items}
+            wetAreas={wetAreas}
           />
 
           {/* Import / re-import from takeoff */}
