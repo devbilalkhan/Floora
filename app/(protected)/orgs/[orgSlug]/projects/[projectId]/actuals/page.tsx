@@ -4,6 +4,7 @@ import { ChevronRight, FileText } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { ActualsPageClient } from "./actuals-page-client";
 import { ActualsExportButton } from "./actuals-export-button";
+import { SupplierSummaryButton } from "./supplier-summary-drawer";
 
 export default async function ActualsPage({
   params,
@@ -67,6 +68,10 @@ export default async function ActualsPage({
           <ActualsExportButton
             projectName={project.name}
             incomeGroups={allGroups.filter(g => g.type === "income")}
+            expenseGroups={allGroups.filter(g => g.type === "expense")}
+            allLineItems={allLineItems}
+          />
+          <SupplierSummaryButton
             expenseGroups={allGroups.filter(g => g.type === "expense")}
             allLineItems={allLineItems}
           />

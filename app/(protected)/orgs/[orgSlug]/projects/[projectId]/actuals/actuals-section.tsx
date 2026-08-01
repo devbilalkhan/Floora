@@ -77,11 +77,11 @@ const NO_CODE = "none";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function fmt(n: number) {
+export function fmt(n: number) {
   return "$" + n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function effectiveSubtotal(item: ActualLineItem): number {
+export function effectiveSubtotal(item: ActualLineItem): number {
   return item.qty !== null && item.unit_price !== null
     ? item.qty * item.unit_price
     : item.subtotal;
@@ -111,7 +111,7 @@ const SUPPLIER_BADGE_PALETTE = [
   { bg: "bg-fuchsia-500/15", text: "text-fuchsia-700 dark:text-fuchsia-300" },
 ];
 
-function buildSupplierColorMap(items: ActualLineItem[]): Map<string, string> {
+export function buildSupplierColorMap(items: ActualLineItem[]): Map<string, string> {
   const uniqueSuppliers = Array.from(
     new Set(
       items
@@ -129,7 +129,7 @@ function buildSupplierColorMap(items: ActualLineItem[]): Map<string, string> {
   return map;
 }
 
-function supplierBadgeClass(supplierColorMap: Map<string, string>, supplier: string): string {
+export function supplierBadgeClass(supplierColorMap: Map<string, string>, supplier: string): string {
   return supplierColorMap.get(supplier.trim().toLowerCase()) ?? "";
 }
 
