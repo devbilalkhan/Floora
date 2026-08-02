@@ -1,7 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Mirrors INIT_WIDTHS from takeoff-table.tsx
-const COL_WIDTHS = [32, 84, 124, 100, 68, 84, 60, 72, 52, 56, 56, 56, 56, 252, 32];
+const COL_WIDTHS = [32, 84, 124, 100, 68, 84, 60, 72, 52, 56, 56, 56, 80, 252, 32];
 const TABLE_WIDTH = COL_WIDTHS.reduce((s, w) => s + w, 0);
 
 const HEADERS = [
@@ -88,7 +88,8 @@ export default function Loading() {
           <Skeleton className="h-3 w-36" />
         </div>
         <div className="flex items-center gap-2">
-          <Skeleton className="h-7 w-20" />
+          <Skeleton className="h-7 w-24" />
+          <Skeleton className="h-7 w-32" />
           <Skeleton className="h-7 w-28" />
           <Skeleton className="h-7 w-32" />
         </div>
@@ -96,9 +97,10 @@ export default function Loading() {
 
       {/* Takeoff selector */}
       <div className="flex items-center gap-2">
-        <Skeleton className="h-8 w-80 rounded-sm" />
+        <Skeleton className="h-8 w-40 rounded-sm" />
         <Skeleton className="h-8 w-16 rounded-sm" />
-        <Skeleton className="h-8 w-20 rounded-sm" />
+        <Skeleton className="h-8 w-16 rounded-sm" />
+        <Skeleton className="h-8 w-16 rounded-sm" />
       </div>
 
       {/* Takeoff table */}
