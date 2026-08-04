@@ -6,7 +6,7 @@ import type { EstimateItem, EstimateSettings, WetArea } from "@/lib/estimate-typ
 import { MAT as MAT_DEFAULTS, LAB as LAB_DEFAULTS, COVERAGE_M2 as COVERAGE, FILLET_LM } from "@/lib/default-rates";
 
 const ESTIMATE_ITEMS_COLS =
-  "id, estimate_id, parent_item_id, sort_order, type, scope_category, finish_code, description, qty, unit, waste_pct, cov_lm, cov_area, cov_height_mm, mat_rate, lab_rate, coverage_m2, is_auto, qty_manually_set, manufacturer, level, product_type";
+  "id, estimate_id, parent_item_id, sort_order, type, scope_category, finish_code, description, qty, unit, waste_pct, cov_lm, cov_area, cov_height_mm, mat_rate, lab_rate, coverage_m2, is_auto, qty_manually_set, manufacturer, level, product_type, included_in_totals";
 
 const TAKEOFF_ROW_COLS =
   "id, takeoff_id, scope_category, finish_code, description, manufacturer, colour, location, level, product_type, qty, unit, waste_pct, notes, sort_order, parent_finish_code, cove_height_mm";
@@ -189,7 +189,7 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
         type: "consumable" as const, scope_category: scope,
         finish_code: null, waste_pct: 0,
         cov_lm: null, cov_area: null, cov_height_mm: null,
-        manufacturer: null, is_auto: true, qty_manually_set: false, level: null,
+        manufacturer: null, is_auto: true, qty_manually_set: false, level: null, included_in_totals: true,
       };
 
       // Weld rod — sheet only (planks are clicked/glued, not welded)
@@ -210,7 +210,7 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
         type: "consumable" as const, scope_category: scope,
         finish_code: null, waste_pct: 0,
         cov_lm: null, cov_area: null, cov_height_mm: null,
-        manufacturer: null, is_auto: true, qty_manually_set: false, level: null,
+        manufacturer: null, is_auto: true, qty_manually_set: false, level: null, included_in_totals: true,
       };
 
       children.push({ ...base, sort_order: sortOrder++, description: "Glue Carpet", qty: ceil(floorArea / COVERAGE), unit: "drum", mat_rate: MAT.glueCarpet, lab_rate: 0, coverage_m2: COVERAGE });
@@ -243,6 +243,7 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
         manufacturer: null,
         is_auto: true,
         qty_manually_set: false,
+        included_in_totals: true,
       });
 
       children.push({
@@ -265,6 +266,7 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
         manufacturer: null,
         is_auto: true,
         qty_manually_set: false,
+        included_in_totals: true,
       });
     }
 
@@ -301,7 +303,7 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
 // ── Update a single estimate item field ───────────────────────────────────────
 export async function updateEstimateItem(
   itemId: string,
-  patch: Partial<Pick<EstimateItem, "finish_code" | "description" | "qty" | "unit" | "waste_pct" | "mat_rate" | "lab_rate" | "coverage_m2" | "manufacturer" | "qty_manually_set">>
+  patch: Partial<Pick<EstimateItem, "finish_code" | "description" | "qty" | "unit" | "waste_pct" | "mat_rate" | "lab_rate" | "coverage_m2" | "manufacturer" | "qty_manually_set" | "included_in_totals">>
 ) {
   await assertItemAccess(itemId);
   const { supabase } = await createAuthedClient();
@@ -346,6 +348,7 @@ function buildAutoChildren(
     qty_manually_set: false,
     level: null,
     product_type: null,
+    included_in_totals: true,
   };
 
   if (scopeCategory === "vinyl" || scopeCategory === "wall_vinyl") {

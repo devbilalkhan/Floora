@@ -48,6 +48,7 @@ export type EstimateItem = {
   manufacturer: string | null;
   level: string | null;
   product_type: string | null;
+  included_in_totals: boolean;
 };
 
 export type EstimateSettings = {

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import { Trash2, Plus, ChevronDown, RefreshCw } from "lucide-react";
+import { Trash2, Plus, ChevronDown, RefreshCw, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { CATEGORIES, LEVELS } from "@/lib/takeoff-types";
@@ -111,7 +111,7 @@ const selectCell =
   "appearance-none bg-transparent focus:ring-1 focus:ring-inset focus:ring-primary/40 " +
   "text-black dark:text-foreground/70";
 
-const INIT_WIDTHS = [28, 76, 200, 64, 52, 52, 108, 84, 84, 80, 80, 96, 28];
+const INIT_WIDTHS = [28, 76, 200, 64, 52, 52, 108, 84, 84, 80, 80, 96, 46];
 // # | Code | Description | Qty | Unit | Waste% | Eff.Qty | Mat$/u | Lab$/u | Mat$ | Lab$ | Total | Del
 const COL_MIN = 28;
 
@@ -277,7 +277,7 @@ function PrimaryRow({
   const liveArea = covFormLm * (covFormHeight / 1000);
 
   return (
-    <tr className="border-b border-border hover:bg-muted/20 group">
+    <tr className={cn("border-b border-border hover:bg-muted/20 group", !local.included_in_totals && "opacity-45")}>
       {/* Coving dialog */}
       <Dialog open={covingOpen} onOpenChange={setCovingOpen}>
         <DialogContent className="sm:max-w-xs">
@@ -565,13 +565,31 @@ function PrimaryRow({
         </div>
       </td>
 
-      <td className="w-7 text-center p-0">
-        <button
-          onClick={() => onDelete(item.id)}
-          className="opacity-0 group-hover:opacity-100 p-1 rounded-sm text-muted-foreground hover:text-destructive transition-all"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
+      <td className="w-11 p-0">
+        <div className="flex items-center justify-center gap-0.5">
+          <button
+            onClick={() => {
+              const next = !local.included_in_totals;
+              set("included_in_totals", next);
+              flush({ included_in_totals: next });
+            }}
+            title={local.included_in_totals ? "Exclude row (and its consumables) from totals" : "Include row in totals"}
+            className={cn(
+              "p-1 rounded-sm transition-colors",
+              local.included_in_totals
+                ? "opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground"
+                : "text-amber-500 hover:text-amber-600"
+            )}
+          >
+            {local.included_in_totals ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+          </button>
+          <button
+            onClick={() => onDelete(item.id)}
+            className="opacity-0 group-hover:opacity-100 p-1 rounded-sm text-muted-foreground hover:text-destructive transition-all"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </div>
       </td>
     </tr>
   );
@@ -582,10 +600,12 @@ function ConsumableRow({
   item,
   onUpdate,
   onDelete,
+  parentExcluded = false,
 }: {
   item: EstimateItem;
   onUpdate: (id: string, patch: Partial<EstimateItem>) => void;
   onDelete: (id: string) => void;
+  parentExcluded?: boolean;
 }) {
   const [local, setLocal] = useState(item);
   const pending = useRef<Partial<EstimateItem>>({});
@@ -634,7 +654,7 @@ function ConsumableRow({
   const total = itemTotal(local);
 
   return (
-    <tr className="border-b border-border hover:bg-muted/10 group">
+    <tr className={cn("border-b border-border hover:bg-muted/10 group", (!local.included_in_totals || parentExcluded) && "opacity-45")}>
       {/* # */}
       <td className="text-center text-[10px] text-muted-foreground/60 select-none px-1 py-0">
         ↳
@@ -740,14 +760,32 @@ function ConsumableRow({
         <div className={cn(readonlyCell, "text-foreground/55")}>{total > 0 ? `$${fmt(total)}` : "—"}</div>
       </td>
 
-      {/* Delete */}
-      <td className="w-7 text-center p-0">
-        <button
-          onClick={() => onDelete(item.id)}
-          className="opacity-0 group-hover:opacity-100 p-1 rounded-sm text-muted-foreground hover:text-destructive transition-all"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
+      {/* Include toggle + Delete */}
+      <td className="w-11 p-0">
+        <div className="flex items-center justify-center gap-0.5">
+          <button
+            onClick={() => {
+              const next = !local.included_in_totals;
+              set("included_in_totals", next);
+              flush({ included_in_totals: next });
+            }}
+            title={local.included_in_totals ? "Exclude from totals" : "Include in totals"}
+            className={cn(
+              "p-1 rounded-sm transition-colors",
+              local.included_in_totals
+                ? "opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground"
+                : "text-amber-500 hover:text-amber-600"
+            )}
+          >
+            {local.included_in_totals ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+          </button>
+          <button
+            onClick={() => onDelete(item.id)}
+            className="opacity-0 group-hover:opacity-100 p-1 rounded-sm text-muted-foreground hover:text-destructive transition-all"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </div>
       </td>
     </tr>
   );
@@ -1191,9 +1229,26 @@ export function CostingTable({
     );
   }, [items, selectedLevel, levels]);
 
+  // Ids of items counted toward totals: excludes rows individually toggled off,
+  // and cascades — a consumable whose parent primary is toggled off is excluded
+  // too, even if the consumable's own flag is still on.
+  const activeIds = useMemo(() => {
+    const byId = new Map(filteredItems.map((i) => [i.id, i] as const));
+    const ids = new Set<string>();
+    filteredItems.forEach((i) => {
+      if (i.included_in_totals === false) return;
+      if (i.parent_item_id) {
+        const parent = byId.get(i.parent_item_id);
+        if (parent && parent.included_in_totals === false) return;
+      }
+      ids.add(i.id);
+    });
+    return ids;
+  }, [filteredItems]);
+
   const activeItems = useMemo(
-    () => filteredItems.filter((i) => !excludedCategories.has(i.scope_category)),
-    [filteredItems, excludedCategories],
+    () => filteredItems.filter((i) => !excludedCategories.has(i.scope_category) && activeIds.has(i.id)),
+    [filteredItems, excludedCategories, activeIds],
   );
 
   // Group items: primaries, per-item children, and section-level consumables
@@ -1264,19 +1319,19 @@ export function CostingTable({
   const reportCatTotals = useMemo(() => {
     const map: Record<string, number> = {};
     grouped.primaries
-      .filter((p) => !excludedCategories.has(p.scope_category))
+      .filter((p) => !excludedCategories.has(p.scope_category) && activeIds.has(p.id))
       .forEach((p) => {
-        const ch = grouped.children.get(p.id) ?? [];
+        const ch = (grouped.children.get(p.id) ?? []).filter((c) => activeIds.has(c.id));
         const cost = itemMatCost(p) + itemLabCost(p) + ch.reduce((s, c) => s + itemMatCost(c) + itemLabCost(c), 0);
         map[p.scope_category] = (map[p.scope_category] ?? 0) + cost;
       });
     grouped.sectionConsumables.forEach((scs, scope) => {
       if (excludedCategories.has(scope)) return;
-      const cost = scs.reduce((s, c) => s + itemMatCost(c) + itemLabCost(c), 0);
+      const cost = scs.filter((c) => activeIds.has(c.id)).reduce((s, c) => s + itemMatCost(c) + itemLabCost(c), 0);
       map[scope] = (map[scope] ?? 0) + cost;
     });
     return map;
-  }, [grouped, excludedCategories]);
+  }, [grouped, excludedCategories, activeIds]);
 
   const reportItemsGrandTotal = useMemo(
     () => Object.values(reportCatTotals).reduce((s, v) => s + v, 0),
@@ -1620,6 +1675,7 @@ export function CostingTable({
                               item={child}
                               onUpdate={updateItem}
                               onDelete={deleteItem}
+                              parentExcluded={!item.included_in_totals}
                             />
                           ))}
                           {itemChildren.length > 0 && (
