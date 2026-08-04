@@ -1578,15 +1578,19 @@ export function CostingTable({
 
                 if (catPrimaries.length === 0) return null;
 
+                // Net/supply qty and the per-unit rate denominator only count rows still
+                // active — a toggled-off row's area shouldn't dilute the remaining rate.
+                const activeCatPrimaries = catPrimaries.filter((i) => activeIds.has(i.id));
+
                 const catTotal = catTotals[cat.key] ?? { mat: 0, lab: 0, total: 0 };
-                const netQty    = catPrimaries.reduce((s, i) => s + (Number(i.qty) || 0), 0);
-                const supplyQty = catPrimaries.reduce((s, i) => s + (itemMatQty(i) || 0), 0);
+                const netQty    = activeCatPrimaries.reduce((s, i) => s + (Number(i.qty) || 0), 0);
+                const supplyQty = activeCatPrimaries.reduce((s, i) => s + (itemMatQty(i) || 0), 0);
                 const catUnit   = catPrimaries.length > 0 ? uLabel(catPrimaries[0].unit) : "m²";
                 // Per-unit sell rate — mirrors report-document exactly
                 const unitCounts: Record<string, number> = {};
-                catPrimaries.forEach((p) => { unitCounts[p.unit] = (unitCounts[p.unit] ?? 0) + 1; });
+                activeCatPrimaries.forEach((p) => { unitCounts[p.unit] = (unitCounts[p.unit] ?? 0) + 1; });
                 const primaryUnit = Object.entries(unitCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "m2";
-                const grossQty = catPrimaries.filter((p) => p.unit === primaryUnit).reduce((s, p) => s + itemMatQty(p), 0);
+                const grossQty = activeCatPrimaries.filter((p) => p.unit === primaryUnit).reduce((s, p) => s + itemMatQty(p), 0);
                 const catPrimaryTotal = reportCatTotals[cat.key] ?? 0;
                 const catShare = reportItemsGrandTotal > 0 ? catPrimaryTotal / reportItemsGrandTotal : 0;
                 const perUnit = grossQty > 0 ? (catShare * (summary.totalExGst - summary.floorPrepRevenue)) / grossQty : 0;
