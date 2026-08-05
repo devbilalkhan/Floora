@@ -213,7 +213,7 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
         manufacturer: null, is_auto: true, qty_manually_set: false, level: null, included_in_totals: true,
       };
 
-      children.push({ ...base, sort_order: sortOrder++, description: "Glue Carpet", qty: ceil(floorArea / COVERAGE), unit: "drum", mat_rate: MAT.glueCarpet, lab_rate: 0, coverage_m2: COVERAGE });
+      // Glue Carpet is consolidated at section level via syncSectionConsumables
 
       // Underlay — broadloom only (not tiles)
       if (!productType || productType === "broadloom") {
@@ -275,8 +275,10 @@ export async function importTakeoff(estimateId: string, takeoffId: string, orgSl
     }
   }
 
-  // Build section-level consumables (FF + Glue) for each vinyl scope
-  for (const sc of ["vinyl", "wall_vinyl"] as const) {
+  // Build section-level consumables (Glue [+ FF for vinyl]) for each scope that
+  // consolidates them — floating vinyl planks are excluded from gluableArea,
+  // carpet has no floating product type so gluableArea === totalArea there.
+  for (const sc of ["vinyl", "wall_vinyl", "carpet"] as const) {
     const { data: vp } = await supabase
       .from("estimate_items")
       .select("qty, product_type")
@@ -357,7 +359,7 @@ function buildAutoChildren(
       children.push({ ...base, sort_order: order++, description: "Weld Rod", unit: "lm", mat_rate: MAT.weldRod, lab_rate: 0, coverage_m2: 2 });
     }
   } else if (scopeCategory === "carpet") {
-    children.push({ ...base, sort_order: order++, description: "Glue Carpet", unit: "drum", mat_rate: MAT.glueCarpet, lab_rate: 0, coverage_m2: COVERAGE });
+    // Glue Carpet is consolidated at section level via syncSectionConsumables
     if (!productType || productType === "broadloom") {
       children.push({ ...base, sort_order: order++, description: "Carpet Underlay", unit: "m2", mat_rate: MAT.underlay, lab_rate: 0, coverage_m2: null });
     }
@@ -550,9 +552,10 @@ export async function restoreAutoConsumables(
   return (data ?? []) as EstimateItem[];
 }
 
-// ── Sync section-level consumables (FF + Glue) for a vinyl scope ─────────────
+// ── Sync section-level consumables for a scope ────────────────────────────────
 // These rows have parent_item_id = null and are consolidated across all primary
-// items in the section. Called after any vinyl primary qty change, add, or delete.
+// items in the section (vinyl/wall_vinyl: Glue + Feather Finish; carpet: Glue).
+// Called after any primary qty change, add, or delete in a consolidating scope.
 export async function syncSectionConsumables(
   estimateId: string,
   scopeCategory: string,
@@ -565,12 +568,18 @@ export async function syncSectionConsumables(
 
   // Build expected rows
   const expected = new Map<string, { qty: number; sort_order: number; unit: string; mat_rate: number; lab_rate: number; coverage_m2: number | null }>();
-  if (gluableArea > 0 || force.includes("Glue Sheet/Plank")) {
-    expected.set("Glue Sheet/Plank",     { qty: ceil(gluableArea / COVERAGE), sort_order: 9000, unit: "drum", mat_rate: MAT.glueSheet,     lab_rate: 0,                 coverage_m2: COVERAGE });
-  }
-  if (totalArea > 0 || force.includes("Feather Finish 20kg")) {
-    expected.set("Feather Finish 20kg",  { qty: ceil(totalArea  / COVERAGE), sort_order: 9001, unit: "bag",  mat_rate: MAT.featherFinish, lab_rate: 0,                 coverage_m2: COVERAGE });
-    expected.set("Feather Finish Labour", { qty: totalArea,                   sort_order: 9002, unit: "m2",  mat_rate: 0,                 lab_rate: LAB.featherFinish, coverage_m2: null     });
+  if (scopeCategory === "carpet") {
+    if (gluableArea > 0 || force.includes("Glue Carpet")) {
+      expected.set("Glue Carpet", { qty: ceil(gluableArea / COVERAGE), sort_order: 9000, unit: "drum", mat_rate: MAT.glueCarpet, lab_rate: 0, coverage_m2: COVERAGE });
+    }
+  } else {
+    if (gluableArea > 0 || force.includes("Glue Sheet/Plank")) {
+      expected.set("Glue Sheet/Plank",     { qty: ceil(gluableArea / COVERAGE), sort_order: 9000, unit: "drum", mat_rate: MAT.glueSheet,     lab_rate: 0,                 coverage_m2: COVERAGE });
+    }
+    if (totalArea > 0 || force.includes("Feather Finish 20kg")) {
+      expected.set("Feather Finish 20kg",  { qty: ceil(totalArea  / COVERAGE), sort_order: 9001, unit: "bag",  mat_rate: MAT.featherFinish, lab_rate: 0,                 coverage_m2: COVERAGE });
+      expected.set("Feather Finish Labour", { qty: totalArea,                   sort_order: 9002, unit: "m2",  mat_rate: 0,                 lab_rate: LAB.featherFinish, coverage_m2: null     });
+    }
   }
 
   // Fetch existing section-level consumables for this scope (used for

@@ -46,6 +46,7 @@ import {
 const COVING_DESCS = new Set(["Contact Brushable (Max Bond 102)", "Cove Fillet", "Coving Labour"]);
 
 const VINYL_SCOPES = new Set(["vinyl", "wall_vinyl"]);
+const SECTION_CONSUMABLE_SCOPES = new Set(["vinyl", "wall_vinyl", "carpet"]);
 
 // Recompute section consumable qtys from a list of items (optimistic client update)
 function applySectionConsumableQtys(items: EstimateItem[], scope: string): EstimateItem[] {
@@ -59,6 +60,7 @@ function applySectionConsumableQtys(items: EstimateItem[], scope: string): Estim
     if (i.description === "Feather Finish 20kg")   qty = totalArea   > 0 ? Math.ceil(totalArea   / COVERAGE_M2) : 0;
     if (i.description === "Feather Finish Labour")  qty = totalArea;
     if (i.description === "Glue Sheet/Plank")       qty = gluableArea > 0 ? Math.ceil(gluableArea / COVERAGE_M2) : 0;
+    if (i.description === "Glue Carpet")            qty = gluableArea > 0 ? Math.ceil(gluableArea / COVERAGE_M2) : 0;
     return { ...i, qty };
   });
 }
@@ -134,7 +136,6 @@ function PrimaryRow({
   onCovingAdded,
   onCovingRemoved,
   hasWeldRod,
-  hasGlueCarpet,
   hasCarpetUnderlay,
   onConsumableAdded,
   confirmedPrice,
@@ -147,7 +148,6 @@ function PrimaryRow({
   onCovingAdded: (primaryId: string, children: EstimateItem[], covLm: number, covArea: number, covHeightMm: number) => void;
   onCovingRemoved: (primaryId: string) => void;
   hasWeldRod: boolean;
-  hasGlueCarpet: boolean;
   hasCarpetUnderlay: boolean;
   onConsumableAdded: (items: EstimateItem[]) => void;
   confirmedPrice?: number;
@@ -165,7 +165,6 @@ function PrimaryRow({
   const [editingBrand, setEditingBrand] = useState(false);
 
   const [addingWeldRod, setAddingWeldRod] = useState(false);
-  const [addingGlueCarpet, setAddingGlueCarpet] = useState(false);
   const [addingUnderlay, setAddingUnderlay] = useState(false);
   const [applyingCoving, setApplyingCoving] = useState(false);
 
@@ -225,16 +224,6 @@ function PrimaryRow({
       if (newItems.length > 0) onConsumableAdded(newItems);
     } finally {
       setAddingWeldRod(false);
-    }
-  };
-
-  const handleAddGlueCarpet = async () => {
-    setAddingGlueCarpet(true);
-    try {
-      const newItems = await restoreAutoConsumables(item.id, estimateId, local.scope_category, local.qty, "Glue Carpet");
-      if (newItems.length > 0) onConsumableAdded(newItems);
-    } finally {
-      setAddingGlueCarpet(false);
     }
   };
 
@@ -437,18 +426,6 @@ function PrimaryRow({
             >
               {addingWeldRod && <RefreshCw className="h-2 w-2 animate-spin" />}
               +weld rod
-            </button>
-          )}
-
-          {/* Glue Carpet restore — shown when missing */}
-          {isCarpet && !hasGlueCarpet && (
-            <button
-              onClick={handleAddGlueCarpet}
-              disabled={addingGlueCarpet}
-              className="shrink-0 inline-flex items-center gap-0.5 text-[10px] text-secondary/45 hover:text-secondary/70 px-1 py-0.5 transition-colors disabled:opacity-50 disabled:cursor-wait"
-            >
-              {addingGlueCarpet && <RefreshCw className="h-2 w-2 animate-spin" />}
-              +glue
             </button>
           )}
 
@@ -1021,8 +998,8 @@ export function CostingTable({
             const withChildren = updated.map((i) =>
               i.parent_item_id === id && i.is_auto ? { ...i, qty: calcAutoChildQty(i, newQty) } : i
             );
-            // Also recompute section consumables if this is a vinyl primary
-            if (VINYL_SCOPES.has(item.scope_category)) {
+            // Also recompute section consumables if this is a consolidating-scope primary
+            if (SECTION_CONSUMABLE_SCOPES.has(item.scope_category)) {
               return applySectionConsumableQtys(withChildren, item.scope_category);
             }
             return withChildren;
@@ -1035,7 +1012,7 @@ export function CostingTable({
         const item = items.find((i) => i.id === id);
         if (item && !item.parent_item_id) {
           syncAutoConsumables(id, patch.qty as number).catch(() => {});
-          if (VINYL_SCOPES.has(item.scope_category)) {
+          if (SECTION_CONSUMABLE_SCOPES.has(item.scope_category)) {
             const scope = item.scope_category;
             const primaries = items
               .map(i => i.id === id ? { ...i, qty: patch.qty as number } : i)
@@ -1051,6 +1028,7 @@ export function CostingTable({
                 if (sc.description === "Feather Finish 20kg")  qty = totalArea > 0 ? Math.ceil(totalArea / COVERAGE_M2) : 0;
                 if (sc.description === "Feather Finish Labour") qty = totalArea;
                 if (sc.description === "Glue Sheet/Plank")     qty = gluableArea > 0 ? Math.ceil(gluableArea / COVERAGE_M2) : 0;
+                if (sc.description === "Glue Carpet")          qty = gluableArea > 0 ? Math.ceil(gluableArea / COVERAGE_M2) : 0;
                 if (qty !== null) updateEstimateItem(sc.id, { qty }).catch(() => {});
               }
             } else if (syncingScopesRef.current.has(scope)) {
@@ -1077,15 +1055,15 @@ export function CostingTable({
       toRemove.add(id);
       prev.forEach((i) => { if (i.parent_item_id && toRemove.has(i.parent_item_id)) toRemove.add(i.id); });
       const after = prev.filter((i) => !toRemove.has(i.id));
-      // Recompute section consumables optimistically if deleting a vinyl primary
-      if (deletedItem && deletedItem.type === "primary" && !deletedItem.parent_item_id && VINYL_SCOPES.has(deletedItem.scope_category)) {
+      // Recompute section consumables optimistically if deleting a consolidating-scope primary
+      if (deletedItem && deletedItem.type === "primary" && !deletedItem.parent_item_id && SECTION_CONSUMABLE_SCOPES.has(deletedItem.scope_category)) {
         return applySectionConsumableQtys(after, deletedItem.scope_category);
       }
       return after;
     });
     deleteEstimateItem(id).catch(() => toast.error("Delete failed."));
     // Resync section consumables in DB — only when a primary row is deleted, not a section consumable
-    if (deletedItem && deletedItem.type === "primary" && !deletedItem.parent_item_id && VINYL_SCOPES.has(deletedItem.scope_category)) {
+    if (deletedItem && deletedItem.type === "primary" && !deletedItem.parent_item_id && SECTION_CONSUMABLE_SCOPES.has(deletedItem.scope_category)) {
       const scope = deletedItem.scope_category;
       const remaining = items.filter(i => i.id !== id && i.scope_category === scope && i.type === "primary" && !i.parent_item_id);
       const totalArea   = remaining.reduce((s, p) => s + (Number(p.qty) || 0), 0);
@@ -1121,8 +1099,8 @@ export function CostingTable({
       try {
         const { primary, children } = await addEstimateItem(estimate.id, scopeCategory, nextOrder, productType);
         setItems((prev) => [...prev, primary, ...children]);
-        // For vinyl, ensure section consumable rows exist (created on first non-zero qty, but scaffold them now)
-        if (VINYL_SCOPES.has(scopeCategory)) {
+        // Ensure section consumable rows exist (created on first non-zero qty, but scaffold them now)
+        if (SECTION_CONSUMABLE_SCOPES.has(scopeCategory)) {
           const allPrimaries = [...items, primary].filter(i => i.scope_category === scopeCategory && i.type === "primary" && !i.parent_item_id);
           const totalArea   = allPrimaries.reduce((s, p) => s + (Number(p.qty) || 0), 0);
           const gluableArea = allPrimaries.filter(p => p.product_type !== "plank_floating").reduce((s, p) => s + (Number(p.qty) || 0), 0);
@@ -1655,7 +1633,6 @@ export function CostingTable({
                       const rawItemLabel = item.finish_code || item.description || `#${idx + 1}`;
                       const itemLabel = rawItemLabel.length > 40 ? `${rawItemLabel.slice(0, 40).trimEnd()}…` : rawItemLabel;
                       const hasWeldRod = itemChildren.some((c) => c.description === "Weld Rod");
-                      const hasGlueCarpet = itemChildren.some((c) => c.description === "Glue Carpet");
                       const hasCarpetUnderlay = itemChildren.some((c) => c.description === "Carpet Underlay");
                       return (
                         <React.Fragment key={item.id}>
@@ -1668,7 +1645,6 @@ export function CostingTable({
                             onCovingAdded={handleCovingAdded}
                             onCovingRemoved={handleCovingRemoved}
                             hasWeldRod={hasWeldRod}
-                            hasGlueCarpet={hasGlueCarpet}
                             hasCarpetUnderlay={hasCarpetUnderlay}
                             onConsumableAdded={(newItems) => setItems((prev) => [...prev, ...newItems])}
                             confirmedPrice={item.finish_code ? confirmedPrices[item.finish_code] : undefined}
@@ -1689,14 +1665,16 @@ export function CostingTable({
                       );
                     })}
 
-                    {/* Section-level consumables (FF + Glue consolidated across all items) */}
+                    {/* Section-level consumables (Glue [+ FF for vinyl] consolidated across all items) */}
                     {(() => {
                       const isVinylScope = VINYL_SCOPES.has(cat.key);
+                      const isCarpetScope = cat.key === "carpet";
                       const sectionRows = (grouped.sectionConsumables.get(cat.key) ?? [])
                         .sort((a, b) => a.sort_order - b.sort_order);
-                      if (sectionRows.length === 0 && !isVinylScope) return null;
+                      if (sectionRows.length === 0 && !SECTION_CONSUMABLE_SCOPES.has(cat.key)) return null;
                       const hasGlue = sectionRows.some(r => r.description === "Glue Sheet/Plank");
                       const hasFeatherFinish = sectionRows.some(r => r.description === "Feather Finish 20kg");
+                      const hasCarpetGlue = sectionRows.some(r => r.description === "Glue Carpet");
                       const isSyncing = syncingScopes.has(cat.key);
                       return (
                         <>
@@ -1734,6 +1712,16 @@ export function CostingTable({
                                   >
                                     {restoringConsumable === `${cat.key}:Feather Finish 20kg` && <RefreshCw className="h-2 w-2 animate-spin" />}
                                     +feather finish
+                                  </button>
+                                )}
+                                {isCarpetScope && !hasCarpetGlue && !isSyncing && (
+                                  <button
+                                    onClick={() => restoreSectionConsumable(cat.key, "Glue Carpet")}
+                                    disabled={restoringConsumable === `${cat.key}:Glue Carpet`}
+                                    className="shrink-0 inline-flex items-center gap-0.5 text-[9px] text-primary/50 hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-wait"
+                                  >
+                                    {restoringConsumable === `${cat.key}:Glue Carpet` && <RefreshCw className="h-2 w-2 animate-spin" />}
+                                    +glue
                                   </button>
                                 )}
                               </div>
