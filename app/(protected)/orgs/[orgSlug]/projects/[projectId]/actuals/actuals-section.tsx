@@ -260,6 +260,7 @@ function LineItemRow({
   }, [item.included_in_totals]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPatch = useRef<Partial<ActualLineItem>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -298,16 +299,21 @@ function LineItemRow({
       onUpdate(local.id, patch);
     }
 
-    // Debounce server save
+    // Debounce server save. Pending edits to other fields on this row must
+    // not be dropped when a new field is touched before the timer fires, so
+    // patches accumulate here rather than being replaced.
     setSaved(false);
+    pendingPatch.current = { ...pendingPatch.current, ...patch };
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
+      const patchToSave = pendingPatch.current;
+      pendingPatch.current = {};
       setSaving(true);
       try {
-        await updateLineItem(local.id, projectId, patch);
+        await updateLineItem(local.id, projectId, patchToSave);
         // Propagate invoice_number only after save so rebucketing happens once
-        if (field === "invoice_number") {
-          onUpdate(local.id, patch);
+        if ("invoice_number" in patchToSave) {
+          onUpdate(local.id, patchToSave);
         }
         setSaving(false);
         setSaved(true);
