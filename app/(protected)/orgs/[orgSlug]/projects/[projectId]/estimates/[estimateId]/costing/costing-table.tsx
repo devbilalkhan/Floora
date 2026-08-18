@@ -315,6 +315,11 @@ function PrimaryRow({
                 <option value={150}>150 mm</option>
                 <option value={200}>200 mm</option>
                 <option value={250}>250 mm</option>
+                <option value={300}>300 mm</option>
+                <option value={350}>350 mm</option>
+                <option value={400}>400 mm</option>
+                <option value={450}>450 mm</option>
+                <option value={500}>500 mm</option>
               </select>
             </label>
           </div>

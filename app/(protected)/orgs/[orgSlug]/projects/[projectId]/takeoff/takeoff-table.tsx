@@ -363,6 +363,12 @@ function TakeoffRowComp({
               <SelectItem value="100" className="text-xs">100 mm</SelectItem>
               <SelectItem value="150" className="text-xs">150 mm</SelectItem>
               <SelectItem value="200" className="text-xs">200 mm</SelectItem>
+              <SelectItem value="250" className="text-xs">250 mm</SelectItem>
+              <SelectItem value="300" className="text-xs">300 mm</SelectItem>
+              <SelectItem value="350" className="text-xs">350 mm</SelectItem>
+              <SelectItem value="400" className="text-xs">400 mm</SelectItem>
+              <SelectItem value="450" className="text-xs">450 mm</SelectItem>
+              <SelectItem value="500" className="text-xs">500 mm</SelectItem>
             </SelectContent>
           </Select>
         ) : (
