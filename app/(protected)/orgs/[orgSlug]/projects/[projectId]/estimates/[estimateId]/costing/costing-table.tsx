@@ -1269,11 +1269,14 @@ export function CostingTable({
     [activeItems, effectiveSettings, wetAreas, includeWetAreas],
   );
 
-  // Category totals: primary rows + their children + section consumables
+  // Category totals: primary rows + their children + section consumables.
+  // Excludes toggled-off rows (and children of a toggled-off primary), mirroring
+  // the net/supply qty calculation below so Mat $/Lab $ stay in sync with the eye toggle.
   const catTotals = useMemo(() => {
     const map: Record<string, { mat: number; lab: number; total: number }> = {};
     grouped.primaries.forEach((item) => {
-      const children = grouped.children.get(item.id) ?? [];
+      if (!activeIds.has(item.id)) return;
+      const children = (grouped.children.get(item.id) ?? []).filter((c) => activeIds.has(c.id));
       const mat = itemMatCost(item) + children.reduce((s, c) => s + itemMatCost(c), 0);
       const lab = itemLabCost(item) + children.reduce((s, c) => s + itemLabCost(c), 0);
       const entry = map[item.scope_category] ?? { mat: 0, lab: 0, total: 0 };
@@ -1282,13 +1285,14 @@ export function CostingTable({
     });
     grouped.sectionConsumables.forEach((scs, scope) => {
       scs.forEach((sc) => {
+        if (!activeIds.has(sc.id)) return;
         const entry = map[scope] ?? { mat: 0, lab: 0, total: 0 };
         entry.mat += itemMatCost(sc); entry.lab += itemLabCost(sc); entry.total += itemMatCost(sc) + itemLabCost(sc);
         map[scope] = entry;
       });
     });
     return map;
-  }, [grouped]);
+  }, [grouped, activeIds]);
 
   const tableTotals = useMemo(() => {
     const mat = activeItems.reduce((s, i) => s + itemMatCost(i), 0);
