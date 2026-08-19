@@ -51,6 +51,52 @@ function plainToHtml(text: string): string {
     .join("");
 }
 
+// A controlled number input whose displayed text is a plain string buffer
+// while focused, rather than being reformatted to `n.toFixed(2)` on every
+// keystroke — that reformatting resets the cursor to the end of the field
+// after each digit, making multi-digit entry feel broken. The canonical
+// "12.00"-style format is only reapplied once the field loses focus.
+function DecimalInput({
+  value,
+  onChange,
+  hideZeros,
+  className,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  hideZeros: boolean;
+  className?: string;
+}) {
+  const format = (n: number) => (hideZeros && n === 0 ? "" : n.toFixed(2));
+  const [text, setText] = useState(() => format(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setText(format(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, hideZeros, focused]);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={text}
+      onFocus={() => setFocused(true)}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setText(raw);
+        const parsed = parseFloat(raw);
+        onChange(Number.isFinite(parsed) ? parsed : 0);
+      }}
+      onBlur={() => {
+        setFocused(false);
+        setText(format(value));
+      }}
+      className={className}
+    />
+  );
+}
+
 function SortableQuoteLine({
   line,
   itemIdx,
@@ -151,18 +197,18 @@ function SortableQuoteLine({
         />
       </td>
       <td className="p-0 border-r border-gray-100">
-        <input
-          type="number"
-          value={hideZeros && line.rate === 0 ? "" : line.rate.toFixed(2)}
-          onChange={(e) => onUpdate(line.id, "rate", parseFloat(e.target.value) || 0)}
+        <DecimalInput
+          value={line.rate}
+          onChange={(n) => onUpdate(line.id, "rate", n)}
+          hideZeros={hideZeros}
           className={cn(docInput, "text-right tabular-nums px-2 py-1.5")}
         />
       </td>
       <td className="p-0 border-r border-gray-100">
-        <input
-          type="number"
-          value={hideZeros && line.amount === 0 ? "" : line.amount.toFixed(2)}
-          onChange={(e) => onUpdate(line.id, "amount", parseFloat(e.target.value) || 0)}
+        <DecimalInput
+          value={line.amount}
+          onChange={(n) => onUpdate(line.id, "amount", n)}
+          hideZeros={hideZeros}
           className={cn(docInput, "text-right tabular-nums font-medium px-2 py-1.5")}
         />
       </td>
