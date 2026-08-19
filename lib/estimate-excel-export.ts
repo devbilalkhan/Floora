@@ -233,6 +233,55 @@ function buildDetailSheet(
     wetAreasTotalRow = totalRowNum;
   }
 
+  // Floor Prep / Grinding are estimate-level settings, not scope-category
+  // items, so they never pass through the CATEGORIES loop above. Their
+  // totals already appear in the Cost Build-Up section (via computeSummary),
+  // so this block is a standalone breakdown only — it must NOT feed into
+  // grandMat/grandLab below, or those totals would be double-counted.
+  const s = computeSummary([], estimate, []);
+  if (s.floorPrepBags > 0 || estimate.grind_area > 0) {
+    categoryBandRow(ws, "Floor Prep & Grinding");
+    const fpRow: Row = ws.addRow(["", "Item", "Qty", "Unit", "Mat $/u", "Lab $/u", "Mat $", "Lab $", "Charge $", "Profit $"]);
+    fpRow.eachCell((cell: Cell) => { cell.font = { bold: true, size: 9, color: { argb: "FF64748B" } }; });
+
+    if (s.floorPrepBags > 0) {
+      const rowNum = ws.rowCount + 1;
+      const row: Row = ws.addRow([
+        "",
+        "Floor Prep",
+        s.floorPrepBags,
+        "bag",
+        estimate.floor_prep_mat_per_bag,
+        estimate.floor_prep_lab_per_bag,
+        s.floorPrepCost - estimate.floor_prep_lab_per_bag * s.floorPrepBags,
+        estimate.floor_prep_lab_per_bag * s.floorPrepBags,
+        s.floorPrepRevenue,
+      ]);
+      row.getCell(10).value = { formula: `I${rowNum}-G${rowNum}-H${rowNum}`, result: s.floorPrepProfit };
+      [5, 6, 7, 8, 9, 10].forEach((c) => (row.getCell(c).numFmt = CURRENCY_FMT));
+      row.getCell(3).numFmt = QTY_FMT;
+    }
+
+    if (estimate.grind_area > 0) {
+      const rowNum = ws.rowCount + 1;
+      const row: Row = ws.addRow([
+        "",
+        "Grinding",
+        estimate.grind_area,
+        "m²",
+        0,
+        estimate.grind_labor_rate,
+        0,
+        s.grindCost,
+        s.grindRevenue,
+      ]);
+      row.getCell(10).value = { formula: `I${rowNum}-G${rowNum}-H${rowNum}`, result: s.grindProfit };
+      [5, 6, 7, 8, 9, 10].forEach((c) => (row.getCell(c).numFmt = CURRENCY_FMT));
+      row.getCell(3).numFmt = QTY_FMT;
+    }
+    ws.addRow([]);
+  }
+
   // Grand items subtotal — sums each category subtotal row individually
   // (not a contiguous range) so the Wet Areas block never gets double-counted.
   const grandMat = categorySubtotals.reduce((s, c) => s + c.mat, 0);
