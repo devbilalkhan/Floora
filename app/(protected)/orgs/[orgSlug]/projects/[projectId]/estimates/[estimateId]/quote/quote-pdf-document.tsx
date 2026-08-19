@@ -5,7 +5,22 @@ import {
   Text,
   Image,
   StyleSheet,
+  Font,
 } from "@react-pdf/renderer";
+
+// react-pdf's standard "Helvetica"/"Helvetica-Bold" font strings don't resolve
+// correctly when normal and bold runs are mixed in the same paragraph (bold
+// silently renders as regular weight) — a known upstream bug. Arimo is a
+// metric-compatible, Apache-2.0 substitute registered with real font files,
+// which resolves per-run weight correctly, so it's used for the one section
+// (Scope of Works) that mixes bold and regular text inline.
+Font.register({
+  family: "Arimo",
+  fonts: [
+    { src: "/fonts/Arimo-Regular.ttf" },
+    { src: "/fonts/Arimo-Bold.ttf", fontWeight: "bold" },
+  ],
+});
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const PURPLE  = "#7c3aed";
@@ -161,7 +176,8 @@ const s = StyleSheet.create({
   },
 
   // ── Scope ─────────────────────────────────────────────────────────────────
-  scopeLine: { fontSize: 8, color: G700, marginBottom: 1.5 },
+  scopeLine: { fontSize: 8, color: G700, marginBottom: 1.5, fontFamily: "Arimo" },
+  scopeLineBold: { fontWeight: "bold" },
 
   // ── Table ─────────────────────────────────────────────────────────────────
   tableWrap: {
@@ -268,24 +284,48 @@ const s = StyleSheet.create({
 const fmt = (n: number) =>
   n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-// Strip HTML tags → plain text lines for PDF rendering
-function htmlToLines(html: string): string[] {
-  if (!html) return [];
-  if (!html.includes("<")) return html.split("\n").filter(Boolean);
-  const text = html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n")
-    .replace(/<\/div>/gi, "\n")
-    .replace(/<li[^>]*>/gi, "• ")
-    .replace(/<\/li>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
+type TextSegment = { text: string; bold: boolean };
+
+function decodeEntities(text: string): string {
+  return text
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'");
-  return text.split("\n").filter((l) => l.trim());
+}
+
+// Convert HTML → lines of bold/plain text segments for PDF rendering, so
+// <strong>/<b> spans from the Scope of Works rich text editor survive as
+// bold runs instead of being flattened to plain text.
+function htmlToRichLines(html: string): TextSegment[][] {
+  if (!html) return [];
+  if (!html.includes("<")) {
+    return html.split("\n").filter(Boolean).map((l) => [{ text: l, bold: false }]);
+  }
+  const blocked = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<\/li>/gi, "\n");
+
+  return blocked
+    .split("\n")
+    .map((rawLine) => {
+      const tokens = rawLine.split(/(<\/?(?:strong|b)[^>]*>)/gi);
+      let bold = false;
+      const segments: TextSegment[] = [];
+      for (const token of tokens) {
+        if (/^<(strong|b)[^>]*>$/i.test(token)) { bold = true; continue; }
+        if (/^<\/(strong|b)>$/i.test(token)) { bold = false; continue; }
+        const text = decodeEntities(token.replace(/<[^>]+>/g, ""));
+        if (text) segments.push({ text, bold });
+      }
+      return segments;
+    })
+    .filter((segs) => segs.map((s) => s.text).join("").trim());
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -336,7 +376,7 @@ export function QuotePdfDocument({
   totalExGst, gst, grandTotal,
   notes, terms, hideZeros, omitNotesAndTerms,
 }: QuotePdfProps) {
-  const scopeLines = htmlToLines(scopeText);
+  const scopeLines = htmlToRichLines(scopeText);
   const noteLines  = notes.split("\n").filter(Boolean);
   const termLines  = terms.split("\n").filter(Boolean);
 
@@ -415,8 +455,12 @@ export function QuotePdfDocument({
         {scopeLines.length > 0 && (
           <View style={s.section}>
             <Text style={[s.sectionLabel, { marginBottom: 5 }]}>Scope of Works</Text>
-            {scopeLines.map((line, i) => (
-              <Text key={i} style={s.scopeLine}>{line}</Text>
+            {scopeLines.map((segments, i) => (
+              <Text key={i} style={s.scopeLine}>
+                {segments.map((seg, j) => (
+                  <Text key={j} style={seg.bold ? s.scopeLineBold : undefined}>{seg.text}</Text>
+                ))}
+              </Text>
             ))}
           </View>
         )}
