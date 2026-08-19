@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
-import { ChevronRight, Sparkles, Loader2, Plus, Trash2, Download, X, GripVertical, List, Bold } from "lucide-react";
+import dynamic from "next/dynamic";
+import { ChevronRight, Sparkles, Loader2, Plus, Trash2, Download, X, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { pdf } from "@react-pdf/renderer";
@@ -14,6 +15,11 @@ import { saveQuote } from "./actions";
 import type { Summary } from "@/lib/estimate-types";
 import { cn } from "@/lib/utils";
 import { toPdfSafeDataUrl } from "@/lib/pdf-utils";
+
+const QuoteScopeEditor = dynamic(
+  () => import("./quote-scope-editor").then((m) => m.QuoteScopeEditor),
+  { ssr: false, loading: () => <div className="min-h-[6rem] border border-gray-200 rounded" /> }
+);
 
 const fmt = (n: number) =>
   n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -43,95 +49,6 @@ function plainToHtml(text: string): string {
       return `<p>${esc}</p>`;
     })
     .join("");
-}
-
-function QuoteScopeEditor({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: string;
-  onChange: (html: string) => void;
-  disabled?: boolean;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [bold, setBold] = useState(false);
-  const [list, setList] = useState(false);
-
-  useEffect(() => {
-    if (ref.current) ref.current.innerHTML = plainToHtml(value);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const sync = useCallback(() => {
-    onChange(ref.current?.innerHTML ?? "");
-  }, [onChange]);
-
-  const updateState = useCallback(() => {
-    try {
-      setBold(document.queryCommandState("bold"));
-      setList(document.queryCommandState("insertUnorderedList"));
-    } catch {}
-  }, []);
-
-  function exec(cmd: string) {
-    ref.current?.focus();
-    document.execCommand(cmd, false);
-    sync();
-    updateState();
-  }
-
-  return (
-    <div className="border border-gray-200 rounded overflow-hidden focus-within:ring-1 focus-within:ring-violet-200 transition-colors">
-      <div className="flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-50 border-b border-gray-200 print:hidden">
-        <button
-          type="button"
-          onMouseDown={(e) => { e.preventDefault(); exec("bold"); }}
-          title="Bold"
-          className={cn(
-            "p-1 rounded transition-colors",
-            bold ? "bg-violet-100 text-violet-600" : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-          )}
-        >
-          <Bold className="h-3 w-3" />
-        </button>
-        <button
-          type="button"
-          onMouseDown={(e) => { e.preventDefault(); exec("insertUnorderedList"); }}
-          title="Bullet list"
-          className={cn(
-            "p-1 rounded transition-colors",
-            list ? "bg-violet-100 text-violet-600" : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-          )}
-        >
-          <List className="h-3 w-3" />
-        </button>
-      </div>
-      <div
-        ref={ref}
-        contentEditable={!disabled}
-        suppressContentEditableWarning
-        onInput={sync}
-        onKeyUp={updateState}
-        onMouseUp={updateState}
-        onSelect={updateState}
-        style={{ minHeight: "6rem" }}
-        className={cn(
-          "px-2 py-1.5 text-[11px] leading-relaxed text-gray-800/80 focus:outline-none",
-          "[&_ul]:pl-4 [&_ul]:list-disc [&_ul]:space-y-0.5 [&_li]:leading-relaxed",
-          "[&_b]:font-semibold [&_strong]:font-semibold",
-          "[&_p]:mb-1",
-          "empty:before:content-[attr(data-placeholder)] empty:before:text-gray-300 empty:before:pointer-events-none empty:before:float-left",
-          disabled && "opacity-50 pointer-events-none"
-        )}
-        data-placeholder={
-          disabled
-            ? "Generating scope of works…"
-            : "• Supply and install flooring throughout the project…"
-        }
-      />
-    </div>
-  );
 }
 
 function SortableQuoteLine({
