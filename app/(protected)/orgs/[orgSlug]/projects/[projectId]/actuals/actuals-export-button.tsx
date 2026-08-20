@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown, Download, FileSpreadsheet, FileText } from "lucide-react";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { ActualGroup, ActualLineItem } from "./actuals-section";
+import { exportActualsExcel, type EstimateComparison } from "@/lib/actuals-excel-export";
 
 const HEADERS = [
   "Type", "Group", "Invoice #", "Date", "Supplier/Builder", "Description",
@@ -82,15 +84,27 @@ function download(blob: Blob, filename: string) {
 }
 
 export function ActualsExportButton({
+  orgName,
   projectName,
   incomeGroups,
   expenseGroups,
   allLineItems,
+  adminFeePct,
+  adminFeeEstimatedCost,
+  retentionPct,
+  retentionReleased,
+  estimateComparison,
 }: {
+  orgName: string;
   projectName: string;
   incomeGroups: ActualGroup[];
   expenseGroups: ActualGroup[];
   allLineItems: ActualLineItem[];
+  adminFeePct: number | null;
+  adminFeeEstimatedCost: number | null;
+  retentionPct: number | null;
+  retentionReleased: number;
+  estimateComparison?: EstimateComparison | null;
 }) {
   const baseFilename = `${sanitizeFilename(projectName)} - Actuals`;
 
@@ -101,24 +115,21 @@ export function ActualsExportButton({
   }
 
   async function exportExcel() {
-    const XLSX = await import("xlsx");
-    const wb = XLSX.utils.book_new();
-
-    function addSheet(name: string, groups: ActualGroup[]) {
-      const rows = buildRows(groups, allLineItems);
-      const total = rows.filter(r => r.included).reduce((s, r) => s + r.subtotal, 0);
-      const data: (string | number)[][] = [
-        HEADERS,
-        ...rows.map(rowToArray),
-        [],
-        ["", "", "", "", "", "", "", "Total (included)", total],
-      ];
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), name);
+    try {
+      await exportActualsExcel({
+        orgName,
+        projectName,
+        groups: [...incomeGroups, ...expenseGroups],
+        lineItems: allLineItems,
+        adminFeePct,
+        adminFeeEstimatedCost,
+        retentionPct,
+        retentionReleased,
+        estimateComparison,
+      });
+    } catch {
+      toast.error("Failed to export Excel.");
     }
-
-    addSheet("Income", incomeGroups);
-    addSheet("Expenses", expenseGroups);
-    XLSX.writeFile(wb, `${baseFilename}.xlsx`);
   }
 
   return (

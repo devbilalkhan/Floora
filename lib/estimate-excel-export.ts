@@ -1,19 +1,24 @@
-import type { Worksheet, Row, Cell } from "exceljs";
+import type { Row, Cell } from "exceljs";
 import type { Estimate, EstimateItem, WetArea } from "@/lib/estimate-types";
 import { itemMatQty, itemMatCost, itemLabCost, itemTotal, computeSummary, computeWetAreaLabor } from "@/lib/estimate-types";
 import { CATEGORIES } from "@/lib/takeoff-types";
-
-// ── Style tokens (matches app's violet dark-glass accent) ─────────────────────
-const ACCENT = "FF713EE9";
-const ACCENT_LIGHT = "FFEDE9FE";
-const SLATE_DARK = "FF1E293B";
-const SLATE_LIGHT = "FFF8FAFC";
-const BORDER_GREY = "FFCBD5E1";
-
-const CURRENCY_FMT = '"$"#,##0.00';
-const QTY_FMT = "#,##0.00";
-const PCT_100_FMT = '0.00"%"'; // waste_pct is stored 0–100
-const PCT_FRACTION_FMT = "0.00%"; // rates stored 0–1
+import {
+  ACCENT,
+  ACCENT_LIGHT,
+  SLATE_DARK,
+  SLATE_LIGHT,
+  BORDER_GREY,
+  CURRENCY_FMT,
+  QTY_FMT,
+  PCT_100_FMT,
+  PCT_FRACTION_FMT,
+  sanitizeFilename,
+  downloadBlob,
+  titleBlock,
+  bandRow,
+  type Sheet,
+  type CellInput,
+} from "@/lib/excel-shared";
 
 const DETAIL_COLS = [
   { header: "Code", width: 10 },
@@ -30,36 +35,6 @@ const DETAIL_COLS = [
 ];
 const LAST_COL_LETTER = "K";
 
-// A formula cell carries the live formula plus a cached result so the
-// exported file shows correct numbers immediately, before Excel recalculates.
-type FormulaValue = { formula: string; result: number };
-type CellInput = number | FormulaValue;
-
-function sanitizeFilename(name: string): string {
-  return name.replace(/[/\\?%*:|"<>]/g, "-");
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-type Sheet = Worksheet;
-
-function titleBlock(ws: Sheet, lines: { text: string; size: number; bold?: boolean; color?: string }[]) {
-  lines.forEach((line) => {
-    const row: Row = ws.addRow([line.text]);
-    ws.mergeCells(`A${row.number}:${LAST_COL_LETTER}${row.number}`);
-    const cell = row.getCell(1);
-    cell.font = { size: line.size, bold: !!line.bold, color: { argb: line.color ?? SLATE_DARK } };
-  });
-  ws.addRow([]);
-}
-
 function headerRow(ws: Sheet) {
   const row: Row = ws.addRow(DETAIL_COLS.map((c) => c.header));
   row.eachCell((cell: Cell) => {
@@ -72,19 +47,11 @@ function headerRow(ws: Sheet) {
 }
 
 function categoryBandRow(ws: Sheet, label: string) {
-  const row: Row = ws.addRow([label]);
-  ws.mergeCells(`A${row.number}:${LAST_COL_LETTER}${row.number}`);
-  const cell = row.getCell(1);
-  cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10.5 };
-  cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ACCENT } };
+  bandRow(ws, LAST_COL_LETTER, label);
 }
 
 function subBandRow(ws: Sheet, label: string) {
-  const row: Row = ws.addRow([label]);
-  ws.mergeCells(`A${row.number}:${LAST_COL_LETTER}${row.number}`);
-  const cell = row.getCell(1);
-  cell.font = { italic: true, color: { argb: "FF64748B" }, size: 9 };
-  cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: SLATE_LIGHT } };
+  bandRow(ws, LAST_COL_LETTER, label, { fill: SLATE_LIGHT, textColor: "FF64748B", italic: true, size: 9 });
 }
 
 // Eff. Qty = (Qty + cov_area) * (1 + Waste%/100). cov_area has no column of its
@@ -153,7 +120,7 @@ function buildDetailSheet(
 ): DetailResult {
   ws.columns = DETAIL_COLS.map((c) => ({ width: c.width }));
 
-  titleBlock(ws, [
+  titleBlock(ws, LAST_COL_LETTER, [
     { text: orgName, size: 15, bold: true, color: ACCENT },
     { text: `${projectName} — ${estimate.name}`, size: 11, bold: true },
     { text: `Cost Estimate   ·   Generated ${today}`, size: 9, color: "FF64748B" },
