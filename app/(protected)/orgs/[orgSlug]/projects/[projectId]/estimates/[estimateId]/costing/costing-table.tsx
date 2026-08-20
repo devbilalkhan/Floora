@@ -28,6 +28,7 @@ import { Switch } from "@/components/ui/switch";
 import { COVERAGE_M2 } from "@/lib/default-rates";
 import { EstimateAuditModal } from "./estimate-audit-modal";
 import { EstimateExcelExportButton } from "@/components/estimate-excel-export-button";
+import { EstimateExcelEmailButton } from "@/components/estimate-excel-email-button";
 import {
   updateEstimateItem,
   deleteEstimateItem,
@@ -850,6 +851,7 @@ export function CostingTable({
   confirmedPrices = {},
   orgName,
   projectName,
+  hasGmail,
 }: {
   estimate: Estimate;
   initialItems: EstimateItem[];
@@ -860,6 +862,7 @@ export function CostingTable({
   confirmedPrices?: Record<string, number>;
   orgName: string;
   projectName: string;
+  hasGmail: boolean;
 }) {
   const [items, setItems] = useState<EstimateItem[]>(initialItems);
   const [wetAreas, setWetAreas] = useState<WetArea[]>(initialWetAreas);
@@ -1428,6 +1431,16 @@ export function CostingTable({
             estimate={{ ...estimate, ...settings }}
             items={items}
             wetAreas={wetAreas}
+            variant="compact"
+          />
+
+          <EstimateExcelEmailButton
+            orgName={orgName}
+            projectName={projectName}
+            estimate={{ ...estimate, ...settings }}
+            items={items}
+            wetAreas={wetAreas}
+            hasGmail={hasGmail}
             variant="compact"
           />
 

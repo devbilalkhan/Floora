@@ -446,19 +446,27 @@ function appendCostBuildUp(ws: Sheet, estimate: Estimate, items: EstimateItem[],
   );
 }
 
-export async function exportEstimateExcel({
-  orgName,
-  projectName,
-  estimate,
-  items,
-  wetAreas,
-}: {
+type BuildEstimateExcelArgs = {
   orgName: string;
   projectName: string;
   estimate: Estimate;
   items: EstimateItem[];
   wetAreas: WetArea[];
-}): Promise<void> {
+};
+
+function estimateExcelFilename(projectName: string, estimate: Estimate): string {
+  return `${sanitizeFilename(`${projectName} - ${estimate.name} - Cost Estimate`)}.xlsx`;
+}
+
+// Builds the workbook and returns its raw bytes, without touching the DOM —
+// shared by the download flow and the "email this file" flow below.
+async function buildEstimateExcelBuffer({
+  orgName,
+  projectName,
+  estimate,
+  items,
+  wetAreas,
+}: BuildEstimateExcelArgs): Promise<ArrayBuffer> {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = orgName;
@@ -470,8 +478,23 @@ export async function exportEstimateExcel({
   const detailResult = buildDetailSheet(sheet, orgName, projectName, estimate, items, wetAreas, today);
   appendCostBuildUp(sheet, estimate, items, wetAreas, detailResult);
 
-  const buf = await wb.xlsx.writeBuffer();
+  return wb.xlsx.writeBuffer();
+}
+
+export async function exportEstimateExcel(args: BuildEstimateExcelArgs): Promise<void> {
+  const buf = await buildEstimateExcelBuffer(args);
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const filename = `${sanitizeFilename(`${projectName} - ${estimate.name} - Cost Estimate`)}.xlsx`;
-  downloadBlob(blob, filename);
+  downloadBlob(blob, estimateExcelFilename(args.projectName, args.estimate));
+}
+
+// Base64-encodes the workbook for use as an email attachment (e.g. the Gmail
+// API's raw MIME message format), returning the filename alongside it.
+export async function buildEstimateExcelAttachment(
+  args: BuildEstimateExcelArgs
+): Promise<{ base64: string; filename: string }> {
+  const buf = await buildEstimateExcelBuffer(args);
+  let binary = "";
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return { base64: btoa(binary), filename: estimateExcelFilename(args.projectName, args.estimate) };
 }

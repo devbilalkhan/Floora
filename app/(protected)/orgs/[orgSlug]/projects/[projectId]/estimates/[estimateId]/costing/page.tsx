@@ -33,6 +33,9 @@ export default async function CostingPage({
     { data: rawPriceRequests },
     { data: rawAttachments },
     { data: org },
+    {
+      data: { user },
+    },
   ] = await Promise.all([
     supabase
       .from("estimates")
@@ -79,7 +82,16 @@ export default async function CostingPage({
       .select("name")
       .eq("slug", params.orgSlug)
       .single(),
+    supabase.auth.getUser(),
   ]);
+
+  const { data: gmailToken } = user
+    ? await supabase
+        .from("user_gmail_tokens")
+        .select("user_id")
+        .eq("user_id", user.id)
+        .single()
+    : { data: null };
 
   if (!estimate || !project) notFound();
 
@@ -184,6 +196,7 @@ export default async function CostingPage({
         confirmedPrices={confirmedPrices}
         orgName={org?.name ?? params.orgSlug}
         projectName={project.name}
+        hasGmail={Boolean(gmailToken)}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
