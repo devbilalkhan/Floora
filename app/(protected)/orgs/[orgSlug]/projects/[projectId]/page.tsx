@@ -3,7 +3,9 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ChevronRight, FileText, Image, Mail, Package } from "lucide-react";
+import { Calculator, ChevronRight, FileText, Image, Mail, Package, Table2 } from "lucide-react";
+import { NewTradeSheetDialog } from "./trades/new-trade-sheet-dialog";
+import { NewProtectionEstimateDialog } from "./protection/new-protection-estimate-dialog";
 import { NewEstimateDialog } from "./new-estimate-dialog";
 import { QuoteActions } from "./quotes/quote-actions";
 import { EstimateTableRow } from "./estimate-table-row";
@@ -39,7 +41,7 @@ export default async function ProjectDetailPage({
 }) {
   const supabase = createClient();
 
-  const [{ data: project }, { data: rawEstimates }, { data: drawings }, { data: rawTakeoffs }, { data: rawPriceRequests }, { data: rawQuotes }, { data: userRole }, { data: rawActualsGroups }, { data: rawActualsItems }, { data: rawSubmissionSends }, { data: rawOtherProjects }] =
+  const [{ data: project }, { data: rawEstimates }, { data: drawings }, { data: rawTakeoffs }, { data: rawPriceRequests }, { data: rawQuotes }, { data: userRole }, { data: rawActualsGroups }, { data: rawActualsItems }, { data: rawSubmissionSends }, { data: rawOtherProjects }, { data: rawTradeSheets }, { data: rawProtectionEstimates }] =
     await Promise.all([
       supabase
         .from("projects")
@@ -91,6 +93,17 @@ export default async function ProjectDetailPage({
         .eq("organizations.slug", params.orgSlug)
         .neq("id", params.projectId)
         .order("name"),
+      // RLS returns no rows for estimators — section is also hidden below
+      supabase
+        .from("trade_sheets")
+        .select("id, trade, name, updated_at")
+        .eq("project_id", params.projectId)
+        .order("created_at"),
+      supabase
+        .from("protection_estimates")
+        .select("id, name, updated_at")
+        .eq("project_id", params.projectId)
+        .order("created_at"),
     ]);
 
   const isViewer = userRole === "viewer";
@@ -187,6 +200,8 @@ export default async function ProjectDetailPage({
   const quotes = rawQuotes ?? [];
   const submissionSends = rawSubmissionSends ?? [];
   const otherProjects = (rawOtherProjects ?? []).map((p) => ({ id: p.id, name: p.name, head_client: p.head_client }));
+  const tradeSheets = rawTradeSheets ?? [];
+  const protectionEstimates = rawProtectionEstimates ?? [];
 
   const takeoffItems = (rawTakeoffs ?? []).map((t: any) => ({
     id: t.id as string,
@@ -542,6 +557,65 @@ export default async function ProjectDetailPage({
             </div>
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-primary/60 transition-colors" />
           </Link>
+        </div>
+      )}
+
+      {/* Wall & door protection — admin/PM only */}
+      {canManageEstimates && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold">Wall &amp; Door Protection</h2>
+            <NewProtectionEstimateDialog projectId={params.projectId} orgSlug={params.orgSlug} />
+          </div>
+          {protectionEstimates.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border flex items-center justify-center h-24">
+              <p className="text-sm text-muted-foreground">No protection estimates yet — create one to price corner guards.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {protectionEstimates.map((e) => (
+                <Link
+                  key={e.id}
+                  href={`/orgs/${params.orgSlug}/projects/${params.projectId}/protection/${e.id}`}
+                  className="group flex items-center gap-3 rounded-xl border border-border bg-card/65 backdrop-blur-xl px-4 py-3 hover:border-primary/40 transition-colors"
+                >
+                  <Calculator className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <p className="flex-1 min-w-0 truncate text-sm font-medium group-hover:text-primary transition-colors">
+                    {e.name}
+                  </p>
+                  <span className="text-xs text-muted-foreground">Updated {formatDate(e.updated_at)}</span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-primary/60 transition-colors" />
+                </Link>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-2">
+            <h3 className="text-sm font-medium text-muted-foreground">Sheets</h3>
+            <NewTradeSheetDialog projectId={params.projectId} orgSlug={params.orgSlug} />
+          </div>
+          {tradeSheets.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border flex items-center justify-center h-16">
+              <p className="text-xs text-muted-foreground">No sheets — use a sheet for one-off or unusual items.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {tradeSheets.map((s) => (
+                <Link
+                  key={s.id}
+                  href={`/orgs/${params.orgSlug}/projects/${params.projectId}/trades/${s.id}`}
+                  className="group flex items-center gap-3 rounded-xl border border-border bg-card/65 backdrop-blur-xl px-4 py-3 hover:border-primary/40 transition-colors"
+                >
+                  <Table2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <p className="flex-1 min-w-0 truncate text-sm font-medium group-hover:text-primary transition-colors">
+                    {s.name}
+                  </p>
+                  <span className="text-xs text-muted-foreground">Updated {formatDate(s.updated_at)}</span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-primary/60 transition-colors" />
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
