@@ -409,7 +409,7 @@ function appendCostBuildUp(ws: Sheet, estimate: Estimate, items: EstimateItem[],
     ws,
     "Gross margin",
     { formula: `(${marginTerms.join("+")})/K${exGstRow.number}`, result: s.grossMarginPct },
-    { fmt: PCT_FRACTION_FMT }
+    { fmt: PCT_FRACTION_FMT, bold: true, size: 11, fill: ACCENT_LIGHT, topBorder: true }
   );
 }
 

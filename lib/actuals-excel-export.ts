@@ -1,5 +1,6 @@
 import type { Row, Cell } from "exceljs";
 import {
+  ACCENT,
   ACCENT_LIGHT,
   SLATE_DARK,
   SLATE_LIGHT,
@@ -13,11 +14,6 @@ import {
   type Sheet,
   type CellInput,
 } from "@/lib/excel-shared";
-
-const INCOME_ACCENT = "FF10B981";
-const INCOME_ACCENT_LIGHT = "FFECFDF5";
-const EXPENSE_ACCENT = "FFEF4444";
-const EXPENSE_ACCENT_LIGHT = "FFFEF2F2";
 
 const COLS = [
   { header: "Date", width: 11 },
@@ -104,11 +100,9 @@ function headerRow(ws: Sheet) {
   return row.number;
 }
 
-// Section header (Income / Expenses): full-width colored band with the
-// section's grand total on the right, mirroring the print report's colour
-// coding (green for income, red for expenses) rather than the costing
-// sheet's neutral violet — the semantic colour is what makes a P&L scannable.
-function sectionHeaderRow(ws: Sheet, label: string, accent: string, total: CellInput) {
+// Section header (Income / Expenses): full-width purple band with the
+// section's grand total on the right, matching the costing sheet's accent.
+function sectionHeaderRow(ws: Sheet, label: string, total: CellInput) {
   const row: Row = ws.addRow([label]);
   ws.mergeCells(`A${row.number}:G${row.number}`);
   row.getCell(1).font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
@@ -117,17 +111,17 @@ function sectionHeaderRow(ws: Sheet, label: string, accent: string, total: CellI
   row.getCell(8).font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
   row.getCell(8).alignment = { horizontal: "right" };
   row.eachCell({ includeEmpty: true }, (cell: Cell) => {
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: accent } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ACCENT } };
   });
   return row;
 }
 
-// Group name band (light tint of the section colour).
-function groupBandRow(ws: Sheet, label: string, accentLight: string) {
+// Group name band — lighter tint of the section's purple accent.
+function groupBandRow(ws: Sheet, label: string) {
   const row: Row = ws.addRow([label]);
   ws.mergeCells(`A${row.number}:${LAST_COL_LETTER}${row.number}`);
   row.getCell(1).font = { bold: true, color: { argb: SLATE_DARK }, size: 9.5 };
-  row.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: accentLight } };
+  row.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: ACCENT_LIGHT } };
   return row;
 }
 
@@ -236,8 +230,6 @@ type SectionResult = { totalRow: number; total: number; freightRows: number[] };
 function buildSection(
   ws: Sheet,
   label: string,
-  accent: string,
-  accentLight: string,
   groups: ActualsGroup[],
   lineItems: ActualsLineItem[]
 ): SectionResult {
@@ -251,13 +243,13 @@ function buildSection(
     0
   );
 
-  sectionHeaderRow(ws, label.toUpperCase(), accent, sectionTotal);
+  sectionHeaderRow(ws, label.toUpperCase(), sectionTotal);
 
   for (const group of groups) {
     const items = groupItems(group.id);
     if (items.length === 0) continue;
 
-    groupBandRow(ws, group.name, accentLight);
+    groupBandRow(ws, group.name);
     const includedRows: number[] = [];
     const { orderedBuckets, ungrouped } = bucketItems(items);
 
@@ -288,7 +280,7 @@ function buildSection(
     groupTotalRows.length > 0
       ? { formula: `SUM(${groupTotalRows.map((r) => `H${r}`).join(",")})`, result: sectionTotal }
       : 0,
-    { bold: true, topBorder: true, fill: accentLight }
+    { bold: true, topBorder: true, fill: ACCENT_LIGHT }
   );
   ws.addRow([]);
 
@@ -349,8 +341,8 @@ async function buildActualsExcelBuffer({
   const incomeGroups = groups.filter((g) => g.type === "income").sort((a, b) => a.sort_order - b.sort_order);
   const expenseGroups = groups.filter((g) => g.type === "expense").sort((a, b) => a.sort_order - b.sort_order);
 
-  const income = buildSection(ws, "Income", INCOME_ACCENT, INCOME_ACCENT_LIGHT, incomeGroups, lineItems);
-  const expense = buildSection(ws, "Expenses", EXPENSE_ACCENT, EXPENSE_ACCENT_LIGHT, expenseGroups, lineItems);
+  const income = buildSection(ws, "Income", incomeGroups, lineItems);
+  const expense = buildSection(ws, "Expenses", expenseGroups, lineItems);
 
   // All P&L figures below are computed in JS (matching actuals-page-client.tsx's
   // formulas exactly) and written as the cached `result` alongside each live
