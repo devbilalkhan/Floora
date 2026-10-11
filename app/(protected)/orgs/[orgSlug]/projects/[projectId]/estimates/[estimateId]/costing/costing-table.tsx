@@ -1340,6 +1340,45 @@ export function CostingTable({
     [reportCatTotals],
   );
 
+  // Per-unit sell rate per category — mirrors report-document. The section badges and
+  // the Rates summary both read from here so they can't drift apart.
+  const categoryRates = useMemo(() => {
+    // Floor prep and grinding are separate charges — never spread into category rates
+    const rateBase =
+      summary.totalExGst - summary.floorPrepRevenue - summary.grindRevenue -
+      (includeAdditionalInRates ? 0 : summary.additionalCosts);
+    const map: Record<string, { perUnit: number; grossQty: number; unit: string }> = {};
+    CATEGORIES.forEach((cat) => {
+      // Only rows still active — a toggled-off row's area shouldn't dilute the remaining rate.
+      const active = grouped.primaries.filter((i) => i.scope_category === cat.key && activeIds.has(i.id));
+      const unitCounts: Record<string, number> = {};
+      active.forEach((p) => { unitCounts[p.unit] = (unitCounts[p.unit] ?? 0) + 1; });
+      const unit = Object.entries(unitCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "m2";
+      const grossQty = active.filter((p) => p.unit === unit).reduce((s, p) => s + itemMatQty(p), 0);
+      const catShare = reportItemsGrandTotal > 0 ? (reportCatTotals[cat.key] ?? 0) / reportItemsGrandTotal : 0;
+      map[cat.key] = { perUnit: grossQty > 0 ? (catShare * rateBase) / grossQty : 0, grossQty, unit };
+    });
+    return map;
+  }, [summary, includeAdditionalInRates, grouped, activeIds, reportCatTotals, reportItemsGrandTotal]);
+
+  const ratesSummaryRows = useMemo(() => {
+    const rows: { label: string; rate: number; qty: number; unit: string }[] = [];
+    CATEGORIES.forEach((cat) => {
+      const r = categoryRates[cat.key];
+      if (excludedCategories.has(cat.key) || !r || r.perUnit <= 0) return;
+      rows.push({ label: cat.label, rate: r.perUnit, qty: r.grossQty, unit: r.unit });
+    });
+    const fpArea = effectiveSettings.floor_prep_area;
+    if (summary.floorPrepRevenue > 0 && fpArea > 0) {
+      rows.push({ label: "Floor Prep", rate: summary.floorPrepRevenue / fpArea, qty: fpArea, unit: "m2" });
+    }
+    const grindArea = effectiveSettings.grind_area ?? 0;
+    if (summary.grindRevenue > 0 && grindArea > 0) {
+      rows.push({ label: "Grinding", rate: summary.grindRevenue / grindArea, qty: grindArea, unit: "m2" });
+    }
+    return rows;
+  }, [categoryRates, excludedCategories, effectiveSettings, summary]);
+
   const grossMarginPct = summary.grossMarginPct;
   const markupWarning = grossMarginPct < 0.18;
   const totalProfitMargin = summary.markupAmount + summary.floorPrepProfit + summary.grindProfit;
@@ -1433,6 +1472,12 @@ export function CostingTable({
             className="scale-75"
           />
         </label>
+        <RatesSummaryModal
+          rows={ratesSummaryRows}
+          additionalCosts={summary.additionalCosts}
+          includeAdditionalInRates={includeAdditionalInRates}
+          onToggleAdditional={toggleAdditionalInRates}
+        />
 
         <div className="ml-auto flex items-center gap-2">
           {saveStatus === "saving" && (
@@ -1610,16 +1655,7 @@ export function CostingTable({
                 const netQty    = activeCatPrimaries.reduce((s, i) => s + (Number(i.qty) || 0), 0);
                 const supplyQty = activeCatPrimaries.reduce((s, i) => s + (itemMatQty(i) || 0), 0);
                 const catUnit   = catPrimaries.length > 0 ? uLabel(catPrimaries[0].unit) : "m²";
-                // Per-unit sell rate — mirrors report-document exactly
-                const unitCounts: Record<string, number> = {};
-                activeCatPrimaries.forEach((p) => { unitCounts[p.unit] = (unitCounts[p.unit] ?? 0) + 1; });
-                const primaryUnit = Object.entries(unitCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "m2";
-                const grossQty = activeCatPrimaries.filter((p) => p.unit === primaryUnit).reduce((s, p) => s + itemMatQty(p), 0);
-                const catPrimaryTotal = reportCatTotals[cat.key] ?? 0;
-                const catShare = reportItemsGrandTotal > 0 ? catPrimaryTotal / reportItemsGrandTotal : 0;
-                // Floor prep and grinding are separate charges — never spread into category rates
-                const rateBase = summary.totalExGst - summary.floorPrepRevenue - summary.grindRevenue - (includeAdditionalInRates ? 0 : summary.additionalCosts);
-                const perUnit = grossQty > 0 ? (catShare * rateBase) / grossQty : 0;
+                const perUnit = categoryRates[cat.key]?.perUnit ?? 0;
 
                 const isExcluded = excludedCategories.has(cat.key);
 
@@ -2140,6 +2176,82 @@ function SubtotalRow({ label, matCost, labCost, total }: {
       </td>
       <td />
     </tr>
+  );
+}
+
+// ── Rates summary modal ───────────────────────────────────────────────────────
+function RatesSummaryModal({
+  rows,
+  additionalCosts,
+  includeAdditionalInRates,
+  onToggleAdditional,
+}: {
+  rows: { label: string; rate: number; qty: number; unit: string }[];
+  additionalCosts: number;
+  includeAdditionalInRates: boolean;
+  onToggleAdditional: (checked: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const subtotal = rows.reduce((s, r) => s + r.rate * r.qty, 0);
+  const total = subtotal + (includeAdditionalInRates ? 0 : additionalCosts);
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-1 text-xs text-primary/80 hover:text-primary border border-primary/30 rounded px-2 py-0.5 transition-colors"
+      >
+        Rates summary
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Rates Summary (ex-GST)</DialogTitle>
+          </DialogHeader>
+          <label className="flex items-center justify-between gap-2 cursor-pointer text-xs">
+            <span className="text-muted-foreground">Additional costs in rates</span>
+            <Switch checked={includeAdditionalInRates} onCheckedChange={onToggleAdditional} className="scale-75 origin-right" />
+          </label>
+          <table className="w-full text-xs tabular-nums">
+            <thead>
+              <tr className="border-b border-border text-[10px] uppercase tracking-wide text-muted-foreground">
+                <th className="py-1.5 text-left font-medium">Item</th>
+                <th className="py-1.5 text-right font-medium">Rate</th>
+                <th className="py-1.5 text-right font-medium">Qty (supply)</th>
+                <th className="py-1.5 text-right font-medium">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.label} className="border-b border-border">
+                  <td className="py-1.5 text-foreground/70">{r.label}</td>
+                  <td className="py-1.5 text-right text-foreground/70">${fmt(r.rate)}<span className="text-muted-foreground"> / {uLabel(r.unit)}</span></td>
+                  <td className="py-1.5 text-right text-foreground/70">{fmt(r.qty)}<span className="text-muted-foreground"> {uLabel(r.unit)}</span></td>
+                  <td className="py-1.5 text-right text-foreground/70">${fmt(r.rate * r.qty)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={3} className="pt-2 text-right text-muted-foreground">Subtotal</td>
+                <td className="pt-2 text-right text-foreground/70">${fmt(subtotal)}</td>
+              </tr>
+              <tr>
+                <td colSpan={3} className="py-1 text-right text-muted-foreground">Additional costs</td>
+                <td className="py-1 text-right text-foreground/70">
+                  {includeAdditionalInRates
+                    ? <span className="text-muted-foreground">in rates</span>
+                    : `$${fmt(additionalCosts)}`}
+                </td>
+              </tr>
+              <tr className="border-t border-border">
+                <td colSpan={3} className="pt-2 text-right font-semibold text-foreground/80">Total ex-GST</td>
+                <td className="pt-2 text-right font-semibold text-primary">${fmt(total)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
