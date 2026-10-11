@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import { Trash2, Plus, ChevronDown, RefreshCw, Eye, EyeOff } from "lucide-react";
+import { Trash2, Plus, ChevronDown, RefreshCw, Eye, EyeOff, Clipboard, Check } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { CATEGORIES, LEVELS } from "@/lib/takeoff-types";
@@ -1362,22 +1362,49 @@ export function CostingTable({
   }, [summary, includeAdditionalInRates, grouped, activeIds, reportCatTotals, reportItemsGrandTotal]);
 
   const ratesSummaryRows = useMemo(() => {
-    const rows: { label: string; rate: number; qty: number; unit: string }[] = [];
+    const rows: RatesSummaryRow[] = [];
     CATEGORIES.forEach((cat) => {
       const r = categoryRates[cat.key];
       if (excludedCategories.has(cat.key) || !r || r.perUnit <= 0) return;
-      rows.push({ label: cat.label, rate: r.perUnit, qty: r.grossQty, unit: r.unit });
+      rows.push({ key: cat.key, label: cat.label, rate: r.perUnit, qty: r.grossQty, unit: r.unit });
     });
     const fpArea = effectiveSettings.floor_prep_area;
     if (summary.floorPrepRevenue > 0 && fpArea > 0) {
-      rows.push({ label: "Floor Prep", rate: summary.floorPrepRevenue / fpArea, qty: fpArea, unit: "m2" });
+      rows.push({ key: "floor_prep", label: "Floor Prep", rate: summary.floorPrepRevenue / fpArea, qty: fpArea, unit: "m2" });
     }
     const grindArea = effectiveSettings.grind_area ?? 0;
     if (summary.grindRevenue > 0 && grindArea > 0) {
-      rows.push({ label: "Grinding", rate: summary.grindRevenue / grindArea, qty: grindArea, unit: "m2" });
+      rows.push({ key: "grinding", label: "Grinding", rate: summary.grindRevenue / grindArea, qty: grindArea, unit: "m2" });
     }
     return rows;
   }, [categoryRates, excludedCategories, effectiveSettings, summary]);
+
+  // Coving carved out of the floor vinyl line for the Rates summary — informational only,
+  // it splits the vinyl sell total and never adds to it. Cost = cove sheet (cov_area incl.
+  // waste × mat rate) + Contact/Fillet/Coving Labour children; sell = cost × vinyl's own
+  // sell/cost ratio so coving carries the same overhead, markup and spread costs.
+  const vinylCoving = useMemo(() => {
+    const r = categoryRates.vinyl;
+    const vinylCost = reportCatTotals.vinyl ?? 0;
+    if (excludedCategories.has("vinyl") || !r || r.perUnit <= 0 || vinylCost <= 0) return null;
+    let mat = 0, lab = 0, lm = 0, floorSupplyQty = 0;
+    grouped.primaries
+      .filter((p) => p.scope_category === "vinyl" && activeIds.has(p.id))
+      .forEach((p) => {
+        if (p.unit === r.unit) floorSupplyQty += p.qty * (1 + p.waste_pct / 100);
+        const covArea = p.cov_area ?? 0;
+        if (covArea <= 0) return;
+        lm += p.cov_lm ?? 0;
+        mat += covArea * (1 + p.waste_pct / 100) * p.mat_rate;
+        (grouped.children.get(p.id) ?? [])
+          .filter((c) => activeIds.has(c.id) && COVING_DESCS.has(c.description ?? ""))
+          .forEach((c) => { mat += itemMatCost(c); lab += itemLabCost(c); });
+      });
+    if (lm <= 0) return null;
+    const vinylSell = r.perUnit * r.grossQty;
+    const sell = (mat + lab) * (vinylSell / vinylCost);
+    return { lm, mat, lab, sell, floorOnly: vinylSell - sell, floorSupplyQty };
+  }, [categoryRates, reportCatTotals, excludedCategories, grouped, activeIds]);
 
   const grossMarginPct = summary.grossMarginPct;
   const markupWarning = grossMarginPct < 0.18;
@@ -1474,6 +1501,7 @@ export function CostingTable({
         </label>
         <RatesSummaryModal
           rows={ratesSummaryRows}
+          vinylCoving={vinylCoving}
           additionalCosts={summary.additionalCosts}
           includeAdditionalInRates={includeAdditionalInRates}
           onToggleAdditional={toggleAdditionalInRates}
@@ -2180,19 +2208,42 @@ function SubtotalRow({ label, matCost, labCost, total }: {
 }
 
 // ── Rates summary modal ───────────────────────────────────────────────────────
+type RatesSummaryRow = { key: string; label: string; rate: number; qty: number; unit: string };
+
 function RatesSummaryModal({
   rows,
+  vinylCoving,
   additionalCosts,
   includeAdditionalInRates,
   onToggleAdditional,
 }: {
-  rows: { label: string; rate: number; qty: number; unit: string }[];
+  rows: RatesSummaryRow[];
+  vinylCoving: { lm: number; mat: number; lab: number; sell: number; floorOnly: number; floorSupplyQty: number } | null;
   additionalCosts: number;
   includeAdditionalInRates: boolean;
   onToggleAdditional: (checked: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const subtotal = rows.reduce((s, r) => s + r.rate * r.qty, 0);
+
+  function copyTotal(key: string, value: number) {
+    navigator.clipboard.writeText(fmt(value)).then(() => {
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((cur) => (cur === key ? null : cur)), 2000);
+    });
+  }
+  const copyButton = (key: string, label: string, value: number) => (
+    <button
+      onClick={() => copyTotal(key, value)}
+      title={`Copy ${label} total`}
+      className="inline-flex items-center justify-center h-5 w-5 rounded text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+    >
+      {copiedKey === key
+        ? <Check className="h-3 w-3 text-success" />
+        : <Clipboard className="h-3 w-3" />}
+    </button>
+  );
   const total = subtotal + (includeAdditionalInRates ? 0 : additionalCosts);
   return (
     <>
@@ -2218,22 +2269,54 @@ function RatesSummaryModal({
                 <th className="py-1.5 text-right font-medium">Rate</th>
                 <th className="py-1.5 text-right font-medium">Qty (supply)</th>
                 <th className="py-1.5 text-right font-medium">Total</th>
+                <th className="w-6" />
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.label} className="border-b border-border">
-                  <td className="py-1.5 text-foreground/70">{r.label}</td>
-                  <td className="py-1.5 text-right text-foreground/70">${fmt(r.rate)}<span className="text-muted-foreground"> / {uLabel(r.unit)}</span></td>
-                  <td className="py-1.5 text-right text-foreground/70">{fmt(r.qty)}<span className="text-muted-foreground"> {uLabel(r.unit)}</span></td>
-                  <td className="py-1.5 text-right text-foreground/70">${fmt(r.rate * r.qty)}</td>
-                </tr>
+                <React.Fragment key={r.key}>
+                  <tr className="border-b border-border">
+                    <td className="py-1.5 text-foreground/70">{r.label}</td>
+                    <td className="py-1.5 text-right text-foreground/70">${fmt(r.rate)}<span className="text-muted-foreground"> / {uLabel(r.unit)}</span></td>
+                    <td className="py-1.5 text-right text-foreground/70">{fmt(r.qty)}<span className="text-muted-foreground"> {uLabel(r.unit)}</span></td>
+                    <td className="py-1.5 text-right text-foreground/70">${fmt(r.rate * r.qty)}</td>
+                    <td className="py-1.5 pl-1.5 text-right">{copyButton(r.key, r.label, r.rate * r.qty)}</td>
+                  </tr>
+                  {r.key === "vinyl" && vinylCoving && (
+                    <>
+                      <tr>
+                        <td className="pt-1.5 pl-3 text-muted-foreground">↳ incl. Coving</td>
+                        <td className="pt-1.5 text-right text-muted-foreground">${fmt(vinylCoving.sell / vinylCoving.lm)} / lm</td>
+                        <td className="pt-1.5 text-right text-muted-foreground">{fmt(vinylCoving.lm)} lm</td>
+                        <td className="pt-1.5 text-right text-muted-foreground">${fmt(vinylCoving.sell)}</td>
+                        <td className="pt-1.5 pl-1.5 text-right">{copyButton("vinyl_coving", "Coving", vinylCoving.sell)}</td>
+                      </tr>
+                      <tr>
+                        <td colSpan={5} className="pb-1 pl-6 text-[10px] text-muted-foreground/50">
+                          Cost: Mat ${fmt(vinylCoving.mat)} · Lab ${fmt(vinylCoving.lab)}
+                        </td>
+                      </tr>
+                      <tr className="border-b border-border">
+                        <td className="py-1.5 pl-3 text-muted-foreground">↳ Floor only</td>
+                        <td className="py-1.5 text-right text-muted-foreground">
+                          {vinylCoving.floorSupplyQty > 0 ? `$${fmt(vinylCoving.floorOnly / vinylCoving.floorSupplyQty)} / ${uLabel(r.unit)}` : "—"}
+                        </td>
+                        <td className="py-1.5 text-right text-muted-foreground">
+                          {vinylCoving.floorSupplyQty > 0 ? `${fmt(vinylCoving.floorSupplyQty)} ${uLabel(r.unit)}` : "—"}
+                        </td>
+                        <td className="py-1.5 text-right text-muted-foreground">${fmt(vinylCoving.floorOnly)}</td>
+                        <td className="py-1.5 pl-1.5 text-right">{copyButton("vinyl_floor", "Floor only", vinylCoving.floorOnly)}</td>
+                      </tr>
+                    </>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
             <tfoot>
               <tr>
                 <td colSpan={3} className="pt-2 text-right text-muted-foreground">Subtotal</td>
                 <td className="pt-2 text-right text-foreground/70">${fmt(subtotal)}</td>
+                <td />
               </tr>
               <tr>
                 <td colSpan={3} className="py-1 text-right text-muted-foreground">Additional costs</td>
@@ -2242,10 +2325,12 @@ function RatesSummaryModal({
                     ? <span className="text-muted-foreground">in rates</span>
                     : `$${fmt(additionalCosts)}`}
                 </td>
+                <td />
               </tr>
               <tr className="border-t border-border">
                 <td colSpan={3} className="pt-2 text-right font-semibold text-foreground/80">Total ex-GST</td>
                 <td className="pt-2 text-right font-semibold text-primary">${fmt(total)}</td>
+                <td />
               </tr>
             </tfoot>
           </table>
