@@ -4,7 +4,7 @@
 //
 //   order length = typed-in length incl. wastage, else the measured length
 //   labour       = measured length × install rate      (no wastage)
-//   material     = order length × price per m + brackets × $ + screws × $
+//   material     = order length × price per m + brackets × $ + screws × $ + wall returns × $
 
 export type RailDefaults = {
   default_price: number | null;
@@ -23,6 +23,8 @@ export type RailLine = {
   bracket_price: number | null;
   screws_qty: number;
   screw_price: number | null;
+  returns_qty: number;
+  return_price: number | null;
   notes: string | null;
 };
 
@@ -30,7 +32,7 @@ export type RailIssue =
   | { level: "block"; code: "missing_install"; message: string }
   | {
       level: "warn";
-      code: "missing_price" | "order_below_length" | "missing_bracket_price" | "missing_screw_price";
+      code: "missing_price" | "order_below_length" | "missing_bracket_price" | "missing_screw_price" | "missing_return_price";
       message: string;
     };
 
@@ -51,14 +53,17 @@ export function computeRailLine(line: RailLine, d: RailDefaults) {
     issues.push({ level: "warn", code: "missing_bracket_price", message: "Brackets entered but no price" });
   if (line.screws_qty > 0 && line.screw_price === null)
     issues.push({ level: "warn", code: "missing_screw_price", message: "Screws entered but no price" });
+  if (line.returns_qty > 0 && line.return_price === null)
+    issues.push({ level: "warn", code: "missing_return_price", message: "Wall returns entered but no price" });
 
   const rail = orderLm * (price ?? 0);
   const brackets = line.brackets_qty * (line.bracket_price ?? 0);
   const screws = line.screws_qty * (line.screw_price ?? 0);
+  const returns = line.returns_qty * (line.return_price ?? 0);
   const labour = length * (installRate ?? 0);
-  const material = rail + brackets + screws;
+  const material = rail + brackets + screws + returns;
 
-  return { orderLm, price, installRate, rail, brackets, screws, material, labour, total: material + labour, issues };
+  return { orderLm, price, installRate, rail, brackets, screws, returns, material, labour, total: material + labour, issues };
 }
 
 export function computeRails(lines: RailLine[], d: RailDefaults) {

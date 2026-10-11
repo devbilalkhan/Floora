@@ -8,7 +8,7 @@ import type { RailLine } from "@/lib/rail-calc";
 import type { DoorPanelLine } from "@/lib/door-panel-calc";
 
 const RAIL_COLUMNS =
-  "id, sort_order, description, length_lm, order_lm, price, install_rate, brackets_qty, bracket_price, screws_qty, screw_price, notes";
+  "id, sort_order, description, length_lm, order_lm, price, install_rate, brackets_qty, bracket_price, screws_qty, screw_price, returns_qty, return_price, notes";
 import { CornerGuardEditor } from "./corner-guard-editor";
 
 export default async function ProtectionEstimatePage({
@@ -25,7 +25,7 @@ export default async function ProtectionEstimatePage({
       supabase
         .from("protection_estimates")
         .select(
-          "id, name, default_price_std, default_price_nib, default_install_rate, default_coving_mm, cutting_enabled, default_cutting_rate, training, accommodation, meals, travel, freight, admin_pct, markup_pct, wp_sheet_width_mm, wp_sheet_length_mm, wp_wastage_pct, wp_default_price, wp_install_rate, wp_glue_rate, wp_cutout_rate, hr_default_price, hr_install_rate, cr_default_price, cr_install_rate"
+          "id, name, default_price_std, default_price_nib, default_install_rate, default_coving_mm, cutting_enabled, default_cutting_rate, cg_mastic_qty, cg_mastic_price, cg_silicone_qty, cg_silicone_price, training, accommodation, meals, travel, freight, admin_pct, markup_pct, retention_pct, wp_sheet_width_mm, wp_sheet_length_mm, wp_wastage_pct, wp_default_price, wp_install_rate, wp_glue_rate, wp_cutout_rate, hr_default_price, hr_install_rate, cr_default_price, cr_install_rate"
         )
         .eq("id", params.estimateId)
         .eq("project_id", params.projectId)
@@ -54,7 +54,7 @@ export default async function ProtectionEstimatePage({
       supabase
         .from("door_panel_lines")
         .select(
-          "id, sort_order, item, sheets_qty, price, panels_qty, install_rate, cutting_enabled, cutting_rate, glue_rate, notes"
+          "id, sort_order, item, sheets_qty, price, panels_qty, install_rate, cutting_enabled, cut_qty, cutting_rate, glue_rate, notes"
         )
         .eq("estimate_id", params.estimateId)
         .order("sort_order"),
@@ -75,6 +75,7 @@ export default async function ProtectionEstimatePage({
     freight,
     admin_pct,
     markup_pct,
+    retention_pct,
     wp_sheet_width_mm,
     wp_sheet_length_mm,
     wp_wastage_pct,
@@ -114,7 +115,7 @@ export default async function ProtectionEstimatePage({
         orgSlug={params.orgSlug}
         initialName={name}
         initialDefaults={defaults}
-        initialCosting={{ training, accommodation, meals, travel, freight, admin_pct, markup_pct }}
+        initialCosting={{ training, accommodation, meals, travel, freight, admin_pct, markup_pct, retention_pct }}
         initialLines={(lines ?? []) as CornerGuardLine[]}
         initialWpDefaults={{
           wp_sheet_width_mm,

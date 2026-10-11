@@ -24,14 +24,22 @@ export const RAIL_PASTE_FIELDS = [
   "notes",
 ] as const satisfies readonly (keyof RailLine)[];
 
-export type RailPasteField = (typeof RAIL_PASTE_FIELDS)[number];
+// Handrails also show the Wall returns columns, after Screws
+export const HANDRAIL_PASTE_FIELDS = [
+  ...RAIL_PASTE_FIELDS.slice(0, -1),
+  "returns_qty",
+  "return_price",
+  "notes",
+] as const satisfies readonly (keyof RailLine)[];
+
+export type RailPasteField = (typeof HANDRAIL_PASTE_FIELDS)[number];
 
 /** Converts one pasted cell to the field's type. Non-numbers ("n/a", blank) become null, or 0 for quantities. */
 export function parseRailPasted(field: RailPasteField, raw: string): string | number | null {
   const value = raw.trim();
   if (field === "description" || field === "notes") return value === "" ? null : value;
   const n = Number(value.replace(/[$,\s]/g, ""));
-  const qty = field === "brackets_qty" || field === "screws_qty";
+  const qty = field === "brackets_qty" || field === "screws_qty" || field === "returns_qty";
   if (value === "" || !Number.isFinite(n) || n < 0) return qty ? 0 : null;
   return qty ? Math.round(n) : n;
 }
@@ -39,6 +47,7 @@ export function parseRailPasted(field: RailPasteField, raw: string): string | nu
 /** One linear-metre rail tab — used for both Handrails and Crash rail, which price identically. */
 export function RailTab({
   label,
+  wallReturns = false,
   defaults,
   lines,
   totals,
@@ -50,6 +59,8 @@ export function RailTab({
 }: {
   /** Trade name as shown in the total, e.g. "Handrails" */
   label: string;
+  /** Show the Wall returns qty / $ each columns (Handrails only) */
+  wallReturns?: boolean;
   defaults: RailDefaults;
   lines: RailLine[];
   totals: RailTotals;
@@ -98,6 +109,12 @@ export function RailTab({
               <th className={`${TH} text-right w-20`}>$ each</th>
               <th className={`${TH} text-right w-16`}>Screws</th>
               <th className={`${TH} text-right w-20`}>$ each</th>
+              {wallReturns && (
+                <>
+                  <th className={`${TH} text-right w-16`}>Wall returns</th>
+                  <th className={`${TH} text-right w-20`}>$ each</th>
+                </>
+              )}
               <th className={`${TH} text-right`}>Material</th>
               <th className={`${TH} text-right`}>Labour</th>
               <th className={`${TH} text-right`}>Line total</th>
@@ -175,6 +192,19 @@ export function RailTab({
                       onChange={(v) => onLine(line.id, "screw_price", v)}
                       tone={has(r.issues, "missing_screw_price") ? "warn" : undefined} />
                   </td>
+                  {wallReturns && (
+                    <>
+                      <td className={TD}>
+                        <NumInput onPaste={onPaste(line.id, "returns_qty")} ariaLabel="Wall returns" integer value={line.returns_qty}
+                          onChange={(v) => onLine(line.id, "returns_qty", v ?? 0)} />
+                      </td>
+                      <td className={TD}>
+                        <NumInput onPaste={onPaste(line.id, "return_price")} ariaLabel="Wall return price" value={line.return_price}
+                          onChange={(v) => onLine(line.id, "return_price", v)}
+                          tone={has(r.issues, "missing_return_price") ? "warn" : undefined} />
+                      </td>
+                    </>
+                  )}
                   <td className={CALC_CELL}>{money(r.material)}</td>
                   <td className={CALC_CELL}>{blocked ? "—" : money(r.labour)}</td>
                   <td className={`${CALC_CELL} font-medium ${blocked ? "text-destructive" : "text-foreground"}`}>

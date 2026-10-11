@@ -23,6 +23,7 @@ const SEGMENTS = [
   { key: "admin", label: "Admin", color: "#0891B2" },
   { key: "markup", label: "Markup", color: "#DB2777" },
   { key: "pass", label: "Pass-through", color: "#2563EB" },
+  { key: "retention", label: "Retention", color: "#D97706" },
 ] as const;
 
 function MoneyField({
@@ -92,8 +93,15 @@ function MarkupInput({ value, onChange }: { value: number; onChange: (v: number)
   );
 }
 
+// Faint repeat of the row label beside its value — on wide screens the label and the
+// amount are far apart, so this lets the eye confirm which row it's reading.
+function Caption({ children }: { children: React.ReactNode }) {
+  return <span className="mr-2 text-[10px] font-normal lowercase text-muted-foreground/50">{children}</span>;
+}
+
 function Row({
   label,
+  caption,
   value,
   op,
   strong,
@@ -101,6 +109,8 @@ function Row({
   indent,
 }: {
   label: React.ReactNode;
+  /** Text for the caption beside the value — defaults to the label */
+  caption?: string;
   value: number;
   op?: "+" | "=";
   strong?: boolean;
@@ -109,8 +119,10 @@ function Row({
 }) {
   return (
     <div
-      className={`flex items-baseline justify-between gap-4 py-1 text-xs ${
-        strong ? "border-t border-black/10 dark:border-white/10 pt-2 mt-1 font-semibold text-foreground" : ""
+      className={`flex items-baseline justify-between gap-4 border-t text-xs ${
+        strong
+          ? "border-black/10 dark:border-white/10 pt-2 pb-1 mt-1 font-semibold text-foreground"
+          : "border-black/5 dark:border-white/5 py-1.5"
       } ${indent ? "pl-5" : ""}`}
     >
       <span className={`flex items-baseline gap-2 ${muted ? "text-muted-foreground" : strong ? "" : "text-foreground/70"}`}>
@@ -118,23 +130,39 @@ function Row({
         {label}
       </span>
       <span className={`tabular-nums ${muted ? "text-muted-foreground" : strong ? "" : "text-foreground/70"}`}>
+        <Caption>{caption ?? label}</Caption>
         {money(value)}
       </span>
     </div>
   );
 }
 
-/** The headline profit figure — gross profit margin on the ex-GST price, with the dollar profit beneath. */
-function GrossProfitBadge({ marginPct, grossProfit }: { marginPct: number; grossProfit: number }) {
+/** The headline profit figure — gross profit margin on the ex-GST price, with the markup % and cash margin beneath. */
+function GrossProfitBadge({
+  marginPct,
+  grossProfit,
+  markupPct,
+}: {
+  marginPct: number;
+  grossProfit: number;
+  markupPct: number;
+}) {
   return (
     <div className="rounded-xl border border-primary/40 bg-gradient-to-br from-primary/20 to-primary/5 px-4 py-2.5 text-center shadow-[0_0_24px_-8px] shadow-primary/50">
       <p className="text-[10px] font-medium uppercase tracking-wide text-primary/80">Gross profit margin</p>
       <p className="text-3xl font-semibold leading-tight tracking-tight tabular-nums text-primary">
         {pct(marginPct * 100)}
       </p>
-      <p className="text-[11px] tabular-nums text-muted-foreground">
-        <span className="text-foreground/70">{money(grossProfit)}</span> profit
-      </p>
+      <div className="mt-2 flex justify-center gap-5 border-t border-primary/25 pt-2">
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-wide text-primary/80">Markup</p>
+          <p className="text-base font-semibold tabular-nums text-primary">{pct(markupPct)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-wide text-primary/80">Cash margin</p>
+          <p className="text-base font-semibold tabular-nums text-primary">{money(grossProfit)}</p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -159,6 +187,7 @@ export function CostingSummaryTab({
     { ...SEGMENTS[1], value: s.admin },
     { ...SEGMENTS[2], value: s.markup },
     { ...SEGMENTS[3], value: s.passThroughTotal },
+    { ...SEGMENTS[4], value: s.retention },
   ];
   const shown = segments.filter((seg) => seg.value > 0);
   const share = (v: number) => (s.totalExGst > 0 ? (v / s.totalExGst) * 100 : 0);
@@ -198,11 +227,7 @@ export function CostingSummaryTab({
                 <p className={CARD_TITLE}>Cost</p>
                 <p className="mt-1 text-base font-medium tabular-nums text-foreground/70">{money(s.costBase)}</p>
               </div>
-              <div className="text-right">
-                <p className={CARD_TITLE}>Markup</p>
-                <p className="mt-1 text-base font-medium tabular-nums text-foreground/70">{pct(inputs.markup_pct)}</p>
-              </div>
-              <GrossProfitBadge marginPct={s.marginPct} grossProfit={s.grossProfit} />
+              <GrossProfitBadge marginPct={s.marginPct} grossProfit={s.grossProfit} markupPct={inputs.markup_pct} />
             </div>
           </div>
 
@@ -284,15 +309,21 @@ export function CostingSummaryTab({
         <section className={`${CARD} p-4`}>
           <p className={`${CARD_TITLE} mb-2`}>Breakdown</p>
           <Row label="Trades subtotal" value={s.tradesSubtotal} />
-          <Row label="Training" value={s.training} op="+" />
+          <Row label="Preliminaries" value={s.training} op="+" />
           <Row label="Cost base" value={s.costBase} op="=" strong />
-          <Row label={`Admin (${pct(inputs.admin_pct, 2)})`} value={s.admin} op="+" />
-          <Row label={`Markup (${pct(inputs.markup_pct, 2)})`} value={s.markup} op="+" />
+          <Row label={`Admin (${pct(inputs.admin_pct, 2)})`} caption="Admin" value={s.admin} op="+" />
+          <Row label={`Markup (${pct(inputs.markup_pct, 2)})`} caption="Markup" value={s.markup} op="+" />
           <Row label="Pass-through costs" value={s.passThroughTotal} op="+" />
           <Row label="Accommodation" value={s.passThrough.accommodation} muted indent />
           <Row label="Meals" value={s.passThrough.meals} muted indent />
           <Row label="Travel" value={s.passThrough.travel} muted indent />
           <Row label="Freight" value={s.passThrough.freight} muted indent />
+          {inputs.retention_pct > 0 && (
+            <>
+              <Row label="Total before retention" value={s.beforeRetention} op="=" strong />
+              <Row label={`Retention (${pct(inputs.retention_pct, 2)})`} caption="Retention" value={s.retention} op="+" />
+            </>
+          )}
           <Row label="Total ex GST" value={s.totalExGst} op="=" strong />
           <Row label="GST 10%" value={s.gst} op="+" />
           <div className="flex items-baseline justify-between gap-4 border-t border-black/10 dark:border-white/10 mt-1 pt-2">
@@ -300,7 +331,10 @@ export function CostingSummaryTab({
               <span className="w-3 text-center text-muted-foreground/60 font-mono">=</span>
               Total inc GST
             </span>
-            <span className="text-lg font-semibold tabular-nums">{money(s.totalIncGst)}</span>
+            <span className="text-lg font-semibold tabular-nums">
+              <Caption>Total inc GST</Caption>
+              {money(s.totalIncGst)}
+            </span>
           </div>
         </section>
       </div>
@@ -348,12 +382,30 @@ export function CostingSummaryTab({
               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
             </span>
           </label>
+
+          <label className="flex items-center justify-between gap-3 border-t border-black/10 dark:border-white/10 pt-3">
+            <span className="text-xs text-foreground/70">
+              Retention
+              <span className="block text-[10px] text-muted-foreground">
+                {inputs.retention_pct > 0 ? `Adds ${money(s.retention)} to the price` : "0% = no retention"}
+              </span>
+            </span>
+            <span className="relative w-24 rounded-md border border-black/10 dark:border-white/10 bg-background/40">
+              <NumInput
+                ariaLabel="Retention percentage"
+                value={inputs.retention_pct}
+                onChange={(v) => onChange("retention_pct", Math.min(100, v ?? 0))}
+                className="pr-6"
+              />
+              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+            </span>
+          </label>
         </section>
 
         <section className={`${CARD} p-4`}>
           <p className={CARD_TITLE}>Additional costs</p>
           <div className="mt-2">
-            <MoneyField label="Training" hint="Marked up" value={inputs.training} onChange={(v) => onChange("training", v)} />
+            <MoneyField label="Preliminaries" hint="Marked up" value={inputs.training} onChange={(v) => onChange("training", v)} />
           </div>
           <div className="mt-3 border-t border-black/10 dark:border-white/10 pt-2">
             <p className="text-[10px] text-muted-foreground">Pass-through — no markup</p>

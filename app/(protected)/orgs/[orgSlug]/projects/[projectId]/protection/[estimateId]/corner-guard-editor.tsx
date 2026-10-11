@@ -36,7 +36,7 @@ import { WP_PASTE_FIELDS, WallPanelTab, parseWpPasted } from "./wall-panel-tab";
 import type { WpPasteField } from "./wall-panel-tab";
 import { computeRails } from "@/lib/rail-calc";
 import type { RailDefaults, RailLine } from "@/lib/rail-calc";
-import { RAIL_PASTE_FIELDS, RailTab, parseRailPasted } from "./rail-tab";
+import { HANDRAIL_PASTE_FIELDS, RAIL_PASTE_FIELDS, RailTab, parseRailPasted } from "./rail-tab";
 import type { RailPasteField } from "./rail-tab";
 import { computeDoorPanels } from "@/lib/door-panel-calc";
 import type { DoorPanelLine } from "@/lib/door-panel-calc";
@@ -65,6 +65,7 @@ function blankDoorPanelLine(sortOrder: number): DoorPanelLine {
     panels_qty: 0,
     install_rate: null,
     cutting_enabled: false,
+    cut_qty: null,
     cutting_rate: null,
     glue_rate: null,
     notes: null,
@@ -84,6 +85,8 @@ function blankRailLine(sortOrder: number): RailLine {
     bracket_price: null,
     screws_qty: 0,
     screw_price: null,
+    returns_qty: 0,
+    return_price: null,
     notes: null,
   };
 }
@@ -534,7 +537,8 @@ export function CornerGuardEditor({
     rows: RailLine[],
     setRows: React.Dispatch<React.SetStateAction<RailLine[]>>,
     setDefs: React.Dispatch<React.SetStateAction<RailDefaults>>,
-    track: React.MutableRefObject<{ dirty: Set<string>; deleted: Set<string> }>
+    track: React.MutableRefObject<{ dirty: Set<string>; deleted: Set<string> }>,
+    fields: readonly RailPasteField[] = RAIL_PASTE_FIELDS
   ) {
     return {
       onDefault: <K extends keyof RailDefaults>(key: K, value: RailDefaults[K]) => {
@@ -542,7 +546,7 @@ export function CornerGuardEditor({
         defaultsDirty.current = true;
         scheduleSave();
       },
-      ...lineHandlers<RailLine, RailPasteField>(rows, setRows, track, blankRailLine, RAIL_PASTE_FIELDS, parseRailPasted),
+      ...lineHandlers<RailLine, RailPasteField>(rows, setRows, track, blankRailLine, fields, parseRailPasted),
     };
   }
 
@@ -1101,6 +1105,51 @@ export function CornerGuardEditor({
             </span>
           </div>
 
+          {/* Sundries — estimate-level cost lines, added to the corner guards total */}
+          <div className="space-y-2">
+            <h3 className="text-xs font-semibold">Sundries</h3>
+            <div className="w-fit max-w-full border border-black/10 dark:border-white/10 rounded-sm overflow-x-auto">
+              <table className="min-w-max border-collapse">
+                <thead className="bg-muted/40">
+                  <tr>
+                    <th className={`${TH} w-8 text-center`}>#</th>
+                    <th className={`${TH} text-left min-w-[220px]`}>Description</th>
+                    <th className={`${TH} text-right w-20`}>Qty</th>
+                    <th className={`${TH} text-right w-20`}>$ each</th>
+                    <th className={`${TH} text-right w-24`}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(
+                    [
+                      ["Builders mastic", "cg_mastic_qty", "cg_mastic_price", totals.mastic],
+                      ["Silicone", "cg_silicone_qty", "cg_silicone_price", totals.silicone],
+                    ] as const
+                  ).map(([label, qtyKey, priceKey, amount], idx) => (
+                    <tr key={label} className="border-b border-black/5 dark:border-white/5">
+                      <td className="border-r border-black/10 dark:border-white/10 bg-muted/20 px-1.5 text-center text-[10px] tabular-nums text-muted-foreground">
+                        {idx + 1}
+                      </td>
+                      <td className={`${TD} px-2 text-xs text-foreground/70`}>{label}</td>
+                      <td className={TD}>
+                        <NumInput ariaLabel={`${label} qty`} value={defaults[qtyKey]} onChange={(v) => setDefault(qtyKey, v ?? 0)} />
+                      </td>
+                      <td className={TD}>
+                        <NumInput
+                          ariaLabel={`${label} price each`}
+                          value={defaults[priceKey]}
+                          onChange={(v) => setDefault(priceKey, v)}
+                          tone={defaults[qtyKey] > 0 && defaults[priceKey] === null ? "warn" : undefined}
+                        />
+                      </td>
+                      <td className={`${CALC} font-medium text-foreground`}>{money(amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           {/* Totals */}
           <div className="flex flex-col items-end gap-3">
             {namedGroups && (
@@ -1153,6 +1202,12 @@ export function CornerGuardEditor({
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Cutting</span>
                   <span className="tabular-nums text-foreground/70">{money(totals.cutting)}</span>
+                </div>
+              )}
+              {totals.mastic + totals.silicone > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Sundries</span>
+                  <span className="tabular-nums text-foreground/70">{money(totals.mastic + totals.silicone)}</span>
                 </div>
               )}
               <div className="flex justify-between border-t border-border pt-1.5 text-sm font-semibold">
@@ -1210,10 +1265,11 @@ export function CornerGuardEditor({
         <TabsContent value="handrails" className="mt-4">
           <RailTab
             label="Handrails"
+            wallReturns
             defaults={hrDefaults}
             lines={hrLines}
             totals={hrTotals}
-            {...railHandlers(hrLines, setHrLines, setHrDefaults, hr)}
+            {...railHandlers(hrLines, setHrLines, setHrDefaults, hr, HANDRAIL_PASTE_FIELDS)}
           />
         </TabsContent>
       </Tabs>

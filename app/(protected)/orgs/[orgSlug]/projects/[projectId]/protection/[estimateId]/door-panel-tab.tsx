@@ -15,6 +15,7 @@ export const DP_PASTE_FIELDS = [
   "price",
   "panels_qty",
   "install_rate",
+  "cut_qty",
   "cutting_rate",
   "glue_rate",
   "notes",
@@ -27,6 +28,8 @@ export function parseDpPasted(field: DpPasteField, raw: string): string | number
   const value = raw.trim();
   if (field === "item" || field === "notes") return value === "" ? null : value;
   const n = Number(value.replace(/[$,\s]/g, ""));
+  // Cut qty: blank = same as panels, so it stays null rather than 0
+  if (field === "cut_qty") return value === "" || !Number.isFinite(n) || n < 0 ? null : Math.round(n);
   const qty = field === "sheets_qty" || field === "panels_qty";
   if (value === "" || !Number.isFinite(n) || n < 0) return qty ? 0 : null;
   return qty ? Math.round(n) : n;
@@ -64,6 +67,9 @@ export function DoorPanelTab({
               <th className={`${TH} text-right w-16`}>Panels</th>
               <th className={`${TH} text-right w-20`}>Install $ / panel</th>
               <th className={`${TH} text-center w-12`} title="Tick to add cutting to install">Cut</th>
+              <th className={`${TH} text-right w-16`} title="Panels to cut — blank = same as Panels">
+                Cut panels
+              </th>
               <th className={`${TH} text-right w-20`}>Cutting $ / panel</th>
               <th className={`${TH} text-right`}>Install incl. cutting</th>
               <th className={`${TH} text-right w-20`}>Glue $ / panel</th>
@@ -122,6 +128,22 @@ export function DoorPanelTab({
                       checked={line.cutting_enabled}
                       onChange={(e) => onLine(line.id, "cutting_enabled", e.target.checked)}
                       className="h-3.5 w-3.5 accent-primary align-middle"
+                    />
+                  </td>
+                  <td className={TD}>
+                    <NumInput
+                      onPaste={onPaste(line.id, "cut_qty")}
+                      ariaLabel="Cut panels"
+                      integer
+                      value={line.cut_qty}
+                      inherited={line.panels_qty}
+                      title={
+                        line.cut_qty === null
+                          ? "Same as Panels — type a number to cut only some panels"
+                          : "Typed-in cut quantity — clear to use the Panels qty"
+                      }
+                      onChange={(v) => onLine(line.id, "cut_qty", v)}
+                      className={line.cutting_enabled ? "" : "opacity-50 line-through"}
                     />
                   </td>
                   <td className={TD}>

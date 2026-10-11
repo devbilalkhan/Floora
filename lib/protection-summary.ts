@@ -1,13 +1,16 @@
 // Costing summary for a protection estimate — rolls every product tab up into one price.
 // Same order as the flooring estimate (see lib/estimate-types.ts computeSummary):
-//   cost base   = trade subtotals + training
+//   cost base   = trade subtotals + preliminaries (stored as `training`)
 //   admin       = cost base × admin %
 //   markup      = (cost base + admin) × markup %          ← markup on cost, not margin
 //   pass-through = accommodation + meals + travel + freight (never marked up)
-//   total ex GST = cost base + admin + markup + pass-through
+//   before retention = cost base + admin + markup + pass-through
+//   retention    = before retention × retention %   (added to the price to recover what's withheld)
+//   total ex GST = before retention + retention
 //   GST 10%
 
 export type CostingInputs = {
+  /** Shown as "Preliminaries" — the column predates the rename */
   training: number | null;
   accommodation: number | null;
   meals: number | null;
@@ -17,6 +20,8 @@ export type CostingInputs = {
   admin_pct: number;
   /** Whole-number percent, 0–100 */
   markup_pct: number;
+  /** Whole-number percent, 0–100; 0 = no retention */
+  retention_pct: number;
 };
 
 export type TradeSubtotal = {
@@ -45,7 +50,9 @@ export function computeCostingSummary(trades: TradeSubtotal[], c: CostingInputs)
     freight: c.freight ?? 0,
   };
   const passThroughTotal = passThrough.accommodation + passThrough.meals + passThrough.travel + passThrough.freight;
-  const totalExGst = subtotalAfterAdmin + markup + passThroughTotal;
+  const beforeRetention = subtotalAfterAdmin + markup + passThroughTotal;
+  const retention = beforeRetention * (c.retention_pct / 100);
+  const totalExGst = beforeRetention + retention;
   const gst = totalExGst * GST_RATE;
 
   return {
@@ -57,10 +64,12 @@ export function computeCostingSummary(trades: TradeSubtotal[], c: CostingInputs)
     markup,
     passThrough,
     passThroughTotal,
+    beforeRetention,
+    retention,
     totalExGst,
     gst,
     totalIncGst: totalExGst + gst,
-    /** Gross profit = the markup; admin and pass-through costs are treated as cost (as in the flooring estimate) */
+    /** Gross profit = the markup; admin, pass-through and retention are not profit (as in the flooring estimate) */
     grossProfit: markup,
     /** Gross profit as a share of the ex-GST price */
     marginPct: totalExGst > 0 ? markup / totalExGst : 0,

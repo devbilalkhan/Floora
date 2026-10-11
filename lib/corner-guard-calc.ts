@@ -9,6 +9,11 @@ export type CornerGuardDefaults = {
   default_coving_mm: number;
   cutting_enabled: boolean;
   default_cutting_rate: number | null;
+  /** Sundries — estimate-level qty × $ each, added to the total */
+  cg_mastic_qty: number;
+  cg_mastic_price: number | null;
+  cg_silicone_qty: number;
+  cg_silicone_price: number | null;
 };
 
 export type CornerGuardLine = {
@@ -110,7 +115,9 @@ export type EstimateTotals = {
   installStd: number;
   installNib: number;
   cutting: number;
-  /** Sum of all line totals — the corner guards subtotal fed into the costing summary. */
+  mastic: number;
+  silicone: number;
+  /** Line totals + sundries — the corner guards subtotal fed into the costing summary. */
   total: number;
   /** Lines with qty but no install rate — the job total must not be shown while > 0 (rule 2). */
   blockedLines: number;
@@ -165,6 +172,8 @@ export function computeEstimate(lines: CornerGuardLine[], d: CornerGuardDefaults
     installStd: 0,
     installNib: 0,
     cutting: 0,
+    mastic: d.cg_mastic_qty * (d.cg_mastic_price ?? 0),
+    silicone: d.cg_silicone_qty * (d.cg_silicone_price ?? 0),
     total: 0,
     blockedLines: 0,
     defaultPriceLines: 0,
@@ -197,5 +206,6 @@ export function computeEstimate(lines: CornerGuardLine[], d: CornerGuardDefaults
     groups.set(key, g);
   }
   t.groups = Array.from(groups.values());
+  t.total += t.mastic + t.silicone;
   return t;
 }
