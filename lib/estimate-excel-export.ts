@@ -1,6 +1,6 @@
 import type { Row, Cell } from "exceljs";
 import type { Estimate, EstimateItem, WetArea } from "@/lib/estimate-types";
-import { itemMatQty, itemMatCost, itemLabCost, itemTotal, computeSummary, computeWetAreaLabor } from "@/lib/estimate-types";
+import { itemMatQty, itemMatCost, itemLabCost, itemTotal, computeSummary, computeWetAreaLabor, wetAreaFfSqm } from "@/lib/estimate-types";
 import { CATEGORIES } from "@/lib/takeoff-types";
 import {
   ACCENT,
@@ -173,7 +173,7 @@ function buildDetailSheet(
   let wetAreasTotalRow: number | null = null;
   if (wetAreas.length > 0) {
     categoryBandRow(ws, "Wet Areas");
-    const waRow: Row = ws.addRow(["", "Name", "Qty", "Floor m²", "Wall Semi m²", "Wall Full m²", "Coving lm", "Labour $", "Charge $", "Profit $"]);
+    const waRow: Row = ws.addRow(["", "Name", "Qty", "Floor m²", "FF m²", "Wall Semi m²", "Wall Full m²", "Coving lm", "Labour $", "Charge $", "Profit $"]);
     waRow.eachCell((cell: Cell) => { cell.font = { bold: true, size: 9, color: { argb: "FF64748B" } }; });
     const waStart = ws.rowCount + 1;
     let waLab = 0;
@@ -182,20 +182,20 @@ function buildDetailSheet(
       const labor = computeWetAreaLabor(wa) * (Number(wa.qty) || 1);
       const charge = (Number(wa.charge) || 0) * (Number(wa.qty) || 1);
       const rowNum = ws.rowCount + 1;
-      const row: Row = ws.addRow(["", wa.name, wa.qty, wa.floor_sqm, wa.wall_semi_sqm, wa.wall_full_sqm, wa.coving_lm, labor, charge]);
-      row.getCell(10).value = { formula: `I${rowNum}-H${rowNum}`, result: charge - labor };
-      [8, 9, 10].forEach((c) => (row.getCell(c).numFmt = CURRENCY_FMT));
+      const row: Row = ws.addRow(["", wa.name, wa.qty, wa.floor_sqm, wetAreaFfSqm(wa), wa.wall_semi_sqm, wa.wall_full_sqm, wa.coving_lm, labor, charge]);
+      row.getCell(11).value = { formula: `J${rowNum}-I${rowNum}`, result: charge - labor };
+      [9, 10, 11].forEach((c) => (row.getCell(c).numFmt = CURRENCY_FMT));
       waLab += labor;
       waCharge += charge;
     }
     const waEnd = ws.rowCount;
     const totalRowNum = waEnd + 1;
     const totalRow: Row = ws.addRow(["", "Wet areas total"]);
-    totalRow.getCell(8).value = { formula: `SUM(H${waStart}:H${waEnd})`, result: waLab };
-    totalRow.getCell(9).value = { formula: `SUM(I${waStart}:I${waEnd})`, result: waCharge };
-    totalRow.getCell(10).value = { formula: `I${totalRowNum}-H${totalRowNum}`, result: waCharge - waLab };
+    totalRow.getCell(9).value = { formula: `SUM(I${waStart}:I${waEnd})`, result: waLab };
+    totalRow.getCell(10).value = { formula: `SUM(J${waStart}:J${waEnd})`, result: waCharge };
+    totalRow.getCell(11).value = { formula: `J${totalRowNum}-I${totalRowNum}`, result: waCharge - waLab };
     totalRow.eachCell((cell: Cell) => { cell.font = { bold: true, size: 9.5 }; cell.border = { top: { style: "thin", color: { argb: BORDER_GREY } } }; });
-    [8, 9, 10].forEach((c) => (totalRow.getCell(c).numFmt = CURRENCY_FMT));
+    [9, 10, 11].forEach((c) => (totalRow.getCell(c).numFmt = CURRENCY_FMT));
     ws.addRow([]);
     wetAreasTotalRow = totalRowNum;
   }
@@ -328,7 +328,7 @@ function appendCostBuildUp(ws: Sheet, estimate: Estimate, items: EstimateItem[],
   const baseLab = detail.categorySubtotals.reduce((sum, c) => sum + c.lab, 0);
 
   const matRow = costBuildUpRow(ws, "Material cost", { formula: `I${detail.itemsSubtotalRow}`, result: baseMat });
-  const wetTerm = detail.wetAreasTotalRow ? `+J${detail.wetAreasTotalRow}` : "";
+  const wetTerm = detail.wetAreasTotalRow ? `+K${detail.wetAreasTotalRow}` : "";
   const labRow = costBuildUpRow(ws, "Labour cost", { formula: `J${detail.itemsSubtotalRow}${wetTerm}`, result: baseLab + s.wetAreasProfit });
   const accRowNum = ws.rowCount + 1;
   const accRow = costBuildUpRow(

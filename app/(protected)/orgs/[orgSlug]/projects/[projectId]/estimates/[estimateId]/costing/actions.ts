@@ -637,7 +637,7 @@ export async function addWetArea(estimateId: string, sortOrder: number): Promise
   const { data, error } = await supabase
     .from("estimate_wet_areas")
     .insert({ estimate_id: estimateId, sort_order: sortOrder, name: "Wet Area" })
-    .select("id, estimate_id, sort_order, name, floor_sqm, wall_semi_sqm, wall_full_sqm, coving_lm, qty, charge")
+    .select("id, estimate_id, sort_order, name, floor_sqm, ff_sqm, wall_semi_sqm, wall_full_sqm, coving_lm, qty, charge")
     .single();
   if (error) throw new Error(error.message);
   return data as WetArea;
@@ -645,7 +645,7 @@ export async function addWetArea(estimateId: string, sortOrder: number): Promise
 
 export async function updateWetArea(
   id: string,
-  patch: Partial<Pick<WetArea, "name" | "floor_sqm" | "wall_semi_sqm" | "wall_full_sqm" | "coving_lm" | "qty" | "charge">>
+  patch: Partial<Pick<WetArea, "name" | "floor_sqm" | "ff_sqm" | "wall_semi_sqm" | "wall_full_sqm" | "coving_lm" | "qty" | "charge">>
 ) {
   await assertWetAreaAccess(id);
   const { supabase } = await createAuthedClient();

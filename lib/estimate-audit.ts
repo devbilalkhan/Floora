@@ -24,6 +24,7 @@ const WET_LAB_VINYL = 23;
 const WET_LAB_WALL_SEMI = 29;
 const WET_LAB_WALL_FULL = 35;
 const WET_LAB_COVING = 25;
+const WET_LAB_FEATHER_FINISH = 8;
 const CENT = 0.01;
 
 export type AuditCheck = {
@@ -260,6 +261,7 @@ function auditScope(items: EstimateItem[], scope: string): ScopeAuditReport {
 function independentWetAreaLabor(wa: WetArea): number {
   return (
     (Number(wa.floor_sqm) || 0) * WET_LAB_VINYL +
+    (wa.ff_sqm == null ? Number(wa.floor_sqm) || 0 : Number(wa.ff_sqm) || 0) * WET_LAB_FEATHER_FINISH +
     (Number(wa.wall_semi_sqm) || 0) * WET_LAB_WALL_SEMI +
     (Number(wa.wall_full_sqm) || 0) * WET_LAB_WALL_FULL +
     (Number(wa.coving_lm) || 0) * WET_LAB_COVING

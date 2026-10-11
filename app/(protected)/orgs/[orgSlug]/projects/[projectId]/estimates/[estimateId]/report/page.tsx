@@ -39,7 +39,7 @@ export default async function ReportPage({
     supabase.from("projects").select("id, name").eq("id", params.projectId).single(),
     supabase
       .from("estimate_wet_areas")
-      .select("id, estimate_id, sort_order, name, floor_sqm, wall_semi_sqm, wall_full_sqm, coving_lm, qty, charge")
+      .select("id, estimate_id, sort_order, name, floor_sqm, ff_sqm, wall_semi_sqm, wall_full_sqm, coving_lm, qty, charge")
       .eq("estimate_id", params.estimateId)
       .order("sort_order"),
     supabase.from("organizations").select("name, logo_url").eq("slug", params.orgSlug).single(),

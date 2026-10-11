@@ -5,7 +5,7 @@ import { Plus, Trash2, Droplets, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { LAB } from "@/lib/default-rates";
-import { type WetArea } from "@/lib/estimate-types";
+import { type WetArea, wetAreaFfSqm } from "@/lib/estimate-types";
 import { addWetArea, updateWetArea, deleteWetArea } from "@/app/(protected)/orgs/[orgSlug]/projects/[projectId]/estimates/[estimateId]/costing/actions";
 
 const fmt = (n: number) =>
@@ -20,9 +20,9 @@ const inp =
 const ro =
   "w-full px-1.5 py-1 text-[11px] tabular-nums text-right text-foreground/55 select-none cursor-default";
 
-type Patch = Partial<Pick<WetArea, "name" | "floor_sqm" | "wall_semi_sqm" | "wall_full_sqm" | "coving_lm" | "qty" | "charge">>;
+type Patch = Partial<Pick<WetArea, "name" | "floor_sqm" | "ff_sqm" | "wall_semi_sqm" | "wall_full_sqm" | "coving_lm" | "qty" | "charge">>;
 
-type Rates = { floor: number; semi: number; full: number; coving: number };
+type Rates = { floor: number; ff: number; semi: number; full: number; coving: number };
 
 function WetAreaRow({
   area,
@@ -76,10 +76,11 @@ function WetAreaRow({
 
   const q        = Number(local.qty) || 1;
   const floorLab = (Number(local.floor_sqm)     || 0) * rates.floor;
+  const ffLab    = wetAreaFfSqm(local)               * rates.ff;
   const semiLab  = (Number(local.wall_semi_sqm) || 0) * rates.semi;
   const fullLab  = (Number(local.wall_full_sqm) || 0) * rates.full;
   const covLab   = (Number(local.coving_lm)     || 0) * rates.coving;
-  const unitLab  = floorLab + semiLab + fullLab + covLab;
+  const unitLab  = floorLab + ffLab + semiLab + fullLab + covLab;
   const totalLab = unitLab * q;
   const totalCharge = (Number(local.charge) || 0) * q;
   const diff     = totalCharge - totalLab;
@@ -109,6 +110,21 @@ function WetAreaRow({
       {/* Floor Lab (per area) */}
       <td className="border-r border-black/10 dark:border-white/10 p-0 bg-muted/10">
         <div className={ro}>{floorLab > 0 ? `$${fmt(floorLab)}` : "—"}</div>
+      </td>
+
+      {/* Feather Finish m² — blank follows Floor m² (shown as placeholder) */}
+      <td className="border-r border-black/10 dark:border-white/10 p-0">
+        <input type="number" min={0} step={0.01}
+          value={local.ff_sqm == null ? "" : r2(local.ff_sqm)}
+          onChange={(e) => { const v = e.target.value === "" ? null : parseFloat(e.target.value) || 0; set("ff_sqm", v); schedule({ ff_sqm: v }); }}
+          onBlur={(e)  => { const v = e.target.value === "" ? null : parseFloat(e.target.value) || 0; set("ff_sqm", v); flush({ ff_sqm: v }); }}
+          className={inp} placeholder={r2(local.floor_sqm).toFixed(2)}
+          title="Blank = same as Floor m²" />
+      </td>
+
+      {/* FF Lab (per area) */}
+      <td className="border-r border-black/10 dark:border-white/10 p-0 bg-muted/10">
+        <div className={ro}>{ffLab > 0 ? `$${fmt(ffLab)}` : "—"}</div>
       </td>
 
       {/* Wall Semi m² */}
@@ -228,9 +244,9 @@ export function WetAreasPanel({
   const [rates, setRates] = useState<Rates>(() => {
     try {
       const saved = localStorage.getItem(ratesKey);
-      if (saved) return { ...{ floor: LAB.vinyl, semi: LAB.wallVinylSemi, full: LAB.wallVinylFull, coving: LAB.coving }, ...JSON.parse(saved) };
+      if (saved) return { ...{ floor: LAB.vinyl, ff: LAB.featherFinish, semi: LAB.wallVinylSemi, full: LAB.wallVinylFull, coving: LAB.coving }, ...JSON.parse(saved) };
     } catch {}
-    return { floor: LAB.vinyl, semi: LAB.wallVinylSemi, full: LAB.wallVinylFull, coving: LAB.coving };
+    return { floor: LAB.vinyl, ff: LAB.featherFinish, semi: LAB.wallVinylSemi, full: LAB.wallVinylFull, coving: LAB.coving };
   });
 
   useEffect(() => {
@@ -281,6 +297,7 @@ export function WetAreasPanel({
         const patch: Patch = {
           name: src.name,
           floor_sqm: src.floor_sqm,
+          ff_sqm: src.ff_sqm,
           wall_semi_sqm: src.wall_semi_sqm,
           wall_full_sqm: src.wall_full_sqm,
           coving_lm: src.coving_lm,
@@ -300,6 +317,7 @@ export function WetAreasPanel({
 
   const totalLab    = areas.reduce((s, a) => {
     const lab = (Number(a.floor_sqm) || 0) * rates.floor
+              + wetAreaFfSqm(a) * rates.ff
               + (Number(a.wall_semi_sqm) || 0) * rates.semi
               + (Number(a.wall_full_sqm) || 0) * rates.full
               + (Number(a.coving_lm) || 0) * rates.coving;
@@ -308,8 +326,8 @@ export function WetAreasPanel({
   const totalCharge = areas.reduce((s, a) => s + (Number(a.charge) || 0) * (Number(a.qty) || 1), 0);
   const totalDiff   = totalCharge - totalLab;
 
-  // 14 columns: Name | Floor m² | Floor Lab | Semi m² | Semi Lab | Full m² | Full Lab | Cov lm | Cov Lab | Total Lab | Qty | Charge | Diff | Del
-  const COLS = 14;
+  // 16 columns: Name | Floor m² | Floor Lab | FF m² | FF Lab | Semi m² | Semi Lab | Full m² | Full Lab | Cov lm | Cov Lab | Total Lab | Qty | Charge | Diff | Del
+  const COLS = 16;
 
   return (
     <div className="border border-black/[0.08] dark:border-white/[0.08] rounded-xl overflow-hidden bg-card/65 backdrop-blur-xl">
@@ -327,6 +345,7 @@ export function WetAreasPanel({
         <div className="ml-auto flex items-center gap-1.5">
           {([
             ["Floor",     "floor",  "/m²"] as const,
+            ["FF",        "ff",     "/m²"] as const,
             ["Wall Semi", "semi",   "/m²"] as const,
             ["Wall Full", "full",   "/m²"] as const,
             ["Coving",    "coving", "/lm"] as const,
@@ -354,11 +373,13 @@ export function WetAreasPanel({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse" style={{ minWidth: 980 }}>
+        <table className="w-full border-collapse" style={{ minWidth: 1120 }}>
           <colgroup>
             <col style={{ width: 140 }} /> {/* Name */}
             <col style={{ width: 68 }} />  {/* Floor m² */}
             <col style={{ width: 72 }} />  {/* Floor Lab */}
+            <col style={{ width: 68 }} />  {/* FF m² */}
+            <col style={{ width: 72 }} />  {/* FF Lab */}
             <col style={{ width: 68 }} />  {/* Semi m² */}
             <col style={{ width: 72 }} />  {/* Semi Lab */}
             <col style={{ width: 68 }} />  {/* Full m² */}
@@ -378,6 +399,8 @@ export function WetAreasPanel({
                 ["Name",         "text-left",  false],
                 ["Floor m²",     "text-right", false],
                 ["Floor Lab",    "text-right", true],
+                ["FF m²",        "text-right", false],
+                ["FF Lab",       "text-right", true],
                 ["Wall Semi m²", "text-right", false],
                 ["Semi Lab",     "text-right", true],
                 ["Wall Full m²", "text-right", false],
@@ -434,7 +457,7 @@ export function WetAreasPanel({
             {/* Totals footer */}
             {areas.length > 0 && (
               <tr className="bg-muted/25 border-t-2 border-black/[0.15] dark:border-white/[0.15]">
-                <td colSpan={9} className="px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wide">
+                <td colSpan={11} className="px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wide">
                   Totals
                 </td>
                 <td className="border-l border-black/10 dark:border-white/10 px-1.5 py-2 text-right text-[11px] tabular-nums font-semibold text-foreground/75">

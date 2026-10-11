@@ -9,6 +9,8 @@ export type WetArea = {
   sort_order: number;
   name: string;
   floor_sqm: number;
+  /** Feather finish area — null follows floor_sqm. */
+  ff_sqm: number | null;
   wall_semi_sqm: number;
   wall_full_sqm: number;
   coving_lm: number;
@@ -16,9 +18,14 @@ export type WetArea = {
   charge: number;
 };
 
+export function wetAreaFfSqm(wa: WetArea): number {
+  return wa.ff_sqm == null ? Number(wa.floor_sqm) || 0 : Number(wa.ff_sqm) || 0;
+}
+
 export function computeWetAreaLabor(wa: WetArea): number {
   return (
     (Number(wa.floor_sqm)     || 0) * LAB.vinyl +
+    wetAreaFfSqm(wa)                * LAB.featherFinish +
     (Number(wa.wall_semi_sqm) || 0) * LAB.wallVinylSemi +
     (Number(wa.wall_full_sqm) || 0) * LAB.wallVinylFull +
     (Number(wa.coving_lm)     || 0) * LAB.coving
