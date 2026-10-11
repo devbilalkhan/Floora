@@ -41,6 +41,7 @@ import type { RailPasteField } from "./rail-tab";
 import { computeDoorPanels } from "@/lib/door-panel-calc";
 import type { DoorPanelLine } from "@/lib/door-panel-calc";
 import { DP_PASTE_FIELDS, DoorPanelTab, parseDpPasted } from "./door-panel-tab";
+import { ProtectionExcelExportButton } from "./protection-excel-export-button";
 import { deleteProtectionEstimate, renameProtectionEstimate, saveProtectionEstimate } from "../actions";
 
 type SaveStatus = "saved" | "unsaved" | "saving" | "error";
@@ -160,6 +161,8 @@ export function CornerGuardEditor({
   estimateId,
   projectId,
   orgSlug,
+  orgName,
+  projectName,
   initialName,
   initialDefaults,
   initialCosting,
@@ -176,6 +179,8 @@ export function CornerGuardEditor({
   estimateId: string;
   projectId: string;
   orgSlug: string;
+  orgName: string;
+  projectName: string;
   initialName: string;
   initialDefaults: CornerGuardDefaults;
   initialCosting: CostingInputs;
@@ -777,6 +782,19 @@ export function CornerGuardEditor({
           <span className={`text-xs ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}>
             {STATUS_LABEL[status]}
           </span>
+          <ProtectionExcelExportButton
+            getArgs={() => ({
+              orgName,
+              projectName,
+              estimateName: name,
+              costing,
+              cornerGuards: { defaults, lines },
+              wallPanels: { defaults: wpDefaults, lines: wpLines, rods },
+              doorPanels: { lines: dpLines },
+              crashRail: { defaults: crDefaults, lines: crLines },
+              handrails: { defaults: hrDefaults, lines: hrLines },
+            })}
+          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Estimate actions">

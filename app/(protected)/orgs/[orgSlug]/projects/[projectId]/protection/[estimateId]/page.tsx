@@ -18,7 +18,7 @@ export default async function ProtectionEstimatePage({
 }) {
   const supabase = createClient();
 
-  const [{ data: project }, { data: userRole }, { data: estimate }, { data: lines }, { data: wpLines }, { data: weldRods }, { data: hrLines }, { data: crLines }, { data: dpLines }] =
+  const [{ data: project }, { data: userRole }, { data: estimate }, { data: lines }, { data: wpLines }, { data: weldRods }, { data: hrLines }, { data: crLines }, { data: dpLines }, { data: org }] =
     await Promise.all([
       supabase.from("projects").select("name").eq("id", params.projectId).single(),
       supabase.rpc("user_project_role", { proj_id: params.projectId }),
@@ -58,6 +58,7 @@ export default async function ProtectionEstimatePage({
         )
         .eq("estimate_id", params.estimateId)
         .order("sort_order"),
+      supabase.from("organizations").select("name").eq("slug", params.orgSlug).single(),
     ]);
 
   if (!["admin", "project_manager"].includes(userRole ?? "")) {
@@ -113,6 +114,8 @@ export default async function ProtectionEstimatePage({
         estimateId={id}
         projectId={params.projectId}
         orgSlug={params.orgSlug}
+        orgName={org?.name ?? params.orgSlug}
+        projectName={project.name}
         initialName={name}
         initialDefaults={defaults}
         initialCosting={{ training, accommodation, meals, travel, freight, admin_pct, markup_pct, retention_pct }}
