@@ -193,6 +193,7 @@ export function ReportDocument({
   };
 
   const summary = computeSummary(items, settings, wetAreas);
+  const includeAdditionalInRates = estimate.include_additional_in_rates ?? true;
   const totalCost =
     summary.subtotalAfterOverhead + summary.additionalCosts + summary.floorPrepCost + summary.grindCost;
   const grossProfit = summary.markupAmount + summary.floorPrepProfit + summary.grindProfit;
@@ -545,7 +546,7 @@ export function ReportDocument({
             </thead>
             <tbody>
               {categoryStats.map(({ cat, catMat, catLab, catTotal, primaryUnit, netQty, grossQty }) => {
-                const itemsComponent = summary.totalExGst - summary.floorPrepRevenue - summary.grindRevenue;
+                const itemsComponent = summary.totalExGst - summary.floorPrepRevenue - summary.grindRevenue - (includeAdditionalInRates ? 0 : summary.additionalCosts);
                 const catShare = itemsGrandTotal > 0 ? catTotal / itemsGrandTotal : 0;
                 const catAllocated = catShare * itemsComponent;
                 const perUnit = grossQty > 0 ? catAllocated / grossQty : 0;
@@ -601,6 +602,24 @@ export function ReportDocument({
                   <Td right bold>${fmt(summary.grindCost)}</Td>
                   <Td right>—</Td>
                   <Td right>${fmt(summary.grindRevenue)}</Td>
+                  <Td right>—</Td>
+                </tr>
+              )}
+              {!includeAdditionalInRates && summary.additionalCosts > 0 && (
+                <tr className="border-b border-border print:border-gray-100 hover:bg-muted/10 print:hover:bg-transparent">
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-0.5 h-3 rounded-full bg-primary/40 print:bg-gray-300 shrink-0" />
+                      <span className="text-xs font-medium text-foreground/90 print:text-gray-700">
+                        Additional Costs
+                      </span>
+                    </div>
+                  </td>
+                  <Td right>—</Td>
+                  <Td right>—</Td>
+                  <Td right>—</Td>
+                  <Td right>—</Td>
+                  <Td right>${fmt(summary.additionalCosts)}</Td>
                   <Td right>—</Td>
                 </tr>
               )}

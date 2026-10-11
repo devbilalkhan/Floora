@@ -76,6 +76,8 @@ export type Estimate = {
   description: string | null;
   status: string;
   source_takeoff_id: string | null;
+  /** Spread additional costs into per-unit category sell rates (default true). */
+  include_additional_in_rates?: boolean;
 } & EstimateSettings;
 
 // ── Calculation helpers ────────────────────────────────────────────────────────

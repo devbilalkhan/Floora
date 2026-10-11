@@ -869,6 +869,7 @@ export function CostingTable({
   const [includeWetAreas, setIncludeWetAreas] = useState(true);
   const [includeFloorPrep, setIncludeFloorPrep] = useState(true);
   const [includeGrind, setIncludeGrind] = useState(true);
+  const [includeAdditionalInRates, setIncludeAdditionalInRates] = useState(estimate.include_additional_in_rates ?? true);
   const [excludedCategories, setExcludedCategories] = useState<Set<string>>(new Set());
   const [selectedLevel, setSelectedLevel] = useState<string>("all");
 
@@ -1166,6 +1167,17 @@ export function CostingTable({
     [estimate.id]
   );
 
+  const toggleAdditionalInRates = useCallback(
+    (checked: boolean) => {
+      setIncludeAdditionalInRates(checked);
+      markSaving();
+      updateEstimateSettings(estimate.id, { include_additional_in_rates: checked })
+        .then(markSaved)
+        .catch(() => toast.error("Save failed."));
+    },
+    [estimate.id]
+  );
+
   const resetFloorPrep = useCallback(async () => {
     setSettings((prev) => ({ ...prev, ...FLOOR_PREP_DEFAULTS }));
     if (settingsTimer.current) { clearTimeout(settingsTimer.current); settingsTimer.current = null; }
@@ -1410,6 +1422,18 @@ export function CostingTable({
           </span>
         </label>
 
+        {/* Per-unit badges only — does not change Total ex-GST */}
+        <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+          <span className={cn(includeAdditionalInRates ? "text-muted-foreground" : "text-muted-foreground/50 line-through")}>
+            Additional costs in rates
+          </span>
+          <Switch
+            checked={includeAdditionalInRates}
+            onCheckedChange={toggleAdditionalInRates}
+            className="scale-75"
+          />
+        </label>
+
         <div className="ml-auto flex items-center gap-2">
           {saveStatus === "saving" && (
             <span className="text-[10px] text-muted-foreground animate-pulse">Saving…</span>
@@ -1593,7 +1617,9 @@ export function CostingTable({
                 const grossQty = activeCatPrimaries.filter((p) => p.unit === primaryUnit).reduce((s, p) => s + itemMatQty(p), 0);
                 const catPrimaryTotal = reportCatTotals[cat.key] ?? 0;
                 const catShare = reportItemsGrandTotal > 0 ? catPrimaryTotal / reportItemsGrandTotal : 0;
-                const perUnit = grossQty > 0 ? (catShare * (summary.totalExGst - summary.floorPrepRevenue)) / grossQty : 0;
+                // Floor prep and grinding are separate charges — never spread into category rates
+                const rateBase = summary.totalExGst - summary.floorPrepRevenue - summary.grindRevenue - (includeAdditionalInRates ? 0 : summary.additionalCosts);
+                const perUnit = grossQty > 0 ? (catShare * rateBase) / grossQty : 0;
 
                 const isExcluded = excludedCategories.has(cat.key);
 

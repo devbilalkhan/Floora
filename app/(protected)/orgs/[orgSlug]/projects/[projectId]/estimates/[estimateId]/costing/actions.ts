@@ -682,7 +682,7 @@ export async function updateEstimateNotes(estimateId: string, notes: string) {
 // ── Update estimate-level settings ───────────────────────────────────────────
 export async function updateEstimateSettings(
   estimateId: string,
-  patch: Partial<EstimateSettings>
+  patch: Partial<EstimateSettings & { include_additional_in_rates: boolean }>
 ) {
   await assertEstimateAccess(estimateId);
   const { supabase } = await createAuthedClient();
