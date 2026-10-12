@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { updateEstimateNotes } from "./actions";
 
 const NotesEditor = dynamic(
-  () => import("./notes-editor").then((m) => m.NotesEditor),
+  () => import("@/components/notes-editor").then((m) => m.NotesEditor),
   { ssr: false, loading: () => <div className="min-h-[140px]" /> }
 );
 

@@ -62,6 +62,17 @@ export async function renameProtectionEstimate(
   revalidatePath(`/orgs/${orgSlug}/projects/${projectId}`);
 }
 
+/** Notes on the Costing summary — saved on their own so typing doesn't resend the whole estimate. */
+export async function updateProtectionNotes(estimateId: string, notes: string) {
+  const { supabase } = await getUserClient();
+  const { error } = await supabase
+    .from("protection_estimates")
+    .update({ notes: notes || null })
+    .eq("id", estimateId);
+
+  if (error) throw new Error(error.message);
+}
+
 export async function deleteProtectionEstimate(estimateId: string, projectId: string, orgSlug: string) {
   const { supabase } = await getUserClient();
   const { error } = await supabase.from("protection_estimates").delete().eq("id", estimateId);

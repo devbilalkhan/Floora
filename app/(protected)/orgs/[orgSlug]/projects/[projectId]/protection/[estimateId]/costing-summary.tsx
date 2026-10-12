@@ -173,12 +173,15 @@ export function CostingSummaryTab({
   inputs,
   onChange,
   onOpenTab,
+  notes,
 }: {
   summary: CostingSummary;
   trades: TradeSubtotal[];
   inputs: CostingInputs;
   onChange: <K extends keyof CostingInputs>(key: K, value: CostingInputs[K]) => void;
   onOpenTab: (key: string) => void;
+  /** Notes panel, shown under the additional costs */
+  notes: React.ReactNode;
 }) {
   const [hovered, setHovered] = useState<string | null>(null);
 
@@ -415,6 +418,8 @@ export function CostingSummaryTab({
             <MoneyField label="Freight" value={inputs.freight} onChange={(v) => onChange("freight", v)} />
           </div>
         </section>
+
+        {notes}
       </div>
     </div>
   );

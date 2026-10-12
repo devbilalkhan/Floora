@@ -25,7 +25,7 @@ export default async function ProtectionEstimatePage({
       supabase
         .from("protection_estimates")
         .select(
-          "id, name, default_price_std, default_price_nib, default_install_rate, default_coving_mm, cutting_enabled, default_cutting_rate, cg_mastic_qty, cg_mastic_price, cg_silicone_qty, cg_silicone_price, training, accommodation, meals, travel, freight, admin_pct, markup_pct, retention_pct, wp_sheet_width_mm, wp_sheet_length_mm, wp_wastage_pct, wp_default_price, wp_install_rate, wp_glue_rate, wp_cutout_rate, hr_default_price, hr_install_rate, cr_default_price, cr_install_rate"
+          "id, name, notes, default_price_std, default_price_nib, default_install_rate, default_coving_mm, cutting_enabled, default_cutting_rate, cg_mastic_qty, cg_mastic_price, cg_silicone_qty, cg_silicone_price, training, accommodation, meals, travel, freight, admin_pct, markup_pct, retention_pct, wp_sheet_width_mm, wp_sheet_length_mm, wp_wastage_pct, wp_default_price, wp_install_rate, wp_glue_rate, wp_cutout_rate, hr_default_price, hr_install_rate, cr_default_price, cr_install_rate"
         )
         .eq("id", params.estimateId)
         .eq("project_id", params.projectId)
@@ -69,6 +69,7 @@ export default async function ProtectionEstimatePage({
   const {
     id,
     name,
+    notes,
     training,
     accommodation,
     meals,
@@ -117,6 +118,7 @@ export default async function ProtectionEstimatePage({
         orgName={org?.name ?? params.orgSlug}
         projectName={project.name}
         initialName={name}
+        initialNotes={notes}
         initialDefaults={defaults}
         initialCosting={{ training, accommodation, meals, travel, freight, admin_pct, markup_pct, retention_pct }}
         initialLines={(lines ?? []) as CornerGuardLine[]}

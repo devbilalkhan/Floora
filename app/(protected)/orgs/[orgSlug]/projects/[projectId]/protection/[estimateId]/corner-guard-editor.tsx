@@ -42,6 +42,7 @@ import { computeDoorPanels } from "@/lib/door-panel-calc";
 import type { DoorPanelLine } from "@/lib/door-panel-calc";
 import { DP_PASTE_FIELDS, DoorPanelTab, parseDpPasted } from "./door-panel-tab";
 import { ProtectionExcelExportButton } from "./protection-excel-export-button";
+import { ProtectionNotesPanel } from "./protection-notes-panel";
 import { deleteProtectionEstimate, renameProtectionEstimate, saveProtectionEstimate } from "../actions";
 
 type SaveStatus = "saved" | "unsaved" | "saving" | "error";
@@ -164,6 +165,7 @@ export function CornerGuardEditor({
   orgName,
   projectName,
   initialName,
+  initialNotes,
   initialDefaults,
   initialCosting,
   initialLines,
@@ -182,6 +184,7 @@ export function CornerGuardEditor({
   orgName: string;
   projectName: string;
   initialName: string;
+  initialNotes: string | null;
   initialDefaults: CornerGuardDefaults;
   initialCosting: CostingInputs;
   initialLines: CornerGuardLine[];
@@ -196,6 +199,7 @@ export function CornerGuardEditor({
 }) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
+  const notesRef = useRef(initialNotes);
   const savedName = useRef(initialName);
   const [defaults, setDefaults] = useState(initialDefaults);
   const [costing, setCostingState] = useState(initialCosting);
@@ -828,6 +832,7 @@ export function CornerGuardEditor({
             inputs={costing}
             onChange={setCosting}
             onOpenTab={setTab}
+            notes={<ProtectionNotesPanel estimateId={estimateId} notesRef={notesRef} />}
           />
         </TabsContent>
         <TabsContent value="corner-guards" className="mt-4 space-y-4">
