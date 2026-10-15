@@ -1259,6 +1259,8 @@ export function CornerGuardEditor({
             lines={wpLines}
             rods={rods}
             totals={wpTotals}
+            adminPct={costing.admin_pct}
+            markupPct={costing.markup_pct}
             onDefault={setWpDefault}
             onLine={setWpLine}
             onAddLine={addWpLine}

@@ -2,6 +2,7 @@
 
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { supplyInstallRate } from "@/lib/wall-panel-calc";
 import type { WallPanelDefaults, WallPanelLine, WallPanelTotals, WeldRodLine } from "@/lib/wall-panel-calc";
 import { NumInput } from "./num-input";
 import { CALC, DefaultField, IssueIcon, TD, TH, TextInput, money } from "./table-parts";
@@ -58,6 +59,23 @@ function DeleteButton({ label, onClick }: { label: string; onClick: () => void }
   );
 }
 
+const RATE_BADGE =
+  "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold tabular-nums bg-primary/10 text-primary border border-primary/20";
+
+/** Sell S&I rate per installed panel as a badge; the cost rate shows on hover. */
+function RateBadge({ rate, weldPerSheet }: { rate: { cost: number; sell: number } | null; weldPerSheet: number }) {
+  if (!rate) return <span className="text-muted-foreground/50">—</span>;
+  const weld = weldPerSheet > 0 ? ` incl. ${money(weldPerSheet)} weld rods` : "";
+  return (
+    <span
+      className={RATE_BADGE}
+      title={`Cost ${money(rate.cost)} / panel${weld} · sell is after admin and markup, ex GST (excludes preliminaries, freight/travel and retention)`}
+    >
+      {money(rate.sell)}
+    </span>
+  );
+}
+
 function TotalRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between">
@@ -72,6 +90,8 @@ export function WallPanelTab({
   lines,
   rods,
   totals,
+  adminPct,
+  markupPct,
   onDefault,
   onLine,
   onAddLine,
@@ -85,6 +105,8 @@ export function WallPanelTab({
   lines: WallPanelLine[];
   rods: WeldRodLine[];
   totals: WallPanelTotals;
+  adminPct: number;
+  markupPct: number;
   onDefault: <K extends keyof WallPanelDefaults>(key: K, value: WallPanelDefaults[K]) => void;
   onLine: <K extends keyof WallPanelLine>(id: string, key: K, value: WallPanelLine[K]) => void;
   onAddLine: () => void;
@@ -95,6 +117,8 @@ export function WallPanelTab({
   onDeleteRod: (id: string) => void;
 }) {
   const has = (issues: { code: string }[], code: string) => issues.some((i) => i.code === code);
+  // Weld rods are job-level — spread evenly over every installed panel
+  const weldPerSheet = totals.baseSheets > 0 ? totals.weldRods / totals.baseSheets : 0;
 
   return (
     <div className="space-y-4">
@@ -163,6 +187,7 @@ export function WallPanelTab({
               <th className={`${TH} text-right`}>Glue</th>
               <th className={`${TH} text-right`}>Cutouts</th>
               <th className={`${TH} text-right`}>Line total</th>
+              <th className={`${TH} text-right`} title="Supply & install sell rate per installed panel — hover a rate for the cost">S&amp;I / panel</th>
               <th className={`${TH} text-left min-w-[160px]`}>Notes</th>
               <th className="border-b border-black/10 dark:border-white/10 w-8" />
             </tr>
@@ -282,6 +307,12 @@ export function WallPanelTab({
                   <td className={CALC_CELL}>{money(r.cutouts)}</td>
                   <td className={`${CALC_CELL} font-medium ${blocked ? "text-destructive" : "text-foreground"}`}>
                     {blocked ? "No install rate" : money(r.total)}
+                  </td>
+                  <td className={CALC_CELL}>
+                    <RateBadge
+                      weldPerSheet={weldPerSheet}
+                      rate={blocked ? null : supplyInstallRate(r.total + weldPerSheet * r.baseSheets, r.baseSheets, adminPct, markupPct)}
+                    />
                   </td>
                   <td className={TD}>
                     <TextInput onPaste={onPaste(line.id, "notes")} ariaLabel={`Line ${idx + 1} notes`} value={line.notes}
@@ -408,6 +439,12 @@ export function WallPanelTab({
               <span className="tabular-nums">{money(totals.total)}</span>
             )}
           </div>
+          {totals.blockedLines === 0 && totals.baseSheets > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Average S&amp;I / panel</span>
+              <RateBadge weldPerSheet={weldPerSheet} rate={supplyInstallRate(totals.total, totals.baseSheets, adminPct, markupPct)} />
+            </div>
+          )}
           <p className="text-[10px] text-muted-foreground/50">
             Cost only, ex GST — admin, markup, training and freight are added in the Costing summary tab.
           </p>

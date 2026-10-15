@@ -187,3 +187,15 @@ export function computeWallPanels(lines: WallPanelLine[], rods: WeldRodLine[], d
 }
 
 export type WallPanelTotals = ReturnType<typeof computeWallPanels>;
+
+/**
+ * Supply & install rate per installed panel (base sheet) — wastage is absorbed into the rate.
+ *   cost rate = cost ÷ base sheets
+ *   sell rate = cost rate × (1 + admin %) × (1 + markup %)   (same order as the Costing summary)
+ * Ex GST; preliminaries, pass-through costs and retention are not included.
+ */
+export function supplyInstallRate(cost: number, baseSheets: number, adminPct: number, markupPct: number) {
+  if (baseSheets <= 0) return null;
+  const costRate = cost / baseSheets;
+  return { cost: costRate, sell: costRate * (1 + adminPct / 100) * (1 + markupPct / 100) };
+}

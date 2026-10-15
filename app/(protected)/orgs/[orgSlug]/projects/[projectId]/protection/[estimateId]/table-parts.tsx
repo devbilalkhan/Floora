@@ -26,6 +26,8 @@ export function TextInput({
       aria-label={ariaLabel}
       onPaste={onPaste}
       value={value ?? ""}
+      // Hover shows the full text when a long value is cut off by the column width
+      title={value ?? undefined}
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
       className="w-full bg-transparent px-2 py-1.5 text-xs text-foreground/70 outline-none placeholder:text-muted-foreground/50 focus:bg-primary/5 focus:ring-1 focus:ring-inset focus:ring-primary/50"
