@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { ChevronRight, ShoppingCart, ArrowLeft, ShieldCheck, BarChart2, FileText } from "lucide-react";
 import { PriceListLinks } from "./price-list-sheet";
+import { FloorPrepClientRates } from "./floor-prep-client-rates";
 import { createClient } from "@/lib/supabase/server";
 import type { Estimate, EstimateItem, WetArea } from "@/lib/estimate-types";
 import { CostingTable } from "./costing-table";
@@ -183,8 +184,11 @@ export default async function CostingPage({
         </div>
       </div>
 
-      {/* Price list quick links */}
-      <PriceListLinks />
+      {/* Price list quick links + client floor prep rates */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <PriceListLinks />
+        <FloorPrepClientRates />
+      </div>
 
       <CostingTable
         estimate={estimate as Estimate}
