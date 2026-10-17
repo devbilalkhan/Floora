@@ -2245,6 +2245,62 @@ function RatesSummaryModal({
     </button>
   );
   const total = subtotal + (includeAdditionalInRates ? 0 : additionalCosts);
+
+  // Copies the table as HTML (Gmail / Word paste a formatted table) plus tab-separated
+  // text (Excel pastes into cells). Unit sits in its own column so rate and qty stay numeric.
+  function copyTable() {
+    const money = (n: number) => `$${fmt(n)}`;
+    const body: string[][] = [];
+    for (const r of rows) {
+      body.push([r.label, money(r.rate), fmt(r.qty), uLabel(r.unit), money(r.rate * r.qty)]);
+      if (r.key === "vinyl" && vinylCoving) {
+        body.push(["  incl. Coving", money(vinylCoving.sell / vinylCoving.lm), fmt(vinylCoving.lm), "lm", money(vinylCoving.sell)]);
+        const hasFloor = vinylCoving.floorSupplyQty > 0;
+        body.push([
+          "  Floor only",
+          hasFloor ? money(vinylCoving.floorOnly / vinylCoving.floorSupplyQty) : "",
+          hasFloor ? fmt(vinylCoving.floorSupplyQty) : "",
+          hasFloor ? uLabel(r.unit) : "",
+          money(vinylCoving.floorOnly),
+        ]);
+      }
+    }
+    const header = ["Item", "Rate", "Qty (supply)", "Unit", "Total"];
+    const foot: string[][] = [
+      ["Subtotal", "", "", "", money(subtotal)],
+      ["Additional costs", "", "", "", includeAdditionalInRates ? "in rates" : money(additionalCosts)],
+      ["Total ex-GST", "", "", "", money(total)],
+    ];
+
+    const tsv = [header, ...body, ...foot].map((row) => row.join("\t")).join("\n");
+    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const cell = (v: string, i: number, tag: "th" | "td", bold = false) =>
+      `<${tag} style="border:1px solid #d0d0d0;padding:4px 8px;text-align:${i === 0 ? "left" : "right"};${bold ? "font-weight:bold;" : ""}${tag === "th" ? "background:#f2f2f2;" : ""}">${esc(v)}</${tag}>`;
+    const html =
+      `<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:12px">` +
+      `<tr>${header.map((v, i) => cell(v, i, "th", true)).join("")}</tr>` +
+      body.map((row) => `<tr>${row.map((v, i) => cell(v, i, "td")).join("")}</tr>`).join("") +
+      foot.map((row, ri) => `<tr>${row.map((v, i) => cell(v, i, "td", ri === foot.length - 1)).join("")}</tr>`).join("") +
+      `</table>`;
+
+    const write =
+      typeof ClipboardItem !== "undefined"
+        ? navigator.clipboard.write([
+            new ClipboardItem({
+              "text/html": new Blob([html], { type: "text/html" }),
+              "text/plain": new Blob([tsv], { type: "text/plain" }),
+            }),
+          ])
+        : navigator.clipboard.writeText(tsv);
+    write.then(
+      () => {
+        setCopiedKey("table");
+        setTimeout(() => setCopiedKey((cur) => (cur === "table" ? null : cur)), 2000);
+      },
+      () => toast.error("Couldn't copy the table"),
+    );
+  }
+
   return (
     <>
       <button
@@ -2256,7 +2312,18 @@ function RatesSummaryModal({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-sm">Rates Summary (ex-GST)</DialogTitle>
+            <div className="flex items-center justify-between gap-2 pr-6">
+              <DialogTitle className="text-sm">Rates Summary (ex-GST)</DialogTitle>
+              <button
+                onClick={copyTable}
+                title="Copy as a table — pastes into Excel, Gmail or Word"
+                className="inline-flex items-center gap-1 text-[11px] text-primary/80 hover:text-primary border border-primary/30 rounded px-2 py-0.5 transition-colors"
+              >
+                {copiedKey === "table"
+                  ? <><Check className="h-3 w-3 text-success" /> Copied</>
+                  : <><Clipboard className="h-3 w-3" /> Copy table</>}
+              </button>
+            </div>
           </DialogHeader>
           <label className="flex items-center justify-between gap-2 cursor-pointer text-xs">
             <span className="text-muted-foreground">Additional costs in rates</span>
