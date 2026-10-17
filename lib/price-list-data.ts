@@ -115,3 +115,15 @@ export const LABOUR_PRICE_LIST: PriceListLabour[] = [
   { id: "l-o-03", description: "Moisture Barrier — Apply",          scope: "other",           unit: "m2",  lab_rate: 8.00 },
   { id: "l-o-04", description: "General Labour (per hour)",         scope: "other",           unit: "ea",  lab_rate: 85.00 },
 ];
+
+// ── Floor protection comparison (reference only) ────────────────────────────
+export const FLOOR_PROTECTION_PRODUCTS = ["Polyweave", "Corflute", "Protect-It 2mm"] as const;
+
+export const FLOOR_PROTECTION_RATES: { label: string; values: [string, string, string]; emphasis?: boolean }[] = [
+  { label: "Material cost", values: ["$129.50 per 183 m² roll (about $0.71/m²)", "$8.14 per 2.4 × 1.2 m sheet (about $2.83/m²)", "$87.12 per 1 × 50 m roll (50 m²), about $1.74/m²"] },
+  { label: "Tape",          values: ["$3.14 per 30 m² roll (about $0.10/m²)", "$3.04 per 30 m roll (about $0.13/m²)", "Not included yet"] },
+  { label: "Install",       values: ["$4.00/m²", "$4.00/m²", "$4.00/m²"] },
+  { label: "Cost per m²",   values: ["about $4.81", "about $6.99 + freight", "about $5.74 (before tape)"], emphasis: true },
+  { label: "Sell at 30% markup", values: ["$6.26/m²", "$9.08/m² + 1.3 × freight", "$7.47/m²"], emphasis: true },
+  { label: "Sell at 30% margin", values: ["$6.88/m²", "$9.98/m² + 1.43 × freight", "$8.20/m²"], emphasis: true },
+];

@@ -9,16 +9,21 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { MATERIAL_PRICE_LIST, LABOUR_PRICE_LIST } from "@/lib/price-list-data";
+import {
+  MATERIAL_PRICE_LIST,
+  LABOUR_PRICE_LIST,
+  FLOOR_PROTECTION_PRODUCTS,
+  FLOOR_PROTECTION_RATES,
+} from "@/lib/price-list-data";
 import { CATEGORIES } from "@/lib/takeoff-types";
 
-type SheetType = "materials" | "labour" | null;
+type SheetType = "materials" | "labour" | "protection" | null;
 
 function PriceSheet({
   type,
   onClose,
 }: {
-  type: SheetType;
+  type: "materials" | "labour" | null;
   onClose: () => void;
 }) {
   const [search, setSearch] = useState("");
@@ -172,6 +177,62 @@ function PriceSheet({
   );
 }
 
+function FloorProtectionSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent
+        side="right"
+        className="w-[480px] sm:w-[640px] sm:max-w-[640px] flex flex-col gap-0 p-0 bg-card border-l border-border"
+      >
+        <SheetHeader className="px-4 py-3 border-b border-border shrink-0">
+          <SheetTitle className="text-sm font-semibold text-foreground/75">
+            Floor Protection Rates
+          </SheetTitle>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Reference only — ex GST, not linked to any estimate.
+          </p>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto">
+          <table className="w-full border-collapse">
+            <thead className="sticky top-0 bg-muted/50 border-b border-border z-10">
+              <tr>
+                <th className="px-3 py-1.5 w-28" />
+                {FLOOR_PROTECTION_PRODUCTS.map((p) => (
+                  <th
+                    key={p}
+                    className="px-3 py-1.5 text-left text-[10px] font-medium text-muted-foreground uppercase tracking-wide"
+                  >
+                    {p}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {FLOOR_PROTECTION_RATES.map((row) => (
+                <tr key={row.label} className="border-b border-border hover:bg-muted/10 transition-colors">
+                  <td className="px-3 py-2 text-[11px] text-muted-foreground align-top w-28">{row.label}</td>
+                  {row.values.map((v, i) => (
+                    <td
+                      key={i}
+                      className={cn(
+                        "px-3 py-2 text-[11px] align-top tabular-nums",
+                        row.emphasis ? "text-foreground/75 font-medium" : "text-foreground/70"
+                      )}
+                    >
+                      {v}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 export function PriceListLinks() {
   const [open, setOpen] = useState<SheetType>(null);
 
@@ -190,9 +251,16 @@ export function PriceListLinks() {
         >
           Labour Price List
         </button>
+        <button
+          onClick={() => setOpen("protection")}
+          className="text-[11px] text-muted-foreground hover:text-primary transition-colors underline underline-offset-2"
+        >
+          Floor Protection Rates
+        </button>
       </div>
 
-      <PriceSheet type={open} onClose={() => setOpen(null)} />
+      <PriceSheet type={open === "protection" ? null : open} onClose={() => setOpen(null)} />
+      <FloorProtectionSheet open={open === "protection"} onClose={() => setOpen(null)} />
     </>
   );
 }
