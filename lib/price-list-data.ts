@@ -127,3 +127,10 @@ export const FLOOR_PROTECTION_RATES: { label: string; values: [string, string, s
   { label: "Sell at 30% markup", values: ["$6.26/m²", "$9.08/m² + 1.3 × freight", "$7.47/m²"], emphasis: true },
   { label: "Sell at 30% margin", values: ["$6.88/m²", "$9.98/m² + 1.43 × freight", "$8.20/m²"], emphasis: true },
 ];
+
+/** Client-facing S&I rates per m², set by hand — no cost or margin detail. */
+export const FLOOR_PROTECTION_CLIENT_RATES: { product: string; rate: number }[] = [
+  { product: "Polyweave",      rate: 7.00 },
+  { product: "Corflute",       rate: 9.75 },
+  { product: "Protect-It 2mm", rate: 8.50 },
+];

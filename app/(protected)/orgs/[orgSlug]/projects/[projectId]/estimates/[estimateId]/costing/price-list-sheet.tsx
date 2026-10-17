@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Search } from "lucide-react";
+import { Check, Clipboard, Search } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   Sheet,
@@ -14,7 +15,9 @@ import {
   LABOUR_PRICE_LIST,
   FLOOR_PROTECTION_PRODUCTS,
   FLOOR_PROTECTION_RATES,
+  FLOOR_PROTECTION_CLIENT_RATES,
 } from "@/lib/price-list-data";
+import { copyTableToClipboard } from "@/lib/copy-table";
 import { CATEGORIES } from "@/lib/takeoff-types";
 
 type SheetType = "materials" | "labour" | "protection" | null;
@@ -178,6 +181,20 @@ function PriceSheet({
 }
 
 function FloorProtectionSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+
+  // Client-facing: sell rates only — no cost or margin shown
+  function copyClientRates() {
+    const body = FLOOR_PROTECTION_CLIENT_RATES.map((r) => [r.product, `$${r.rate.toFixed(2)}`]);
+    copyTableToClipboard(["Floor protection", "Supply & install ($/m², ex GST)"], body).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      },
+      () => toast.error("Couldn't copy the rates"),
+    );
+  }
+
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent
@@ -185,9 +202,20 @@ function FloorProtectionSheet({ open, onClose }: { open: boolean; onClose: () =>
         className="w-[480px] sm:w-[640px] sm:max-w-[640px] flex flex-col gap-0 p-0 bg-card border-l border-border"
       >
         <SheetHeader className="px-4 py-3 border-b border-border shrink-0">
-          <SheetTitle className="text-sm font-semibold text-foreground/75">
-            Floor Protection Rates
-          </SheetTitle>
+          <div className="flex items-center justify-between gap-2 pr-6">
+            <SheetTitle className="text-sm font-semibold text-foreground/75">
+              Floor Protection Rates
+            </SheetTitle>
+            <button
+              onClick={copyClientRates}
+              title="Copy client rates per m² (sell rates only) — pastes into Excel, Gmail or Word"
+              className="inline-flex items-center gap-1 text-[11px] text-primary/80 hover:text-primary border border-primary/30 rounded px-2 py-0.5 transition-colors"
+            >
+              {copied
+                ? <><Check className="h-3 w-3 text-success" /> Copied</>
+                : <><Clipboard className="h-3 w-3" /> Copy client rates</>}
+            </button>
+          </div>
           <p className="text-[11px] text-muted-foreground mt-0.5">
             Reference only — ex GST, not linked to any estimate.
           </p>
